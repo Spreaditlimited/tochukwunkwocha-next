@@ -15,6 +15,7 @@ import {
 import { ResourceArticleContent } from "@/components/resources/ResourceArticleContent"
 import { ResourceLeadForm } from "@/components/resources/ResourceLeadForm"
 import { ResourcePromptBlock } from "@/components/resources/ResourcePromptBlock"
+import { ResourceSubscribeForm } from "@/components/resources/ResourceSubscribeForm"
 import {
   accessTypeLabel,
   audienceLabel,
@@ -60,8 +61,10 @@ export default async function ResourceDetailPage({ params }: PageProps) {
   if (!resource) notFound()
 
   const price = formatResourcePrice(resource)
-  const hasDownload = Boolean(resource.downloadUrl)
-  const canAccessDirectly = resource.accessType === "free"
+  const isDownloadableResource = resource.resourceType === "download"
+  const canAccessDirectly = resource.accessType === "free" && isDownloadableResource
+  const pdfDownloadUrl = `/api/resources/${resource.slug}/download`
+  const shouldProtectInlineContent = isDownloadableResource || resource.accessType === "gated"
 
   return (
     <main className="relative bg-background">
@@ -139,15 +142,43 @@ export default async function ResourceDetailPage({ params }: PageProps) {
                 </div>
               )}
 
+              {shouldProtectInlineContent && (
+                <section className="surface-raised mt-12 bg-card p-8 sm:mt-16 sm:p-10">
+                  <div className="mb-5 inline-flex rounded-lg bg-primary/10 p-3 text-primary">
+                    <Download className="h-6 w-6" />
+                  </div>
+                  <h2 className="font-heading text-2xl font-black tracking-tight text-foreground">
+                    Download the complete PDF
+                  </h2>
+                  <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                    Get the complete worksheet, checklist, or planner in a clean PDF format you can use immediately. It is designed for focused action, not casual reading.
+                  </p>
+                  <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                      <p className="eyebrow text-primary">Format</p>
+                      <p className="mt-2 text-sm font-bold text-foreground">PDF download</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                      <p className="eyebrow text-primary">Audience</p>
+                      <p className="mt-2 text-sm font-bold text-foreground">{audienceLabel(resource.audienceKey)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                      <p className="eyebrow text-primary">Category</p>
+                      <p className="mt-2 text-sm font-bold text-foreground">{categoryLabel(resource.categoryKey)}</p>
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {/* Main Body Content */}
-              {resource.bodyContent && (
+              {!shouldProtectInlineContent && resource.bodyContent && (
                 <section className="mt-12 prose prose-lg dark:prose-invert max-w-none prose-headings:font-heading prose-headings:font-black prose-a:text-primary hover:prose-a:text-primary/80 sm:mt-16">
                   <ResourceArticleContent content={resource.bodyContent} />
                 </section>
               )}
 
               {/* Prompt Block */}
-              {resource.promptText && (
+              {!shouldProtectInlineContent && resource.promptText && (
                 <section className="surface-raised mt-12 bg-muted/20 p-6 sm:mt-16 sm:p-10">
                   <div className="mb-6 flex items-center gap-3 text-primary">
                     <TerminalSquare className="h-6 w-6" />
@@ -205,30 +236,34 @@ export default async function ResourceDetailPage({ params }: PageProps) {
                   <p className="text-base leading-relaxed text-muted-foreground">
                     {resource.accessType === "paid"
                       ? "This resource is configured as a premium asset. Complete the checkout process to gain immediate access."
-                      : resource.accessType === "bundle_only"
-                        ? "This specialized resource is exclusively available as part of a comprehensive paid toolkit bundle."
+                        : resource.accessType === "bundle_only"
+                          ? "This specialized resource is exclusively available as part of a comprehensive paid toolkit bundle."
                         : resource.accessType === "gated"
                           ? "Enter your details below to unlock and download this free resource instantly."
-                          : "This resource is completely free and available for immediate download."}
+                          : isDownloadableResource
+                            ? "This resource is completely free and available as a PDF download."
+                            : "This resource is completely free. Subscribe below to receive new practical AI resources when they are published."}
                   </p>
 
                   {/* Actions */}
                   <div className="mt-8 space-y-4">
-                    {canAccessDirectly && hasDownload && (
+                    {canAccessDirectly && (
                       <a 
-                        href={resource.downloadUrl} 
-                        target="_blank" 
-                        rel="noreferrer" 
+                        href={pdfDownloadUrl}
                         className="btn-primary w-full justify-center py-4 text-base"
                       >
-                        <Download className="mr-2 h-5 w-5" /> Download Resource
+                        <Download className="mr-2 h-5 w-5" /> Download PDF
                       </a>
                     )}
 
-                    {resource.accessType === "gated" && hasDownload && (
+                    {resource.accessType === "gated" && (
                       <div className="rounded-xl border border-border bg-muted/30 p-5">
-                        <ResourceLeadForm resourceUuid={resource.resourceUuid} downloadUrl={resource.downloadUrl} />
+                        <ResourceLeadForm resourceUuid={resource.resourceUuid} />
                       </div>
+                    )}
+
+                    {resource.accessType === "free" && !isDownloadableResource && (
+                      <ResourceSubscribeForm />
                     )}
 
                     {(resource.accessType === "paid" || resource.accessType === "bundle_only") && (

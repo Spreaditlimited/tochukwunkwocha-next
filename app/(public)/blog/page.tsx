@@ -12,7 +12,8 @@ import {
   TrendingUp 
 } from "lucide-react"
 
-import { getBlogImageSrc, getPublishedPosts } from "@/lib/blog"
+import { BlogNewsletterForm } from "@/components/blog/BlogNewsletterForm"
+import { getBlogImageSrc, getPublishedPostsPage } from "@/lib/blog"
 import { buildMetadata } from "@/lib/site-seo"
 import { formatDate } from "@/lib/utils"
 
@@ -25,12 +26,32 @@ export const metadata = buildMetadata({
 })
 
 const sectionContainer = "site-container"
+const BLOG_PAGE_SIZE = 12
 
-export default async function BlogPage() {
-  // Fetch up to 7 posts so we can feature 1 and grid 6
-  const posts = await getPublishedPosts(7)
+function pageHref(page: number) {
+  return page <= 1 ? "/blog" : `/blog?page=${page}`
+}
+
+function normalizePage(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const page = Number(raw || 1)
+  return Number.isFinite(page) ? Math.max(1, Math.round(page)) : 1
+}
+
+export default async function BlogPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ page?: string | string[] }>
+}) {
+  const params = searchParams ? await searchParams : {}
+  const requestedPage = normalizePage(params.page)
+  const { posts, total, page, totalPages } = await getPublishedPostsPage({ page: requestedPage, pageSize: BLOG_PAGE_SIZE })
   const featuredPost = posts.length > 0 ? posts[0] : null
   const gridPosts = posts.length > 1 ? posts.slice(1) : []
+  const currentPage = Math.min(page, totalPages)
+  const paginationPages = Array.from(
+    new Set([1, currentPage - 1, currentPage, currentPage + 1, totalPages].filter((item) => item >= 1 && item <= totalPages))
+  )
 
   const topics = [
     { title: "Artificial Intelligence", icon: Cpu, desc: "Understand AI without unnecessary technical language. Learn how AI works, where it is being used, and how you can apply it in everyday life." },
@@ -80,6 +101,11 @@ export default async function BlogPage() {
           <div className="mb-12">
             <p className="eyebrow">The Publication</p>
             <h2 className="mt-2 font-heading text-3xl font-black tracking-tight">Explore Our Latest Articles</h2>
+            {total > 0 ? (
+              <p className="mt-3 text-sm font-medium text-muted-foreground">
+                Showing page {currentPage} of {totalPages} across {total} published articles.
+              </p>
+            ) : null}
           </div>
           
           {posts.length > 0 ? (
@@ -140,6 +166,46 @@ export default async function BlogPage() {
                   ))}
                 </div>
               )}
+
+              {totalPages > 1 ? (
+                <nav className="flex flex-col items-center justify-between gap-4 pt-4 sm:flex-row" aria-label="Blog pagination">
+                  <Link
+                    href={pageHref(currentPage - 1)}
+                    aria-disabled={currentPage <= 1}
+                    className={`btn-secondary px-5 py-3 text-sm ${currentPage <= 1 ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    Previous
+                  </Link>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {paginationPages.map((item, index) => {
+                      const previous = paginationPages[index - 1]
+                      return (
+                        <span key={item} className="inline-flex items-center gap-2">
+                          {previous && item - previous > 1 ? <span className="px-1 text-sm font-bold text-muted-foreground">...</span> : null}
+                          <Link
+                            href={pageHref(item)}
+                            aria-current={item === currentPage ? "page" : undefined}
+                            className={`inline-flex h-10 min-w-10 items-center justify-center rounded-md border px-3 text-sm font-black transition ${
+                              item === currentPage
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary"
+                            }`}
+                          >
+                            {item}
+                          </Link>
+                        </span>
+                      )
+                    })}
+                  </div>
+                  <Link
+                    href={pageHref(currentPage + 1)}
+                    aria-disabled={currentPage >= totalPages}
+                    className={`btn-secondary px-5 py-3 text-sm ${currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    Next
+                  </Link>
+                </nav>
+              ) : null}
             </div>
           ) : (
             <div className="surface-raised flex flex-col items-center justify-center bg-card p-16 text-center">
@@ -234,18 +300,7 @@ export default async function BlogPage() {
                 We publish new articles regularly to help learners keep pace with developments in Artificial Intelligence and digital technology. Subscribe to receive resources delivered directly to your inbox.
               </p>
               
-              {/* Placeholder form until the newsletter provider/server action is wired. */}
-              <form className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <input 
-                  type="email" 
-                  placeholder="Enter your email address" 
-                  className="w-full rounded-md border border-white/20 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
-                  required
-                />
-                <button type="button" className="btn-inverse shrink-0 px-6 py-3 text-sm">
-                  Subscribe
-                </button>
-              </form>
+              <BlogNewsletterForm />
               <p className="mt-4 text-xs text-slate-500">We respect your privacy. Unsubscribe at any time.</p>
             </div>
 

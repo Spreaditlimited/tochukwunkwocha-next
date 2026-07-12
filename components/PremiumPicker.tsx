@@ -4,6 +4,7 @@ import { ChevronDown } from "lucide-react"
 type PickerOption = {
   label: string
   value: string
+  key?: string
   disabled?: boolean
 }
 
@@ -45,7 +46,7 @@ export function PremiumPicker({
           </option>
         ) : null}
         {options.map((option) => (
-          <option key={option.value} value={option.value} disabled={option.disabled}>
+          <option key={option.key || option.value} value={option.value} disabled={option.disabled}>
             {option.label}
           </option>
         ))}

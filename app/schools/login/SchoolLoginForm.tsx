@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useState, type FormEvent } from "react"
 import { AlertCircle, ArrowLeft, Loader2, LockKeyhole, Mail, ShieldCheck } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
+
 export function SchoolLoginForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -93,13 +95,12 @@ export function SchoolLoginForm() {
                   Forgot?
                 </Link>
               </span>
-              <input
+              <PasswordField
                 name="password"
-                type="password"
                 required
                 placeholder="••••••••"
                 autoComplete="current-password"
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
+                inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </label>
           </div>

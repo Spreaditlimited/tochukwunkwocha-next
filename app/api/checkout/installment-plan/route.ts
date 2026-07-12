@@ -11,6 +11,7 @@ import {
   recordAffiliateAttribution,
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
+import { createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
 
 export async function POST(request: Request) {
   try {
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
     }
 
     const account = await findOrCreateStudentAccount({ fullName: firstName, email, phone })
+    const session = await createStudentSessionForAccount(account)
+    await setStudentSessionCookie(session.token)
     const context = await checkoutContext({
       courseSlug,
       country,
@@ -77,6 +80,10 @@ export async function POST(request: Request) {
         ...context.pricing,
         label: formatMinorAmount(context.pricing.finalAmountMinor, context.pricing.currency),
         baseLabel: formatMinorAmount(context.pricing.baseAmountMinor, context.pricing.currency),
+        courseAmountLabel: formatMinorAmount(Number(context.pricing.courseAmountMinor || 0), context.pricing.currency),
+        vatLabel: formatMinorAmount(Number(context.pricing.vatAmountMinor || 0), context.pricing.currency),
+        subtotalLabel: formatMinorAmount(Number(context.pricing.subtotalAmountMinor || 0), context.pricing.currency),
+        processingFeeLabel: formatMinorAmount(Number(context.pricing.processingFeeMinor || 0), context.pricing.currency),
         discountLabel: formatMinorAmount(context.pricing.discountMinor, context.pricing.currency),
         groupDiscountLabel: formatMinorAmount(Number(context.pricing.groupDiscountMinor || 0), context.pricing.currency),
         groupUnitLabel: context.pricing.groupUnitAmountMinor ? formatMinorAmount(Number(context.pricing.groupUnitAmountMinor), context.pricing.currency) : null

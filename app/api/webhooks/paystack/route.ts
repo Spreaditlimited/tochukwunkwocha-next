@@ -2,7 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
-import { markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
+import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 
 export const dynamic = "force-dynamic"
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
     providerReference: reference,
     providerOrderId: data.id ? String(data.id) : null
   })
+  await createAffiliateCommissionForOrder(orderUuid)
   await provisionStudentForPaidOrder(order)
   await sendCourseOrderMetaPurchase({ orderUuid }).catch(() => null)
   return NextResponse.json({ ok: true, scope: "course_checkout", orderUuid })

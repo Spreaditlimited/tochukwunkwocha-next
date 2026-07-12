@@ -22,11 +22,32 @@ import {
 
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
 
 type Course = NonNullable<ReturnType<typeof getCourse>>
 
 const sectionContainer = "site-container"
+
+function formatMinorAmount(minor: number | null, currency: string) {
+  if (!minor) return null
+  const locale = currency === "NGN" ? "en-NG" : currency === "GBP" ? "en-GB" : currency === "EUR" ? "en-IE" : "en-US"
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: currency === "NGN" ? 0 : 2
+  }).format(minor / 100)
+}
+
+function formatCoursePrice(settings: PublicCourseSettings | null) {
+  if (!settings) return null
+  return (
+    formatMinorAmount(settings.priceNgnMinor, "NGN") ||
+    formatMinorAmount(settings.priceGbpMinor, "GBP") ||
+    formatMinorAmount(settings.priceUsdMinor, "USD") ||
+    formatMinorAmount(settings.priceEurMinor, "EUR")
+  )
+}
 
 function PlaceholderImage({
   note,
@@ -56,7 +77,17 @@ function PlaceholderImage({
   )
 }
 
-export function PromptToProfitCoursePage({ course }: { course: Course }) {
+export function PromptToProfitCoursePage({ course, courseSettings }: { course: Course; courseSettings: PublicCourseSettings | null }) {
+  const openBatches = courseSettings?.openBatches || []
+  const displayedPrice = formatCoursePrice(courseSettings)
+  const enrollmentStatus = courseSettings
+    ? courseSettings.isEnrollmentLocked
+      ? "Enrollment locked"
+      : openBatches.length
+        ? "Enrollment open"
+        : "No open batches"
+    : "Course settings not found"
+
   const buildProjects = [
     "Business websites",
     "Personal portfolio websites",
@@ -336,36 +367,46 @@ export function PromptToProfitCoursePage({ course }: { course: Course }) {
             <div className="relative">
               <div className="absolute -inset-1 rounded-2xl bg-gradient-to-b from-sky-400/30 to-primary/30 blur-lg" />
               <div className="relative rounded-2xl border border-white/10 bg-[#0a1120] p-8 shadow-2xl sm:p-10">
-                <p className="eyebrow text-sky-400">August Summer Programme</p>
-                <h3 className="mt-2 font-heading text-3xl font-black">Batch 1</h3>
+                <p className="eyebrow text-sky-400">Course settings</p>
+                <h3 className="mt-2 font-heading text-3xl font-black">
+                  {courseSettings?.courseTitle || "Prompt to Profit Holiday"}
+                </h3>
 
                 <div className="mt-8 border-t border-white/10 pt-6">
-                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Starts</p>
-                  <p className="mt-2 font-heading text-xl font-bold text-white">Monday, 3 August 2026</p>
-                  <div className="mt-2 flex gap-4 text-sm font-medium text-sky-400">
-                    <span>7:00 pm UK</span>
-                    <span>7:00 pm WAT</span>
-                  </div>
+                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Open batches</p>
+                  <p className="mt-2 font-heading text-xl font-bold text-white">
+                    {openBatches.length} {openBatches.length === 1 ? "batch" : "batches"} open
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-sky-400">{enrollmentStatus}</p>
                 </div>
 
                 <div className="mt-8 border-t border-white/10 pt-6">
-                  <p className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-400">Programme Format</p>
+                  <p className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-400">Live course details</p>
                   <ul className="grid gap-3 sm:grid-cols-2">
-                    {[
-                      { text: "Five-Day Intensive", icon: Calendar },
-                      { text: "Recorded Lessons", icon: MonitorPlay },
-                      { text: "Live Zoom Support", icon: Video },
-                      { text: "One-Year Access", icon: ShieldCheck },
-                      { text: "Complete Beginner", icon: Users },
-                      { text: "Limited Seats", icon: Award }
-                    ].map((item) => {
-                      const Icon = item.icon
-                      return (
-                        <li key={item.text} className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                          <Icon className="h-4 w-4 text-primary" /> {item.text}
-                        </li>
-                      )
-                    })}
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <Calendar className="h-4 w-4 text-primary" />
+                      {courseSettings?.enrollmentMode === "batch" ? "Batch-based" : courseSettings?.enrollmentMode || "Enrollment mode not set"}
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <CreditCard className="h-4 w-4 text-primary" />
+                      {displayedPrice || "Price not configured"}
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <MonitorPlay className="h-4 w-4 text-primary" />
+                      Recorded Lessons
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <Video className="h-4 w-4 text-primary" />
+                      Live Zoom Support
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      One-Year Access
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <Award className="h-4 w-4 text-primary" />
+                      Project Certificate
+                    </li>
                   </ul>
                 </div>
               </div>

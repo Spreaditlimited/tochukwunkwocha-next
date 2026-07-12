@@ -28,15 +28,75 @@ type Provider = "paystack" | "stripe" | "manual_transfer" | "installment"
 type PricingPayload = {
   currency: string
   baseAmountMinor: number
+  courseAmountMinor?: number
+  vatPercent?: number
+  vatAmountMinor?: number
+  subtotalAmountMinor?: number
+  processingFeeMinor?: number
   discountMinor: number
   finalAmountMinor: number
   label?: string
   baseLabel?: string
+  courseAmountLabel?: string
+  vatLabel?: string
+  subtotalLabel?: string
+  processingFeeLabel?: string
   discountLabel?: string
   groupDiscountMinor?: number
   groupDiscountLabel?: string
   groupUnitLabel?: string | null
   couponCode?: string | null
+}
+
+function CheckoutAmountBreakdown({ pricing }: { pricing: PricingPayload | null }) {
+  if (!pricing) return null
+  const vatPercent = Number(pricing.vatPercent || 0)
+  const processingFeeMinor = Number(pricing.processingFeeMinor || 0)
+  const discountMinor = Number(pricing.discountMinor || 0)
+
+  const rows = [
+    {
+      label: "Course price",
+      value: pricing.courseAmountLabel || formatMinor(Number(pricing.courseAmountMinor || 0), pricing.currency),
+      show: Number(pricing.courseAmountMinor || 0) > 0
+    },
+    {
+      label: vatPercent ? `VAT (${vatPercent.toFixed(2).replace(/\.00$/, "")}%)` : "VAT",
+      value: pricing.vatLabel || formatMinor(Number(pricing.vatAmountMinor || 0), pricing.currency),
+      show: Number(pricing.vatAmountMinor || 0) > 0 || vatPercent > 0
+    },
+    {
+      label: "Discount",
+      value: `-${pricing.discountLabel || formatMinor(discountMinor, pricing.currency)}`,
+      show: discountMinor > 0
+    },
+    {
+      label: "Processing fee",
+      value: pricing.processingFeeLabel || formatMinor(processingFeeMinor, pricing.currency),
+      show: processingFeeMinor > 0
+    }
+  ].filter((row) => row.show)
+
+  if (!rows.length) return null
+
+  return (
+    <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
+      <p className="mb-3 text-xs font-black uppercase tracking-widest text-slate-400">Amount Breakdown</p>
+      <div className="space-y-2 text-sm text-slate-300">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-4">
+            <span>{row.label}</span>
+            <strong className="text-right text-white">{row.value}</strong>
+          </div>
+        ))}
+        <div className="my-3 h-px bg-white/10" />
+        <div className="flex items-center justify-between gap-4 font-black text-sky-300">
+          <span>Total</span>
+          <span className="text-right">{pricing.label || formatMinor(pricing.finalAmountMinor, pricing.currency)}</span>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 type ManualDetails = {
@@ -540,7 +600,26 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                     <p><strong>Bank:</strong> {manualDetails.bankName || "Not configured"}</p>
                     <p><strong>Account name:</strong> {manualDetails.accountName || "Not configured"}</p>
                     <p><strong>Account number:</strong> {manualDetails.accountNumber || "Not configured"}</p>
-                    <p><strong>Amount:</strong> {manualDetails.amountLabel}</p>
+                    <div className="mt-2 border-t border-border pt-3">
+                      <p className="flex justify-between gap-4">
+                        <strong>Course price:</strong>
+                        <span>{manualDetails.pricing.courseAmountLabel || formatMinor(Number(manualDetails.pricing.courseAmountMinor || 0), manualDetails.pricing.currency)}</span>
+                      </p>
+                      <p className="mt-2 flex justify-between gap-4">
+                        <strong>VAT:</strong>
+                        <span>{manualDetails.pricing.vatLabel || formatMinor(Number(manualDetails.pricing.vatAmountMinor || 0), manualDetails.pricing.currency)}</span>
+                      </p>
+                      {manualDetails.pricing.discountMinor ? (
+                        <p className="mt-2 flex justify-between gap-4">
+                          <strong>Discount:</strong>
+                          <span>-{manualDetails.pricing.discountLabel || formatMinor(manualDetails.pricing.discountMinor, manualDetails.pricing.currency)}</span>
+                        </p>
+                      ) : null}
+                      <p className="mt-3 flex justify-between gap-4 text-base">
+                        <strong>Amount:</strong>
+                        <strong>{manualDetails.amountLabel}</strong>
+                      </p>
+                    </div>
                     {manualDetails.note ? <p className="text-muted-foreground">{manualDetails.note}</p> : null}
                   </div>
                   <div className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -584,6 +663,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                     <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice}</p>
                     {pricing?.groupDiscountMinor ? <p className="mt-2 text-sm text-sky-300">Group savings: {pricing.groupDiscountLabel || formatMinor(pricing.groupDiscountMinor, pricing.currency)}</p> : null}
                     {pricing?.discountMinor ? <p className="mt-2 text-sm text-emerald-300">Discount: {pricing.discountLabel || formatMinor(pricing.discountMinor, pricing.currency)}</p> : null}
+                    <CheckoutAmountBreakdown pricing={pricing} />
                   </div>
 
                   <div className="mt-8 border-t border-white/10 pt-8">
@@ -636,6 +716,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                 <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice}</p>
                 {pricing?.groupDiscountMinor ? <p className="mt-2 text-sm text-sky-300">Group savings: {pricing.groupDiscountLabel || formatMinor(pricing.groupDiscountMinor, pricing.currency)}</p> : null}
                 {pricing?.discountMinor ? <p className="mt-2 text-sm text-emerald-300">Discount: {pricing.discountLabel || formatMinor(pricing.discountMinor, pricing.currency)}</p> : null}
+                <CheckoutAmountBreakdown pricing={pricing} />
               </div>
 
               <div className="mt-8 border-t border-white/10 pt-8">

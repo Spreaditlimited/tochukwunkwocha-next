@@ -74,20 +74,6 @@ export const coachingPlans: CoachingPlan[] = [
   }
 ]
 
-const hourlyRateByCurrency = {
-  NGN: 15000000,
-  GBP: 10000,
-  USD: 12500,
-  EUR: 11500
-}
-
-const discoveryBaseByCurrency = {
-  NGN: 10000000,
-  GBP: 5000,
-  USD: 6000,
-  EUR: 6000
-}
-
 export function currencyForCountry(country: string) {
   const code = country.toUpperCase()
   if (code === "NG") return "NGN"
@@ -104,37 +90,4 @@ export function formatMinorAmount(minor: number, currency: string) {
     currency,
     maximumFractionDigits: currency === "NGN" ? 0 : 2
   }).format(minor / 100)
-}
-
-export function hourlyRateForCountry(country: string) {
-  const currency = currencyForCountry(country)
-
-  return {
-    currency,
-    minor: hourlyRateByCurrency[currency as keyof typeof hourlyRateByCurrency]
-  }
-}
-
-export function discoveryPriceForCountry(country: string) {
-  const currency = currencyForCountry(country)
-  const minor = discoveryBaseByCurrency[currency as keyof typeof discoveryBaseByCurrency]
-
-  return {
-    currency,
-    minor,
-    label: formatMinorAmount(minor, currency)
-  }
-}
-
-export function planPriceForCountry(plan: CoachingPlan, country: string) {
-  const hourlyRate = hourlyRateForCountry(country)
-  const minor = hourlyRate.minor * plan.monthlyHours
-
-  return {
-    currency: hourlyRate.currency,
-    minor,
-    hourlyRateMinor: hourlyRate.minor,
-    label: formatMinorAmount(minor, hourlyRate.currency),
-    hourlyRateLabel: formatMinorAmount(hourlyRate.minor, hourlyRate.currency)
-  }
 }

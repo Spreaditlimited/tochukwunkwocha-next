@@ -9,6 +9,7 @@ import { PromptToProfitCoursePage } from "@/components/courses/PromptToProfitCou
 import { PromptToProfitSchoolsCoursePage } from "@/components/courses/PromptToProfitSchoolsCoursePage"
 import { JsonLd } from "@/components/JsonLd"
 import { TrademarkText } from "@/components/TrademarkText"
+import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { getCourse, resolveCourseSlug } from "@/lib/public-offers"
 import { breadcrumbJsonLd, buildMetadata, courseJsonLd } from "@/lib/site-seo"
 
@@ -48,10 +49,11 @@ export default async function CoursePage({ params }: CoursePageProps) {
     : null
 
   if (course?.slug === "prompt-to-profit") {
+    const courseSettings = await getPublicCourseSettings(course.checkoutCourseSlug)
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <PromptToProfitCoursePage course={course} />
+        <PromptToProfitCoursePage course={course} courseSettings={courseSettings} />
       </>
     )
   }

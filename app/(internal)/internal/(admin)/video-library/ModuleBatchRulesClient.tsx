@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
+
 type BatchOption = {
   batchKey: string
   batchLabel: string
@@ -53,6 +55,13 @@ export function ModuleBatchRulesClient({
 }) {
   const [enabled, setEnabled] = useState(initialEnabled)
   const [rows, setRows] = useState<ScheduleRow[]>(() => schedules.map((row, index) => createScheduleRow(row, index)))
+  const batchOptions = [
+    { value: "", label: "Select batch" },
+    ...batches.map((batch) => ({
+      value: batch.batchKey,
+      label: batch.batchLabel || batch.batchKey
+    }))
+  ]
 
   function updateRow(index: number, patch: Partial<ScheduleRow>) {
     setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row))
@@ -99,19 +108,12 @@ export function ModuleBatchRulesClient({
                 return (
                   <div key={row.rowId} className="grid min-w-[60rem] gap-2 sm:grid-cols-12">
                     <div className="sm:col-span-4">
-                      <select
+                      <PremiumPicker
                         name="dripBatchKey"
                         value={row.batchKey}
                         onChange={(event) => updateRow(index, { batchKey: event.target.value })}
-                        className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      >
-                        <option value="">Select batch</option>
-                        {batches.map((batch) => (
-                          <option key={batch.batchKey} value={batch.batchKey}>
-                            {batch.batchLabel || batch.batchKey}
-                          </option>
-                        ))}
-                      </select>
+                        options={batchOptions}
+                      />
                     </div>
                     <label className="inline-flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs font-semibold text-foreground sm:col-span-3">
                       <input

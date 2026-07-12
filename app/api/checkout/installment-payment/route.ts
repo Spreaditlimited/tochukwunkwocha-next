@@ -32,7 +32,7 @@ export async function POST(request: Request) {
             orderUuid: reference,
             courseSlug: "installment",
             successUrl: `${origin}/api/payments/installments/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${origin}/dashboard?payment=cancelled`,
+            cancelUrl: `${origin}/dashboard/installments?payment=cancelled`,
             metadata: {
               payment_scope: "installment",
               installment_plan_uuid: planUuid,

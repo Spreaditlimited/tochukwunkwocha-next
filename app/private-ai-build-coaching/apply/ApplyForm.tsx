@@ -6,11 +6,8 @@ import { FormEvent, useEffect, useState } from "react"
 import {
   ArrowLeft,
   ArrowRight,
-  CalendarCheck,
-  CheckCircle2,
   ChevronRight,
-  MessageSquare,
-  ShieldCheck
+  MessageSquare
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
@@ -50,7 +47,7 @@ export function ApplyForm() {
   const [step, setStep] = useState(0)
   const [formData, setFormData] = useState<CoachingApplyData>(initialData)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
 
   useEffect(() => {
     try {
@@ -85,15 +82,26 @@ export function ApplyForm() {
     return true
   }
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setIsSubmitting(true)
+    setErrorMessage("")
 
-    window.setTimeout(() => {
-      setIsSubmitting(false)
-      setSubmitted(true)
+    try {
+      const response = await fetch("/api/private-ai-coaching/apply", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(formData)
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok || !json?.ok) throw new Error(json?.error || "Could not submit application.")
       sessionStorage.removeItem(DRAFT_KEY)
-    }, 900)
+      window.location.href = String(json.checkoutUrl || "/checkout/private-ai-coaching-discovery")
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not submit application.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -132,8 +140,7 @@ export function ApplyForm() {
       <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
         <div className="w-full max-w-3xl">
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0a1120]/80 p-6 shadow-2xl backdrop-blur-2xl sm:p-10 lg:p-12">
-            {!submitted ? (
-              <form onSubmit={handleSubmit} className="relative">
+            <form onSubmit={handleSubmit} className="relative">
                 {step === 0 && (
                   <div className="animate-in fade-in slide-in-from-bottom-4 text-center duration-500">
                     <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
@@ -289,9 +296,6 @@ export function ApplyForm() {
                           I understand that the discovery call is paid, coaching slots are limited, and private coaching requires practice between sessions.
                         </span>
                       </label>
-                      <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-4 text-xs leading-relaxed text-amber-500">
-                        <strong>Developer Note:</strong> Submission and payment wiring will connect to the existing private coaching backend in the next integration pass.
-                      </div>
                     </div>
                   </div>
                 )}
@@ -312,33 +316,12 @@ export function ApplyForm() {
                     )}
                   </div>
                 )}
-              </form>
-            ) : (
-              <div className="animate-in zoom-in-95 text-center duration-500">
-                <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                  <CheckCircle2 className="h-10 w-10 text-emerald-400" />
-                </div>
-                <h2 className="font-heading text-3xl font-black">Application received.</h2>
-                <p className="mx-auto mt-4 max-w-md text-lg text-slate-400">
-                  Your coaching application has been captured. The next integration pass will connect this screen to payment and calendar booking.
-                </p>
-                <div className="mx-auto mt-8 grid max-w-md gap-3 text-left sm:grid-cols-2">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <CalendarCheck className="mb-3 h-5 w-5 text-emerald-400" />
-                    <p className="text-sm font-bold text-white">Discovery call</p>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-400">Paid call before coaching begins.</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <ShieldCheck className="mb-3 h-5 w-5 text-cyan-400" />
-                    <p className="text-sm font-bold text-white">Fit review</p>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-400">We only proceed if coaching can help.</p>
-                  </div>
-                </div>
-                <Link href="/private-ai-build-coaching" className="btn-inverse-secondary mt-8 px-8 py-3 text-sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Return to Coaching Page
-                </Link>
-              </div>
-            )}
+                {errorMessage ? (
+                  <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-sm font-bold text-rose-200">
+                    {errorMessage}
+                  </p>
+                ) : null}
+            </form>
           </div>
         </div>
       </div>

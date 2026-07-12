@@ -14,6 +14,7 @@ import {
   Settings 
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 
 type DomainOption = {
@@ -147,24 +148,12 @@ export function DomainActionsPanel({ domains }: { domains: DomainOption[] }) {
         {domains.length > 0 && (
           <div className="w-full lg:w-72 shrink-0">
             <label htmlFor="domain-select" className="sr-only">Select Target Domain</label>
-            <div className="relative">
-              <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <select 
-                id="domain-select"
-                className="w-full appearance-none rounded-md border border-input bg-background py-2.5 pl-10 pr-10 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
-                value={ownedDomain} 
-                onChange={(event) => setOwnedDomain(event.target.value)}
-              >
-                {domains.map((domain) => (
-                  <option key={domain.domainName} value={domain.domainName}>
-                    {domain.domainName}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </div>
-            </div>
+            <PremiumPicker
+              id="domain-select"
+              value={ownedDomain}
+              onChange={(event) => setOwnedDomain(event.target.value)}
+              options={domains.map((domain) => ({ value: domain.domainName, label: domain.domainName }))}
+            />
             <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Target Domain</p>
           </div>
         )}

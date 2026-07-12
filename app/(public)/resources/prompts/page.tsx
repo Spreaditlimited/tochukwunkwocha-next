@@ -1,8 +1,9 @@
 import Link from "next/link"
-import { ArrowLeft, MessageSquare, TerminalSquare } from "lucide-react"
+import { ArrowLeft, MessageSquare, Search, TerminalSquare } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { ResourceCard } from "@/components/resources/ResourceCard"
-import { listPublishedResources } from "@/lib/resources"
+import { listPublishedResources, resourceAudiences, resourceCategories } from "@/lib/resources"
 import { buildMetadata } from "@/lib/site-seo"
 
 export const dynamic = "force-dynamic"
@@ -15,8 +16,29 @@ export const metadata = buildMetadata({
 
 const sectionContainer = "site-container"
 
-export default async function ResourcePromptsPage() {
-  const resources = await listPublishedResources({ type: "prompt", limit: 80 })
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+function param(params: Record<string, string | string[] | undefined>, key: string) {
+  const value = params[key]
+  return Array.isArray(value) ? value[0] || "" : value || ""
+}
+
+export default async function ResourcePromptsPage({ searchParams }: PageProps) {
+  const params = await searchParams || {}
+  const q = param(params, "q")
+  const audience = param(params, "audience")
+  const category = param(params, "category")
+  const resources = await listPublishedResources({ type: "prompt", search: q, audience, category, limit: 240 })
+  const audienceOptions = [
+    { value: "", label: "All audiences" },
+    ...resourceAudiences.map((item) => ({ value: item.key, label: item.label }))
+  ]
+  const categoryOptions = [
+    { value: "", label: "All categories" },
+    ...resourceCategories.map((item) => ({ value: item.key, label: item.label }))
+  ]
 
   return (
     <main className="bg-background">
@@ -52,11 +74,49 @@ export default async function ResourcePromptsPage() {
       {/* Main Resources Grid */}
       <section className="py-20 lg:py-28">
         <div className={sectionContainer}>
-          <div className="mb-12">
-            <p className="eyebrow">Complete Collection</p>
+          <div className="mb-8">
+            <p className="eyebrow">Searchable Database</p>
             <h2 className="mt-3 font-heading text-3xl font-black tracking-tight lg:text-4xl">
-              Available Prompts
+              Prompt Database
             </h2>
+          </div>
+
+          <form className="surface-raised mb-10 grid gap-4 bg-card p-5 lg:grid-cols-[1.4fr_1fr_1fr_auto] lg:items-end">
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Search prompts</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Search by work, audience, task, prompt, or outcome"
+                  className="w-full rounded-xl border border-input bg-background py-3 pl-11 pr-4 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audience</span>
+              <PremiumPicker name="audience" defaultValue={audience} options={audienceOptions} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</span>
+              <PremiumPicker name="category" defaultValue={category} options={categoryOptions} />
+            </label>
+            <button className="btn-primary h-12 justify-center" type="submit">
+              <Search className="h-4 w-4" />
+              Search
+            </button>
+          </form>
+
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-bold text-muted-foreground">
+              Showing {resources.length.toLocaleString("en")} prompt{resources.length === 1 ? "" : "s"}
+            </p>
+            {(q || audience || category) ? (
+              <a href="/resources/prompts" className="text-sm font-black text-primary hover:text-primary/80">
+                Clear filters
+              </a>
+            ) : null}
           </div>
           
           {resources.length > 0 ? (

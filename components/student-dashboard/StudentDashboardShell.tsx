@@ -5,15 +5,21 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
   Award,
+  AlertTriangle,
+  Banknote,
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   FileText,
   Globe,
+  Link2,
   Home,
+  LockKeyhole,
   LogOut,
   Network,
   UserRound,
+  WalletCards,
   UsersRound
 } from "lucide-react"
 
@@ -35,6 +41,7 @@ type StudentDashboardShellProps = {
 const navItems = [
   { href: "/dashboard", label: "Overview", key: "overview", icon: Home },
   { href: "/dashboard/courses", label: "Courses", key: "courses", icon: BookOpen },
+  { href: "/dashboard/installments", label: "Installments", key: "installments", icon: WalletCards },
   { href: "/dashboard/family", label: "Group Enrollment", key: "family", icon: UsersRound },
   { href: "/dashboard/domains", label: "Domains", key: "domains", icon: Globe },
   { href: "/dashboard/certificate", label: "Certificates", key: "certificate", icon: Award },
@@ -43,6 +50,23 @@ const navItems = [
 ]
 
 const STUDENT_SIDEBAR_STORAGE_KEY = "tochukwu-student-sidebar-collapsed"
+
+const emptyStateIcons = {
+  alert: AlertTriangle,
+  award: Award,
+  banknote: Banknote,
+  book: BookOpen,
+  creditCard: CreditCard,
+  file: FileText,
+  globe: Globe,
+  link: Link2,
+  lock: LockKeyhole,
+  network: Network,
+  user: UserRound,
+  users: UsersRound
+}
+
+export type EmptyStudentStateIcon = keyof typeof emptyStateIcons
 
 export function StudentDashboardShell({
   account,
@@ -72,9 +96,9 @@ export function StudentDashboardShell({
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]" />
       <div className="pointer-events-none fixed left-0 top-0 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[120px]" />
 
-      <div className="relative flex min-h-screen">
+      <div className="relative flex min-h-screen lg:h-screen lg:overflow-hidden">
         {/* Sidebar Navigation */}
-        <aside className={cn("relative hidden shrink-0 flex-col border-r border-border bg-card/50 backdrop-blur-xl transition-[width] duration-200 lg:flex", collapsed ? "w-[5.5rem]" : "w-60")}>
+        <aside className={cn("relative hidden h-screen shrink-0 flex-col border-r border-border bg-card/50 backdrop-blur-xl transition-[width] duration-200 lg:flex", collapsed ? "w-[5.5rem]" : "w-60")}>
           <button
             type="button"
             onClick={toggleCollapsed}
@@ -143,7 +167,7 @@ export function StudentDashboardShell({
         </aside>
 
         {/* Main Content Area */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col lg:h-screen lg:overflow-y-auto">
           {/* Header */}
           <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
             <div className="flex h-20 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -220,16 +244,17 @@ export function StudentDashboardCard({
 }
 
 export function EmptyStudentState({
-  icon: Icon = FileText,
+  icon = "file",
   title,
   description,
   action
 }: {
-  icon?: typeof FileText
+  icon?: EmptyStudentStateIcon
   title: string
   description: string
   action?: ReactNode
 }) {
+  const Icon = emptyStateIcons[icon] || FileText
   return (
     <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-card/30 p-10 text-center sm:p-14">
       {/* Subtle center glow for empty state */}

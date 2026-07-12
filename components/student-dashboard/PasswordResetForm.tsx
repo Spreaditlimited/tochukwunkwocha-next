@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, CheckCircle2, Loader2, LockKeyhole, Mail } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 
 type Props = {
@@ -78,9 +79,8 @@ export function PasswordResetForm({ token = "" }: Props) {
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 <LockKeyhole className="h-3.5 w-3.5" /> New Password
               </span>
-              <input
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
-                type="password"
+              <PasswordField
+                inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
                 minLength={8}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -93,9 +93,8 @@ export function PasswordResetForm({ token = "" }: Props) {
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 <LockKeyhole className="h-3.5 w-3.5" /> Confirm Password
               </span>
-              <input
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
-                type="password"
+              <PasswordField
+                inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
                 minLength={8}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}

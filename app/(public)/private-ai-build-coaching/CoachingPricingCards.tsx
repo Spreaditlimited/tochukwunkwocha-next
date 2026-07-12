@@ -1,21 +1,56 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowRight, CheckCircle2, LockKeyhole, Sparkles } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import {
   coachingCountries,
   coachingPlans,
-  discoveryPriceForCountry,
-  planPriceForCountry,
   type CoachingCountry
 } from "@/lib/private-ai-coaching"
 
+type CoachingPricing = {
+  discovery: {
+    label: string
+  }
+  plans: Array<{
+    key: string
+    monthlyHours: number
+    monthlyLabel: string
+    hourlyRateLabel: string
+  }>
+}
+
 export function CoachingPricingCards() {
   const [country, setCountry] = useState<CoachingCountry>("NG")
-  const discoveryPrice = discoveryPriceForCountry(country)
+  const [pricing, setPricing] = useState<CoachingPricing | null>(null)
+  const [pricingError, setPricingError] = useState("")
+
+  useEffect(() => {
+    let active = true
+    setPricingError("")
+
+    fetch(`/api/private-ai-coaching/pricing?country=${encodeURIComponent(country)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load pricing.")
+        return payload as CoachingPricing
+      })
+      .then((payload) => {
+        if (active) setPricing(payload)
+      })
+      .catch((error) => {
+        if (!active) return
+        setPricing(null)
+        setPricingError(error instanceof Error ? error.message : "Could not load pricing.")
+      })
+
+    return () => {
+      active = false
+    }
+  }, [country])
 
   return (
     <>
@@ -53,7 +88,9 @@ export function CoachingPricingCards() {
             </p>
             
             <div className="mt-8">
-              <p className="break-words font-heading text-4xl font-black tracking-tight [overflow-wrap:anywhere]">{discoveryPrice.label}</p>
+              <p className="break-words font-heading text-4xl font-black tracking-tight [overflow-wrap:anywhere]">
+                {pricing?.discovery.label || (pricingError ? "Configure in admin" : "Loading...")}
+              </p>
               <p className="mt-2 text-xs font-medium text-slate-400">One-time payment</p>
             </div>
           </div>
@@ -71,7 +108,7 @@ export function CoachingPricingCards() {
         {/* Step 02: Monthly Plans Loop */}
         <div className="grid gap-8 sm:grid-cols-2 xl:col-span-3 xl:grid-cols-3">
           {coachingPlans.map((plan) => {
-            const price = planPriceForCountry(plan, country)
+            const price = pricing?.plans.find((item) => item.key === plan.key)
             const isPopular = plan.popular
 
             return (
@@ -99,18 +136,22 @@ export function CoachingPricingCards() {
                 <h3 className="font-heading text-2xl font-black tracking-tight">{plan.name}</h3>
                 
                 <div className="mt-4 flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5">
-                  <p className="break-words font-heading text-3xl font-black leading-tight tracking-tight [overflow-wrap:anywhere]">{price.label}</p>
+                  <p className="break-words font-heading text-3xl font-black leading-tight tracking-tight [overflow-wrap:anywhere]">
+                    {price?.monthlyLabel || (pricingError ? "Configure in admin" : "Loading...")}
+                  </p>
                   <span className="text-sm font-bold text-muted-foreground">/mo</span>
                 </div>
 
                 {/* Metric Blocks */}
                 <div className="mt-8 grid gap-3 border-y border-border py-6 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                   <div className="min-w-0 rounded-xl border border-border bg-background/50 p-4 transition-colors group-hover:border-primary/20">
-                    <strong className="block break-words font-heading text-lg font-black leading-tight text-foreground">{plan.monthlyHours} hrs</strong>
+                    <strong className="block break-words font-heading text-lg font-black leading-tight text-foreground">{price?.monthlyHours || plan.monthlyHours} hrs</strong>
                     <span className="mt-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Private Coaching</span>
                   </div>
                   <div className="min-w-0 rounded-xl border border-border bg-background/50 p-4 transition-colors group-hover:border-primary/20">
-                    <strong className="block break-words font-heading text-lg font-black leading-tight text-foreground [overflow-wrap:anywhere]">{price.hourlyRateLabel}</strong>
+                    <strong className="block break-words font-heading text-lg font-black leading-tight text-foreground [overflow-wrap:anywhere]">
+                      {price?.hourlyRateLabel || (pricingError ? "Configure in admin" : "Loading...")}
+                    </strong>
                     <span className="mt-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Hourly Rate</span>
                   </div>
                 </div>

@@ -10,6 +10,7 @@ import {
   ShieldAlert
 } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
 import { listAdminSettings, listAdminSettingsAudit } from "@/lib/admin-settings"
 import { requireAdmin } from "@/lib/auth"
 import { formatDate } from "@/lib/utils"
@@ -101,14 +102,24 @@ export default async function InternalSettingsPage() {
                     {setting.secret && (
                       <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
                     )}
-                    <input
-                      name={`setting:${setting.key}`}
-                      type={setting.secret ? "password" : "text"}
-                      defaultValue={setting.secret ? "" : setting.value}
-                      placeholder={setting.secret && setting.isSet ? "••••••••••••••••" : "Not configured"}
-                      disabled={!session.isOwner}
-                      className={`w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm disabled:cursor-not-allowed ${setting.secret ? 'pl-9 tracking-widest' : ''}`}
-                    />
+                    {setting.secret ? (
+                      <PasswordField
+                        name={`setting:${setting.key}`}
+                        defaultValue=""
+                        placeholder={setting.isSet ? "••••••••••••••••" : "Not configured"}
+                        disabled={!session.isOwner}
+                        inputClassName="w-full rounded-lg border border-input bg-background px-4 py-2.5 pl-9 pr-12 text-sm font-medium tracking-widest outline-none shadow-sm transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed"
+                      />
+                    ) : (
+                      <input
+                        name={`setting:${setting.key}`}
+                        type="text"
+                        defaultValue={setting.value}
+                        placeholder="Not configured"
+                        disabled={!session.isOwner}
+                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium outline-none shadow-sm transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed"
+                      />
+                    )}
                   </div>
                   
                   {/* Field Metadata */}

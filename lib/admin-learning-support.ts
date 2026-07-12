@@ -13,6 +13,15 @@ function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
 }
 
+function escapeHtml(value: unknown) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 function normalizeCourseSlug(value: unknown) {
   return clean(value, 120).toLowerCase()
 }
@@ -320,6 +329,21 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
   if (!item) return ""
   if (item.certificateNo) return `${siteBaseUrl()}/dashboard/certificate?certificate_no=${encodeURIComponent(item.certificateNo)}`
   if (!item.certificateNameConfirmedAt || !clean(item.fullName, 180)) return ""
+  const completionRows = await prisma.$queryRaw<Array<{ totalLessons: number | bigint | null; completedLessons: number | bigint | null }>>`
+    SELECT
+      COUNT(l.id) AS totalLessons,
+      SUM(CASE WHEN p.is_completed = 1 THEN 1 ELSE 0 END) AS completedLessons
+    FROM tochukwu_learning_lessons l
+    JOIN tochukwu_learning_modules m ON m.id = l.module_id
+    JOIN tochukwu_learning_course_modules cm ON cm.module_id = m.id
+    LEFT JOIN tochukwu_learning_lesson_progress p ON p.lesson_id = l.id AND p.account_id = ${item.accountId}
+    WHERE cm.course_slug = ${item.courseSlug}
+      AND COALESCE(l.status, 'published') = 'published'
+  `.catch(() => [])
+  const completion = completionRows[0]
+  const totalLessons = Number(completion?.totalLessons || 0)
+  const completedLessons = Number(completion?.completedLessons || 0)
+  if (totalLessons <= 0 || completedLessons < totalLessons) return ""
   const now = new Date()
   const certNo = certificateNo()
   await prisma.$executeRaw`
@@ -370,10 +394,21 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
   const certificateProof = item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER
   if ((input.sendApprovalEmail || (item.status !== status && status === "approved")) && item.studentEmail) {
     const certificateUrl = status === "approved" && certificateProof ? await issueCertificateIfEligible(assignmentId) : ""
+    const statusLabel = status.replace(/_/g, " ")
+    const courseLabel = escapeHtml(item.courseSlug)
+    const feedbackHtml = feedback ? `<p><strong>Feedback:</strong><br/>${escapeHtml(feedback).replace(/\r?\n/g, "<br/>")}</p>` : ""
+    const websiteHtml = item.submissionLink
+      ? `<p><strong>Approved website:</strong> <a href="${escapeHtml(item.submissionLink)}" style="color:#0d4f9a;font-weight:700;">${escapeHtml(item.submissionLink)}</a></p>`
+      : ""
+    const certificateHtml = certificateUrl
+      ? `<p>Your certificate is now available.</p><p><a href="${escapeHtml(certificateUrl)}" style="display:inline-block;border-radius:10px;background:#0d4f9a;color:#ffffff;font-weight:800;text-decoration:none;padding:12px 18px;">Download your certificate</a></p>`
+      : status === "approved" && certificateProof
+        ? "<p>Your proof has been approved. Your certificate will be available after all certificate requirements are fully satisfied.</p>"
+        : ""
     await sendEmail({
       to: item.studentEmail,
       subject: certificateUrl ? "Your Website Proof Was Approved - Certificate Ready" : `Your learning support status changed to ${status.replace(/_/g, " ")}`,
-      html: `<p>Hello ${item.studentName || "Student"},</p><p>Your submission for ${item.courseSlug} is now <strong>${status}</strong>.</p>${item.submissionLink ? `<p>Approved website: <a href="${item.submissionLink}">${item.submissionLink}</a></p>` : ""}${feedback ? `<p>Feedback: ${feedback}</p>` : ""}${certificateUrl ? `<p><a href="${certificateUrl}">Download your certificate</a></p>` : ""}<p>Tochukwu Tech and AI Academy</p>`,
+      html: `<p>Hello ${escapeHtml(item.studentName || "Student")},</p><p>Your learning support submission for <strong>${courseLabel}</strong> is now <strong>${escapeHtml(statusLabel)}</strong>.</p>${websiteHtml}${feedbackHtml}${certificateHtml}<p><a href="${siteBaseUrl()}/dashboard/courses" style="color:#0d4f9a;font-weight:700;">Open your dashboard</a></p>`,
       text: `Hello ${item.studentName || "Student"},\n\nYour submission for ${item.courseSlug} is now ${status}.\n${item.submissionLink ? `Approved website: ${item.submissionLink}\n` : ""}${feedback ? `Feedback: ${feedback}\n` : ""}${certificateUrl ? `Certificate: ${certificateUrl}\n` : ""}\nTochukwu Tech and AI Academy`
     })
   }

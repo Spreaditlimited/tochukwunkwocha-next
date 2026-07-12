@@ -12,6 +12,7 @@ import {
   Wallet
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { listAffiliateAdminData } from "@/lib/admin-affiliates"
 import { formatDate } from "@/lib/utils"
 import { runAffiliatePayoutBatchAction, saveAffiliateCourseRuleAction } from "./actions"
@@ -50,6 +51,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
   const sort = param(params, "sort", "latest_desc")
   const payoutRaw = param(params, "payout", "")
   const data = await listAffiliateAdminData(sort)
+  const courseOptions = data.courses.map((course) => ({ value: course.slug, label: course.label || course.slug }))
   
   let payoutResult: Record<string, unknown> | null = null
   try {
@@ -115,25 +117,29 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
             <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               <label className="block lg:col-span-2">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme</span>
-                <select name="courseSlug" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                  {data.courses.map((course) => (
-                    <option key={course.slug} value={course.slug}>{course.label || course.slug}</option>
-                  ))}
-                </select>
+                <PremiumPicker name="courseSlug" options={courseOptions} />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Eligibility</span>
-                <select name="isAffiliateEligible" defaultValue="1" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="1">Eligible</option>
-                  <option value="0">Not Eligible</option>
-                </select>
+                <PremiumPicker
+                  name="isAffiliateEligible"
+                  defaultValue="1"
+                  options={[
+                    { value: "1", label: "Eligible" },
+                    { value: "0", label: "Not Eligible" }
+                  ]}
+                />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</span>
-                <select name="commissionType" defaultValue="percentage" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="percentage">Percentage (bps)</option>
-                  <option value="fixed">Fixed (minor)</option>
-                </select>
+                <PremiumPicker
+                  name="commissionType"
+                  defaultValue="percentage"
+                  options={[
+                    { value: "percentage", label: "Percentage (bps)" },
+                    { value: "fixed", label: "Fixed (minor)" }
+                  ]}
+                />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Value (1000 = 10%)</span>

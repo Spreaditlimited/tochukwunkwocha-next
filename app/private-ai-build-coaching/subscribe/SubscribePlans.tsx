@@ -1,18 +1,53 @@
 "use client"
 
 import { useState } from "react"
+import { useEffect } from "react"
 import { CheckCircle2 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import {
   coachingCountries,
   coachingPlans,
-  planPriceForCountry,
   type CoachingCountry
 } from "@/lib/private-ai-coaching"
 
+type CoachingPricing = {
+  plans: Array<{
+    key: string
+    monthlyHours: number
+    monthlyLabel: string
+    hourlyRateLabel: string
+  }>
+}
+
 export function SubscribePlans() {
   const [country, setCountry] = useState<CoachingCountry>("NG")
+  const [pricing, setPricing] = useState<CoachingPricing | null>(null)
+  const [pricingError, setPricingError] = useState("")
+
+  useEffect(() => {
+    let active = true
+    setPricingError("")
+
+    fetch(`/api/private-ai-coaching/pricing?country=${encodeURIComponent(country)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load pricing.")
+        return payload as CoachingPricing
+      })
+      .then((payload) => {
+        if (active) setPricing(payload)
+      })
+      .catch((error) => {
+        if (!active) return
+        setPricing(null)
+        setPricingError(error instanceof Error ? error.message : "Could not load pricing.")
+      })
+
+    return () => {
+      active = false
+    }
+  }, [country])
 
   return (
     <>
@@ -43,7 +78,7 @@ export function SubscribePlans() {
 
       <div className="grid gap-6 md:grid-cols-3">
         {coachingPlans.map((plan) => {
-          const price = planPriceForCountry(plan, country)
+          const price = pricing?.plans.find((item) => item.key === plan.key)
 
           return (
             <article
@@ -55,17 +90,19 @@ export function SubscribePlans() {
               <p className="eyebrow text-emerald-400">{plan.badge ?? "Monthly plan"}</p>
               <h2 className="mt-4 font-heading text-3xl font-black tracking-tight">{plan.name}</h2>
               <p className="mt-3 break-words font-heading text-4xl font-black leading-tight tracking-tight [overflow-wrap:anywhere]">
-                {price.label}
+                {price?.monthlyLabel || (pricingError ? "Configure in admin" : "Loading...")}
                 <span className="ml-1 text-sm font-bold text-slate-400">/mo</span>
               </p>
               <p className="mt-5 text-sm leading-relaxed text-slate-300">{plan.summary}</p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <div className="min-w-0 rounded-lg border border-white/10 bg-white/5 p-3">
-                  <strong className="block break-words text-sm leading-tight">{plan.monthlyHours} hrs</strong>
+                  <strong className="block break-words text-sm leading-tight">{price?.monthlyHours || plan.monthlyHours} hrs</strong>
                   <span className="text-xs text-slate-400">Private coaching per month</span>
                 </div>
                 <div className="min-w-0 rounded-lg border border-white/10 bg-white/5 p-3">
-                  <strong className="block break-words text-sm leading-tight [overflow-wrap:anywhere]">{price.hourlyRateLabel}</strong>
+                  <strong className="block break-words text-sm leading-tight [overflow-wrap:anywhere]">
+                    {price?.hourlyRateLabel || (pricingError ? "Configure in admin" : "Loading...")}
+                  </strong>
                   <span className="text-xs text-slate-400">Configured hourly rate</span>
                 </div>
               </div>
@@ -78,8 +115,8 @@ export function SubscribePlans() {
                   </li>
                 ))}
               </ul>
-              <button className="btn-primary mt-auto px-5 py-3" type="button">
-                Start this plan
+              <button className="btn-primary mt-auto px-5 py-3" type="button" disabled>
+                Activated after discovery
               </button>
             </article>
           )
@@ -87,7 +124,7 @@ export function SubscribePlans() {
       </div>
 
       <p className="mt-6 text-center text-sm text-slate-400">
-        Subscription payment wiring will connect to the existing private coaching backend in the next integration pass.
+        Monthly plan activation happens after your paid discovery call, so you only start the plan that matches the agreed build support.
       </p>
     </>
   )

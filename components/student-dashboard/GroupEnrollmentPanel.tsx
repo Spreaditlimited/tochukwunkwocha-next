@@ -101,7 +101,9 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
   }, [batchKey, batchOptions])
 
   const selectedSeat = seats.find((seat) => seat.courseSlug === courseSlug && (seat.batchKey || "") === batchKey)
+  const selectedBatchLabel = batchOptions.find((option) => option.value === batchKey)?.label?.split(" · ")[0] || selectedSeat?.batchLabel || ""
   const availableSeats = selectedSeat?.seatsAvailable || 0
+  const hasPurchasedSeatsForSelection = Boolean(selectedSeat && availableSeats > 0)
   const learnerCount = learners.length
   const willUseExistingSeats = availableSeats >= learnerCount
   const isImmediateAccess = selectedCourse?.enrollmentMode === "immediate"
@@ -155,6 +157,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       const result = await postJson<{ usedExistingSeats?: boolean; checkoutUrl?: string }>("/api/student/group-enrollment", {
         courseSlug,
         batchKey,
+        batchLabel: selectedBatchLabel,
         country,
         children
       })
@@ -188,7 +191,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
           <p className="eyebrow text-primary">Assign Learners</p>
           <h2 className="mt-1 font-heading text-xl font-bold text-foreground sm:text-2xl">Group Enrollment</h2>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Add learner details here. If you already have enough open seats, access is assigned immediately. If not, secure checkout opens for the selected learners.
+            Buy seats for multiple learners or assign learners to seats you have already purchased. Existing open seats are used first; otherwise, checkout opens for the selected learners.
           </p>
         </div>
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -242,12 +245,16 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
             )}
             <div>
               <p className="font-bold">
-                {learnerCount} learner{learnerCount === 1 ? "" : "s"} selected <span className="mx-2 opacity-50">•</span> {availableSeats} open seat{availableSeats === 1 ? "" : "s"} available
+                {hasPurchasedSeatsForSelection
+                  ? `${availableSeats} purchased seat${availableSeats === 1 ? "" : "s"} available`
+                  : "No purchased seats yet"}
               </p>
               <p className="mt-1 text-sm font-medium opacity-90">
                 {willUseExistingSeats
                   ? "This assignment will use your existing purchased seats. No additional payment is required."
-                  : "You do not have enough open seats for this selection. Continuing will create a secure checkout for the selected learners."}
+                  : hasPurchasedSeatsForSelection
+                    ? `You are adding ${learnerCount} learner${learnerCount === 1 ? "" : "s"}, which is more than your available seat balance. Continuing will open checkout for the selected learners.`
+                    : "Enter the learner details below. Continuing will open checkout so you can buy the required group seats."}
               </p>
             </div>
           </div>

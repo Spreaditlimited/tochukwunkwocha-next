@@ -72,8 +72,8 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
             </span>
             Resources & Toolkits
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            Manage videos, prompts, downloads, guides, and paid AI toolkit bundles for specific Nigerian audiences.
+  <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            Manage prompt playbooks and videos for specific Nigerian audiences.
           </p>
         </div>
         <Link href="/resources" className="btn-secondary shrink-0">
@@ -85,8 +85,8 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
       <section className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "Published Resources", value: publishedCount, icon: BookOpenCheck },
-          { label: "Gated Lead Assets", value: gatedCount, icon: Sparkles },
-          { label: "Paid / Bundle Assets", value: paidCount, icon: Archive }
+          { label: "Gated Assets", value: gatedCount, icon: Sparkles },
+          { label: "Archived / Paid Assets", value: paidCount, icon: Archive }
         ].map((card) => (
           <article key={card.label} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
@@ -157,7 +157,7 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
               </span>
               <div>
                 <h2 className="font-heading text-xl font-black text-foreground">Create Resource</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Create a free, gated, paid, or bundle-only content asset.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Create a prompt playbook or video resource.</p>
               </div>
             </div>
           </div>
@@ -195,8 +195,8 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
               <textarea name="summary" rows={3} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Short public description of the resource." />
             </label>
             <label className="block md:col-span-2">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Guide / Download Body</span>
-              <textarea name="bodyContent" rows={6} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Main resource content, guide copy, or download description." />
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Context / Notes</span>
+              <textarea name="bodyContent" rows={6} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Audience context, video notes, or how the prompt should be used." />
             </label>
             <label className="block md:col-span-2">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prompt Text</span>
@@ -215,7 +215,7 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
               <input name="videoUrl" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
             </label>
             <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Download URL</span>
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reserved URL</span>
               <input name="downloadUrl" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
             </label>
             <label className="block">

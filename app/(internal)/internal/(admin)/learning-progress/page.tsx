@@ -14,6 +14,7 @@ import {
   UsersRound 
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import {
   getStudentCourseProgressDetail,
   listLearningProgressCourseOptions,
@@ -70,6 +71,15 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
 
   // URL builder for returning to the main list (closes detail view)
   const listUrl = `/internal/learning-progress?course=${encodeURIComponent(progress.courseSlug)}&enrollment=${encodeURIComponent(progress.filters.enrollmentType)}&batch=${encodeURIComponent(progress.filters.batchKey)}&search=${encodeURIComponent(search)}`
+  const courseOptions = courses.length
+    ? courses.map((course, index) => ({
+        key: `${course.courseSlug}-${index}`,
+        value: course.courseSlug,
+        label: course.courseTitle || course.courseSlug
+      }))
+    : [{ value: progress.courseSlug, label: progress.courseSlug }]
+  const enrollmentOptions = progress.filters.availableEnrollmentTypes.map((type) => ({ value: type.key, label: type.label }))
+  const batchOptions = progress.filters.availableBatches.map((batch) => ({ value: batch.key, label: batch.label }))
 
   return (
     <main className="space-y-8 pb-12">
@@ -137,31 +147,15 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
           <form className="grid gap-4 lg:grid-cols-[1.5fr_1fr_1fr_1.5fr_auto] lg:items-end">
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span>
-              <select name="course" defaultValue={progress.courseSlug} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                {courses.length ? courses.map((course, index) => (
-                  <option key={`${course.courseSlug}-${index}`} value={course.courseSlug}>
-                    {course.courseTitle || course.courseSlug}
-                  </option>
-                )) : (
-                  <option value={progress.courseSlug}>{progress.courseSlug}</option>
-                )}
-              </select>
+              <PremiumPicker name="course" defaultValue={progress.courseSlug} options={courseOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Enrollment Target</span>
-              <select name="enrollment" defaultValue={progress.filters.enrollmentType} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                {progress.filters.availableEnrollmentTypes.map((type) => (
-                  <option key={type.key} value={type.key}>{type.label}</option>
-                ))}
-              </select>
+              <PremiumPicker name="enrollment" defaultValue={progress.filters.enrollmentType} options={enrollmentOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch Allocation</span>
-              <select name="batch" defaultValue={progress.filters.batchKey} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                {progress.filters.availableBatches.map((batch) => (
-                  <option key={batch.key} value={batch.key}>{batch.label}</option>
-                ))}
-              </select>
+              <PremiumPicker name="batch" defaultValue={progress.filters.batchKey} options={batchOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Student Identity</span>

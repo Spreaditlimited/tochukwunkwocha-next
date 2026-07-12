@@ -5,6 +5,7 @@ import {
   checkoutContext,
   courseReferencePrefix,
   createCourseOrder,
+  familyEnrollmentEnabledForCourse,
   initializePaystack,
   initializeStripe,
   normalizeCourse,
@@ -31,18 +32,12 @@ export async function POST(request: Request) {
     if (!children.length) {
       return NextResponse.json({ ok: false, error: "Add at least one learner." }, { status: 400 })
     }
+    if (!familyEnrollmentEnabledForCourse(courseSlug)) {
+      return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
+    }
 
-    const context = await checkoutContext({
-      courseSlug,
-      country,
-      provider,
-      email: session.account.email,
-      buyerType: "family",
-      seatCount: children.length,
-      batchKey: body.batchKey
-    })
-    const batchKey = context.batch?.batchKey || clean(body.batchKey, 64)
-    const batchLabel = context.batch?.batchLabel || clean(body.batchLabel, 120)
+    const requestedBatchKey = clean(body.batchKey, 64)
+    const requestedBatchLabel = clean(body.batchLabel, 120)
 
     try {
       const consumed = await consumeFamilySeatsForChildren({
@@ -50,8 +45,8 @@ export async function POST(request: Request) {
         parentName: session.account.fullName,
         parentEmail: session.account.email,
         courseSlug,
-        batchKey,
-        batchLabel,
+        batchKey: requestedBatchKey,
+        batchLabel: requestedBatchLabel,
         children
       })
       return NextResponse.json({
@@ -68,6 +63,18 @@ export async function POST(request: Request) {
       const message = error instanceof Error ? error.message : ""
       if (!message.includes("purchased seat")) throw error
     }
+
+    const context = await checkoutContext({
+      courseSlug,
+      country,
+      provider,
+      email: session.account.email,
+      buyerType: "family",
+      seatCount: children.length,
+      batchKey: requestedBatchKey
+    })
+    const batchKey = context.batch?.batchKey || requestedBatchKey
+    const batchLabel = context.batch?.batchLabel || requestedBatchLabel
 
     const orderUuid = await createCourseOrder({
       courseSlug,
@@ -131,9 +138,10 @@ export async function POST(request: Request) {
       pricing: context.pricing
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not create group enrollment."
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not create group enrollment." },
-      { status: 500 }
+      { ok: false, error: message },
+      { status: /capacity|seat|batch|locked|available|course/i.test(message) ? 400 : 500 }
     )
   }
 }

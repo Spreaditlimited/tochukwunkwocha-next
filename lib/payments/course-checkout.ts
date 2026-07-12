@@ -1,5 +1,6 @@
 import crypto, { randomUUID } from "crypto"
 
+import { getAdminSettingValue } from "@/lib/admin-settings"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { getCourse } from "@/lib/public-offers"
@@ -10,6 +11,11 @@ export type CheckoutProvider = "paystack" | "stripe"
 export type CheckoutPricing = {
   currency: string
   baseAmountMinor: number
+  courseAmountMinor?: number
+  vatPercent?: number
+  vatAmountMinor?: number
+  subtotalAmountMinor?: number
+  processingFeeMinor?: number
   discountMinor: number
   finalAmountMinor: number
   groupDiscountMinor?: number
@@ -69,11 +75,12 @@ type CouponRow = {
   max_uses_per_email: number | bigint | null
 }
 
-const courseDefaults: Record<string, { ngn: number; gbp: number; usd: number; eur: number; prefix: string }> = {
-  "prompt-to-profit": { ngn: 1_075_000, gbp: 2_500, usd: 3_000, eur: 2_500, prefix: "PTP" },
-  "prompt-to-production": { ngn: 25_000_000, gbp: 10_000, usd: 15_000, eur: 10_000, prefix: "PTPROD" },
-  "ai-for-everyday-business-owners": { ngn: 1_075_000, gbp: 2_000, usd: 2_500, eur: 2_000, prefix: "AIEBO" },
-  "prompt-to-profit-schools": { ngn: 1_075_000, gbp: 2_500, usd: 3_000, eur: 2_500, prefix: "PTPS" }
+const courseReferencePrefixes: Record<string, string> = {
+  "prompt-to-profit": "PTP",
+  "prompt-to-profit-holiday": "PTP",
+  "prompt-to-production": "PTPROD",
+  "ai-for-everyday-business-owners": "AIEBO",
+  "prompt-to-profit-schools": "PTPS"
 }
 
 const HOLIDAY_COURSE_SLUG = "prompt-to-profit-holiday"
@@ -294,42 +301,97 @@ export async function assertBatchCapacity(batch: CheckoutBatch | null, seatCount
   }
 }
 
-function defaultForCourse(courseSlug: string) {
-  return courseDefaults[courseSlug] || courseDefaults["prompt-to-profit"]
+async function adminCoursePriceMinor(courseSlug: string, currency: string) {
+  const slug = normalizeCourse(courseSlug)
+  const key =
+    slug === "prompt-to-production"
+      ? currency === "NGN"
+        ? "PROMPT_TO_PRODUCTION_PRICE_NGN_MINOR"
+        : currency === "GBP"
+          ? "PROMPT_TO_PRODUCTION_PRICE_GBP"
+          : ""
+      : slug === HOLIDAY_COURSE_SLUG || slug === "prompt-to-profit"
+        ? currency === "NGN"
+          ? "PROMPT_TO_PROFIT_PRICE_NGN_MINOR"
+          : currency === "GBP"
+            ? "PROMPT_TO_PROFIT_PRICE_GBP"
+            : ""
+        : ""
+  if (!key) return 0
+  const raw = Number(await getAdminSettingValue(key))
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  return key.endsWith("_GBP") ? Math.round(raw * 100) : Math.round(raw)
 }
 
-function vatPercent(provider: CheckoutProvider) {
-  const raw = Number(provider === "stripe" ? process.env.INTL_VAT_PERCENT : process.env.SITE_VAT_PERCENT)
+async function vatPercent(provider: CheckoutProvider) {
+  const raw = Number(await getAdminSettingValue(provider === "stripe" ? "INTL_VAT_PERCENT" : "SITE_VAT_PERCENT"))
   return Number.isFinite(raw) && raw >= 0 ? raw : provider === "stripe" ? 20 : 7.5
 }
 
-function stripeFixedFeeMinor(currency: string) {
-  const raw = Number(process.env[`STRIPE_FEE_FIXED_${currency}_MINOR`])
+async function stripeFixedFeeMinor(currency: string) {
+  const raw = Number(await getAdminSettingValue(`STRIPE_FEE_FIXED_${currency}_MINOR`))
   if (Number.isFinite(raw) && raw >= 0) return Math.round(raw)
   if (currency === "GBP") return 20
   if (currency === "EUR") return 25
   return 30
 }
 
-function grossUpStripeAmount(netMinor: number, currency: string) {
-  const bpsRaw = Number(process.env.STRIPE_FEE_BPS)
+async function grossUpStripeAmount(netMinor: number, currency: string) {
+  const bpsRaw = Number(await getAdminSettingValue("STRIPE_FEE_BPS"))
   const bps = Number.isFinite(bpsRaw) && bpsRaw >= 0 ? Math.round(bpsRaw) : 150
-  const fixed = stripeFixedFeeMinor(currency)
+  const fixed = await stripeFixedFeeMinor(currency)
   if (bps >= 10000) return netMinor + fixed
   return Math.ceil((netMinor + fixed) / (1 - bps / 10000) + 1)
 }
 
 function grossUpPaystackAmount(netMinor: number) {
-  const feeAtNet = Math.round(netMinor * 0.015) + (netMinor < 250_000 ? 0 : 10_000)
-  if (feeAtNet > 200_000) return netMinor + 200_000
-  return Math.ceil((netMinor + (netMinor < 250_000 ? 0 : 10_000)) / (1 - 0.015) + 1)
+  const safeNet = Math.max(0, Math.round(Number(netMinor || 0)))
+  const feeAtNet = Math.round(safeNet * 0.015) + (safeNet < 250_000 ? 0 : 10_000)
+  if (feeAtNet > 200_000) return safeNet + 200_000
+  return Math.ceil((safeNet + (safeNet < 250_000 ? 0 : 10_000)) / (1 - 0.015) + 1)
 }
 
-export async function basePricing(input: { courseSlug: string; country?: string; provider?: CheckoutProvider; seatCount?: number; installment?: boolean }) {
+async function composePricingBreakdown(input: {
+  provider: CheckoutProvider
+  currency: string
+  courseMinor: number
+  taxPercent: number
+  discountMinor?: number
+  installment?: boolean
+  manualTransfer?: boolean
+}) {
+  const courseAmountMinor = Math.max(0, Math.round(input.courseMinor))
+  const vatAmountMinor = input.provider === "paystack" && input.installment
+    ? 0
+    : Math.round((courseAmountMinor * input.taxPercent) / 100)
+  const subtotalAmountMinor = courseAmountMinor + vatAmountMinor
+  const discountMinor = Math.min(subtotalAmountMinor, Math.max(0, Math.round(Number(input.discountMinor || 0))))
+  const discountedSubtotalMinor = Math.max(0, subtotalAmountMinor - discountMinor)
+  const finalAmountMinor = input.installment || input.manualTransfer
+    ? discountedSubtotalMinor
+    : input.provider === "stripe"
+      ? await grossUpStripeAmount(discountedSubtotalMinor, input.currency)
+      : grossUpPaystackAmount(discountedSubtotalMinor)
+  const processingFeeMinor = input.installment || input.manualTransfer
+    ? 0
+    : Math.max(0, finalAmountMinor - discountedSubtotalMinor)
+
+  return {
+    baseAmountMinor: subtotalAmountMinor,
+    courseAmountMinor,
+    vatPercent: input.provider === "paystack" && input.installment ? 0 : input.taxPercent,
+    vatAmountMinor,
+    subtotalAmountMinor,
+    processingFeeMinor,
+    discountMinor,
+    finalAmountMinor
+  }
+}
+
+export async function basePricing(input: { courseSlug: string; country?: string; provider?: CheckoutProvider; seatCount?: number; installment?: boolean; manualTransfer?: boolean }) {
   const courseSlug = normalizeCourse(input.courseSlug)
   const provider = input.provider || providerForCountry(input.country)
   const learningCourse = await findLearningCourse(courseSlug)
-  const defaults = defaultForCourse(courseSlug)
 
   if (learningCourse && Number(learningCourse.is_enrollment_locked || 0) === 1) {
     throw new Error("Enrollment is currently locked for this course.")
@@ -344,26 +406,32 @@ export async function basePricing(input: { courseSlug: string; country?: string;
         : currency === "EUR"
           ? toInt(learningCourse?.price_eur_minor)
           : toInt(learningCourse?.price_usd_minor)
-  const fallbackMinor = currency === "NGN" ? defaults.ngn : currency === "GBP" ? defaults.gbp : currency === "EUR" ? defaults.eur : defaults.usd
+  const adminMinor = await adminCoursePriceMinor(courseSlug, currency)
   const seatCount = Math.max(1, Number(input.seatCount || 1))
-  const unitMinor = configuredMinor > 0 ? configuredMinor : fallbackMinor
+  const unitMinor = configuredMinor > 0 ? configuredMinor : adminMinor
+  if (unitMinor <= 0) {
+    throw new Error(`Missing ${currency} price for ${courseSlug}. Configure it in the course settings or admin pricing settings.`)
+  }
   const groupPricing = groupPricingForSeats(courseSlug, unitMinor, seatCount, currency)
   const courseMinor = groupPricing.amountMinor
-  const installmentSurcharge = input.installment ? Math.max(0, Number(process.env.INSTALLMENT_SURCHARGE_PERCENT || 20)) : 0
+  const installmentSurchargeRaw = Number(await getAdminSettingValue("INSTALLMENT_SURCHARGE_PERCENT"))
+  const installmentSurcharge = input.installment && Number.isFinite(installmentSurchargeRaw) ? Math.max(0, installmentSurchargeRaw) : 0
   const installmentCourseMinor = Math.round(courseMinor * (1 + installmentSurcharge / 100))
-  const subtotalMinor =
-    provider === "paystack" && input.installment
-      ? installmentCourseMinor
-      : installmentCourseMinor + Math.round((installmentCourseMinor * vatPercent(provider)) / 100)
-  const amountMinor = input.installment ? subtotalMinor : provider === "stripe" ? grossUpStripeAmount(subtotalMinor, currency) : grossUpPaystackAmount(subtotalMinor)
+  const taxPercent = await vatPercent(provider)
+  const breakdown = await composePricingBreakdown({
+    provider,
+    currency,
+    courseMinor: installmentCourseMinor,
+    taxPercent,
+    installment: input.installment,
+    manualTransfer: input.manualTransfer
+  })
 
   return {
     courseSlug,
     courseName: learningCourse?.name || getCourse(courseSlug)?.title || courseSlug,
     currency,
-    baseAmountMinor: amountMinor,
-    finalAmountMinor: amountMinor,
-    discountMinor: 0,
+    ...breakdown,
     groupDiscountMinor: groupPricing.groupDiscountMinor,
     groupUnitAmountMinor: groupPricing.groupUnitAmountMinor,
     standardUnitAmountMinor: groupPricing.standardUnitAmountMinor,
@@ -456,6 +524,7 @@ export async function evaluateCoupon(input: {
 export async function pricingWithCoupon(input: { courseSlug: string; country?: string; provider?: CheckoutProvider; email?: string; couponCode?: string }) {
   const base = await basePricing(input)
   let pricing: CheckoutPricing = {
+    ...base,
     currency: base.currency,
     baseAmountMinor: base.baseAmountMinor,
     discountMinor: 0,
@@ -476,8 +545,18 @@ export async function pricingWithCoupon(input: { courseSlug: string; country?: s
       currency: base.currency,
       baseAmountMinor: base.baseAmountMinor
     })
+    const recomposed = await composePricingBreakdown({
+      provider: input.provider || providerForCountry(input.country),
+      currency: base.currency,
+      courseMinor: Number(base.courseAmountMinor || 0),
+      taxPercent: Number(base.vatPercent || 0),
+      discountMinor: evaluated.pricing.discountMinor
+    })
     pricing = {
-      ...evaluated.pricing,
+      ...base,
+      ...recomposed,
+      couponCode: evaluated.pricing.couponCode,
+      couponId: evaluated.pricing.couponId,
       groupDiscountMinor: base.groupDiscountMinor,
       groupUnitAmountMinor: base.groupUnitAmountMinor,
       standardUnitAmountMinor: base.standardUnitAmountMinor
@@ -498,6 +577,7 @@ export async function checkoutContext(input: {
   seatCount?: unknown
   batchKey?: unknown
   installment?: boolean
+  manualTransfer?: boolean
 }) {
   const courseSlug = normalizeCourse(input.courseSlug)
   const buyerType = normalizeBuyerType(input.buyerType)
@@ -512,9 +592,10 @@ export async function checkoutContext(input: {
     email: input.email,
     couponCode: input.couponCode
   })
-  if (seatCount > 1 || input.installment) {
-    const base = await basePricing({ courseSlug, country: input.country, provider, seatCount, installment: input.installment })
+  if (seatCount > 1 || input.installment || input.manualTransfer) {
+    const base = await basePricing({ courseSlug, country: input.country, provider, seatCount, installment: input.installment, manualTransfer: input.manualTransfer })
     let pricing: CheckoutPricing = {
+      ...base,
       currency: base.currency,
       baseAmountMinor: base.baseAmountMinor,
       discountMinor: 0,
@@ -534,8 +615,20 @@ export async function checkoutContext(input: {
         currency: base.currency,
         baseAmountMinor: base.baseAmountMinor
       })
+      const recomposed = await composePricingBreakdown({
+        provider,
+        currency: base.currency,
+        courseMinor: Number(base.courseAmountMinor || 0),
+        taxPercent: Number(base.vatPercent || 0),
+        discountMinor: evaluated.pricing.discountMinor,
+        installment: input.installment,
+        manualTransfer: input.manualTransfer
+      })
       pricing = {
-        ...evaluated.pricing,
+        ...base,
+        ...recomposed,
+        couponCode: evaluated.pricing.couponCode,
+        couponId: evaluated.pricing.couponId,
         groupDiscountMinor: base.groupDiscountMinor,
         groupUnitAmountMinor: base.groupUnitAmountMinor,
         standardUnitAmountMinor: base.standardUnitAmountMinor
@@ -744,13 +837,152 @@ export async function recordAffiliateAttribution(input: {
   const affiliateCode = String(input.affiliateCode || "").trim().toUpperCase().slice(0, 40)
   if (!affiliateCode) return
   const timestamp = now()
+  const buyerEmail = normalizeEmail(input.buyerEmail)
+  const rows = await prisma.$queryRaw<Array<{
+    profileId: bigint | null
+    affiliateCode: string | null
+    affiliateEmail: string | null
+    profileStatus: string | null
+    eligibilityStatus: string | null
+    isAffiliateEligible: number | bigint | boolean | null
+  }>>`
+    SELECT p.id AS profileId,
+           p.affiliate_code AS affiliateCode,
+           a.email AS affiliateEmail,
+           p.status AS profileStatus,
+           p.eligibility_status AS eligibilityStatus,
+           r.is_affiliate_eligible AS isAffiliateEligible
+    FROM tochukwu_affiliate_profiles p
+    LEFT JOIN student_accounts a ON a.id = p.account_id
+    LEFT JOIN tochukwu_affiliate_course_rules r
+      ON r.course_slug COLLATE utf8mb4_unicode_ci = ${input.courseSlug} COLLATE utf8mb4_unicode_ci
+     AND r.is_affiliate_eligible = 1
+     AND (r.starts_at IS NULL OR r.starts_at <= NOW())
+     AND (r.ends_at IS NULL OR r.ends_at >= NOW())
+    WHERE p.affiliate_code COLLATE utf8mb4_unicode_ci = ${affiliateCode} COLLATE utf8mb4_unicode_ci
+    LIMIT 1
+  `.catch(() => [])
+  const profile = rows[0]
+  let status = "rejected"
+  let rejectionReason = "Invalid affiliate code"
+  let affiliateProfileId: bigint | null = null
+  let resolvedCode: string | null = null
+  if (profile?.profileId) {
+    affiliateProfileId = profile.profileId
+    resolvedCode = String(profile.affiliateCode || affiliateCode).trim().slice(0, 40)
+    if (String(profile.profileStatus || "").trim() !== "active") {
+      rejectionReason = "Affiliate profile is not active"
+    } else if (String(profile.eligibilityStatus || "").trim() !== "eligible") {
+      rejectionReason = "Affiliate profile is not eligible"
+    } else if (!Boolean(Number(profile.isAffiliateEligible || 0))) {
+      rejectionReason = "Course not affiliate-eligible"
+    } else if (normalizeEmail(profile.affiliateEmail) && normalizeEmail(profile.affiliateEmail) === buyerEmail) {
+      rejectionReason = "Self-referrals are not eligible"
+    } else {
+      status = "accepted"
+      rejectionReason = ""
+    }
+  }
   await prisma.$executeRaw`
     INSERT INTO tochukwu_affiliate_attributions
-      (attribution_uuid, order_uuid, course_slug, affiliate_code, buyer_email, buyer_country, buyer_currency, order_amount_minor, attribution_status, rejection_reason, risk_score, risk_flags_json, created_at, updated_at)
+      (attribution_uuid, order_uuid, course_slug, affiliate_profile_id, affiliate_code, buyer_email, buyer_country, buyer_currency, order_amount_minor, attribution_status, rejection_reason, risk_score, risk_flags_json, created_at, updated_at)
     VALUES
-      (${`aa_${randomUUID().replace(/-/g, "")}`}, ${input.sourceUuid}, ${input.courseSlug}, ${affiliateCode}, ${input.buyerEmail},
-       ${input.buyerCountry || null}, ${input.buyerCurrency}, ${input.orderAmountMinor}, 'rejected', 'Pending affiliate validation', 0, '[]', ${timestamp}, ${timestamp})
+      (${`aa_${randomUUID().replace(/-/g, "")}`}, ${input.sourceUuid}, ${input.courseSlug}, ${affiliateProfileId}, ${resolvedCode || affiliateCode}, ${buyerEmail},
+       ${input.buyerCountry || null}, ${input.buyerCurrency}, ${input.orderAmountMinor}, ${status}, ${rejectionReason || null}, 0, '[]', ${timestamp}, ${timestamp})
+    ON DUPLICATE KEY UPDATE
+      affiliate_profile_id = VALUES(affiliate_profile_id),
+      affiliate_code = VALUES(affiliate_code),
+      attribution_status = VALUES(attribution_status),
+      rejection_reason = VALUES(rejection_reason),
+      updated_at = VALUES(updated_at)
   `.catch(() => null)
+}
+
+export async function createAffiliateCommissionForOrder(orderUuid: string) {
+  const uuid = String(orderUuid || "").trim()
+  if (!uuid || String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") return
+
+  try {
+    const existing = await prisma.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id
+      FROM tochukwu_affiliate_commissions
+      WHERE order_uuid = ${uuid}
+      LIMIT 1
+    `
+    if (existing.length) return
+
+    const rows = await prisma.$queryRaw<
+      Array<{
+        attributionId: bigint
+        courseSlug: string | null
+        affiliateProfileId: bigint | null
+        affiliateCode: string | null
+        buyerEmail: string | null
+        buyerCurrency: string | null
+        orderAmountMinor: number | bigint | null
+        riskScore: number | bigint | null
+        riskFlagsJson: string | null
+        commissionType: string | null
+        commissionValue: number | bigint | null
+        commissionCurrency: string | null
+        holdDays: number | bigint | null
+      }>
+    >`
+      SELECT a.id AS attributionId,
+             a.course_slug AS courseSlug,
+             a.affiliate_profile_id AS affiliateProfileId,
+             a.affiliate_code AS affiliateCode,
+             a.buyer_email AS buyerEmail,
+             a.buyer_currency AS buyerCurrency,
+             a.order_amount_minor AS orderAmountMinor,
+             a.risk_score AS riskScore,
+             a.risk_flags_json AS riskFlagsJson,
+             r.commission_type AS commissionType,
+             r.commission_value AS commissionValue,
+             r.commission_currency AS commissionCurrency,
+             r.hold_days AS holdDays
+      FROM tochukwu_affiliate_attributions a
+      JOIN tochukwu_affiliate_profiles p ON p.id = a.affiliate_profile_id
+      JOIN tochukwu_affiliate_course_rules r
+        ON r.course_slug COLLATE utf8mb4_unicode_ci = a.course_slug COLLATE utf8mb4_unicode_ci
+      WHERE a.order_uuid = ${uuid}
+        AND a.attribution_status = 'accepted'
+        AND p.status = 'active'
+        AND p.eligibility_status = 'eligible'
+        AND r.is_affiliate_eligible = 1
+        AND (r.starts_at IS NULL OR r.starts_at <= NOW())
+        AND (r.ends_at IS NULL OR r.ends_at >= NOW())
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row?.affiliateProfileId) return
+
+    const orderAmountMinor = Math.max(0, toInt(row.orderAmountMinor))
+    const commissionType = String(row.commissionType || "percentage").trim().toLowerCase().slice(0, 20) || "percentage"
+    const commissionValue = Math.max(0, toInt(row.commissionValue))
+    const commissionAmountMinor =
+      commissionType === "fixed" ? commissionValue : Math.floor((orderAmountMinor * Math.min(commissionValue, 10000)) / 10000)
+    if (commissionAmountMinor <= 0) return
+
+    const holdDays = Math.max(0, Math.min(120, toInt(row.holdDays, Number(process.env.AFFILIATE_DEFAULT_HOLD_DAYS || 30))))
+    const timestamp = now()
+    const payableAt = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000)
+    await prisma.$executeRaw`
+      INSERT INTO tochukwu_affiliate_commissions
+        (commission_uuid, attribution_id, order_uuid, course_slug, affiliate_profile_id, affiliate_code,
+         buyer_email, currency, order_amount_minor, commission_type, commission_rate_or_value,
+         commission_amount_minor, status, risk_score, risk_flags_json, payable_at, created_at, updated_at)
+      VALUES
+        (${`acm_${randomUUID().replace(/-/g, "")}`}, ${row.attributionId}, ${uuid}, ${String(row.courseSlug || "").trim().slice(0, 120)},
+         ${row.affiliateProfileId}, ${String(row.affiliateCode || "").trim().slice(0, 40)}, ${normalizeEmail(row.buyerEmail)},
+         ${String(row.commissionCurrency || row.buyerCurrency || "NGN").trim().toUpperCase().slice(0, 10)}, ${orderAmountMinor},
+         ${commissionType}, ${commissionValue}, ${commissionAmountMinor}, 'pending',
+         ${toInt(row.riskScore)}, ${row.riskFlagsJson || "[]"}, ${payableAt}, ${timestamp}, ${timestamp})
+      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+    `
+  } catch (_error) {
+    return
+  }
 }
 
 function randomPasswordHash() {
@@ -861,11 +1093,102 @@ export async function markInstallmentPaymentPaid(reference: string, providerOrde
       WHERE id = ${payment.plan_id}
     `
   }
+  await autoEnrollInstallmentPlanIfEligible(Number(payment.plan_id)).catch(() => null)
   return payment.plan_id
 }
 
+export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | bigint) {
+  const planId = Number(planIdInput || 0)
+  if (!Number.isFinite(planId) || planId <= 0) return null
+  const rows = await prisma.$queryRaw<Array<{
+    id: bigint
+    plan_uuid: string
+    account_id: bigint
+    course_slug: string
+    batch_key: string | null
+    batch_label: string | null
+    country: string | null
+    provider: string | null
+    currency: string | null
+    target_amount_minor: number | bigint
+    total_paid_minor: number | bigint
+    base_amount_minor: number | bigint | null
+    discount_minor: number | bigint | null
+    coupon_code: string | null
+    coupon_id: number | bigint | null
+    buyer_type: string | null
+    seat_count: number | bigint | null
+    family_account_id: number | bigint | null
+    status: string | null
+    enrolled_order_uuid: string | null
+    full_name: string | null
+    email: string | null
+    phone_e164: string | null
+  }>>`
+    SELECT pl.id, pl.plan_uuid, pl.account_id, pl.course_slug, pl.batch_key, pl.batch_label, pl.country, pl.provider,
+           pl.currency, pl.target_amount_minor, pl.total_paid_minor, pl.base_amount_minor, pl.discount_minor,
+           pl.coupon_code, pl.coupon_id, pl.buyer_type, pl.seat_count, pl.family_account_id, pl.status,
+           pl.enrolled_order_uuid, a.full_name, a.email, a.phone_e164
+    FROM student_installment_plans pl
+    JOIN student_accounts a ON a.id = pl.account_id
+    WHERE pl.id = ${planId}
+    LIMIT 1
+  `
+  const plan = rows[0]
+  if (!plan) return null
+  if (String(plan.status || "").toLowerCase() === "enrolled") return { enrolled: true, orderUuid: plan.enrolled_order_uuid || null }
+  const targetAmountMinor = Number(plan.target_amount_minor || 0)
+  const totalPaidMinor = Number(plan.total_paid_minor || 0)
+  if (targetAmountMinor <= 0 || totalPaidMinor < targetAmountMinor) return { enrolled: false }
+
+  const orderUuid = randomUUID()
+  const timestamp = now()
+  const buyerType = String(plan.buyer_type || "student").toLowerCase() === "family" ? "family" : "student"
+  const seatCount = buyerType === "family" ? Math.max(2, Number(plan.seat_count || 2)) : 1
+  let familyAccountId = Number(plan.family_account_id || 0) || null
+
+  if (buyerType === "family") {
+    const { provisionFamilyOrder } = await import("@/lib/family-enrollment")
+    const credited = await provisionFamilyOrder({
+      sourceType: "course_order",
+      sourceUuid: orderUuid,
+      parentAccountId: plan.account_id,
+      parentName: String(plan.full_name || "Parent"),
+      parentEmail: String(plan.email || ""),
+      parentPhone: String(plan.phone_e164 || ""),
+      courseSlug: String(plan.course_slug || ""),
+      batchKey: String(plan.batch_key || ""),
+      batchLabel: String(plan.batch_label || ""),
+      quantity: seatCount
+    })
+    if (!credited.ok) throw new Error(credited.error || "Could not credit group seats.")
+    familyAccountId = Number(credited.familyId || familyAccountId || 0) || null
+  }
+
+  await addColumnIfMissing("course_orders", "family_account_id", "BIGINT NULL")
+  await prisma.$executeRaw`
+    INSERT INTO course_orders
+      (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
+       discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, family_account_id,
+       status, batch_key, batch_label, paid_at, created_at, updated_at)
+    VALUES
+      (${orderUuid}, ${plan.course_slug}, ${plan.full_name || "Student"}, ${plan.email}, ${plan.phone_e164 || null},
+       ${plan.country || null}, ${plan.currency || "NGN"}, ${targetAmountMinor}, ${Number(plan.base_amount_minor || targetAmountMinor)},
+       ${Number(plan.discount_minor || 0)}, ${targetAmountMinor}, ${plan.coupon_code || null}, ${plan.coupon_id ? Number(plan.coupon_id) : null},
+       'wallet', ${buyerType}, ${seatCount}, ${familyAccountId}, 'paid', ${plan.batch_key || null}, ${plan.batch_label || null},
+       ${timestamp}, ${timestamp}, ${timestamp})
+  `
+  await prisma.$executeRaw`
+    UPDATE student_installment_plans
+    SET status = 'enrolled', enrolled_order_uuid = ${orderUuid}, family_account_id = COALESCE(${familyAccountId}, family_account_id), updated_at = ${timestamp}
+    WHERE id = ${planId}
+  `
+  return { enrolled: true, orderUuid }
+}
+
 export function courseReferencePrefix(courseSlug: string) {
-  return defaultForCourse(courseSlug).prefix
+  const slug = normalizeCourse(courseSlug)
+  return courseReferencePrefixes[slug] || slug.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "COURSE"
 }
 
 export async function initializePaystack(input: {

@@ -11,6 +11,7 @@ import {
   Video
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { listVideoLibrary } from "@/lib/admin-video-library"
 import { formatDate } from "@/lib/utils"
 import {
@@ -100,16 +101,16 @@ function batchRuleRows(
   schedules: Array<{ batchKey: string; accessMode: string; dripAt: Date | null }> = []
 ) {
   const rows = schedules.length ? schedules : [{ batchKey: "", accessMode: "immediate", dripAt: null }]
+  const batchOptions = [
+    { value: "", label: "Select batch" },
+    ...batches.map((batch) => ({
+      value: batch.batchKey,
+      label: `${batch.batchLabel || batch.batchKey}${batch.batchStartAt ? ` · ${formatDate(batch.batchStartAt)}` : ""}${batch.status ? ` · ${batch.status}` : ""}`
+    }))
+  ]
   return rows.map((schedule, index) => (
     <div key={`${schedule.batchKey || "new"}-${index}`} className="grid min-w-[46rem] gap-3 rounded-xl border border-border bg-background p-3 md:grid-cols-[1.4fr_1fr_1.3fr]">
-      <select name="dripBatchKey" defaultValue={schedule.batchKey || ""} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-        <option value="">Select batch</option>
-        {batches.map((batch) => (
-          <option key={batch.batchKey} value={batch.batchKey}>
-            {batch.batchLabel || batch.batchKey}{batch.batchStartAt ? ` · ${formatDate(batch.batchStartAt)}` : ""}{batch.status ? ` · ${batch.status}` : ""}
-          </option>
-        ))}
-      </select>
+      <PremiumPicker name="dripBatchKey" defaultValue={schedule.batchKey || ""} options={batchOptions} />
       <select name="dripAccessMode" defaultValue={schedule.accessMode || "immediate"} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
         <option value="immediate">Immediate access</option>
         <option value="drip">Drip by date</option>
@@ -203,6 +204,16 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
     ? moduleDripSchedules.filter((schedule) => schedule.moduleId === activeModuleId)
     : []
   const immediateCourse = activeCourse?.enrollmentMode === "immediate"
+  const courseOptions = courses.map((course) => ({ value: course.courseSlug, label: course.courseTitle }))
+  const courseOptionsWithAll = [{ value: "", label: "All courses" }, ...courseOptions]
+  const moduleTableBatchOptions = [
+    { value: "", label: "All batches" },
+    ...filterBatches.map((batch) => ({
+      key: `${batch.courseSlug}-${batch.batchKey}`,
+      value: batch.batchKey,
+      label: batch.batchLabel || batch.batchKey
+    }))
+  ]
   const courseBatchManager = (
     <div className="border-t border-border p-6">
       <div className="rounded-xl border border-border bg-background p-4">
@@ -319,12 +330,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
               <p className="mt-1 text-sm text-muted-foreground">Choose a course to narrow the module registry and manage enrollment/release settings.</p>
             </div>
             <form className="flex gap-3">
-              <select name="course" defaultValue={activeCourse?.courseSlug || ""} className="min-w-0 flex-1 rounded-xl border border-input bg-card px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="">All courses</option>
-                {courses.map((course) => (
-                  <option key={course.courseSlug} value={course.courseSlug}>{course.courseTitle}</option>
-                ))}
-              </select>
+              <PremiumPicker name="course" defaultValue={activeCourse?.courseSlug || ""} options={courseOptionsWithAll} className="min-w-0 flex-1" />
               <button className="btn-secondary shrink-0" type="submit">Open</button>
             </form>
           </div>
@@ -411,23 +417,11 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                 {selectedModuleId > BigInt(0) ? <input type="hidden" name="moduleId" value={String(selectedModuleId)} /> : null}
                 <label className="block">
                   <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filter by Course</span>
-                  <select name="moduleTableCourse" defaultValue={selectedModuleTableCourseSlug} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                    <option value="">All courses</option>
-                    {courses.map((course) => (
-                      <option key={course.courseSlug} value={course.courseSlug}>{course.courseTitle}</option>
-                    ))}
-                  </select>
+                  <PremiumPicker name="moduleTableCourse" defaultValue={selectedModuleTableCourseSlug} options={courseOptionsWithAll} />
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filter by Batch</span>
-                  <select name="moduleTableBatch" defaultValue={effectiveModuleTableBatchKey} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                    <option value="">All batches</option>
-                    {filterBatches.map((batch) => (
-                      <option key={`${batch.courseSlug}-${batch.batchKey}`} value={batch.batchKey}>
-                        {batch.batchLabel || batch.batchKey}
-                      </option>
-                    ))}
-                  </select>
+                  <PremiumPicker name="moduleTableBatch" defaultValue={effectiveModuleTableBatchKey} options={moduleTableBatchOptions} />
                 </label>
                 <button className="btn-secondary h-12 justify-center" type="submit">Filter</button>
               </form>
@@ -489,11 +483,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                               {Number(module.isActive || 0) === 1 ? <input type="hidden" name="isActive" value="on" /> : null}
                               {moduleSchedules.length ? <input type="hidden" name="dripEnabled" value="on" /> : null}
                               {preserveModuleScheduleInputs(moduleSchedules)}
-                              <select name="courseSlug" defaultValue={module.courseSlug} className="h-10 w-[13rem] shrink-0 rounded-lg border border-input bg-background px-3 text-xs font-black outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                                {courses.map((course) => (
-                                  <option key={course.courseSlug} value={course.courseSlug}>{course.courseTitle}</option>
-                                ))}
-                              </select>
+                              <PremiumPicker name="courseSlug" defaultValue={module.courseSlug} options={courseOptions} className="w-[13rem] shrink-0" />
                               <button className="btn-secondary h-10 shrink-0 px-4 text-xs" type="submit" data-toast="Moving module">Move</button>
                             </form>
                             <form action={autofillModuleAccessibilityAction}>
@@ -594,12 +584,12 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                   </label>
                   <label className="block min-w-0 flex-1">
                     <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Target Course</span>
-                    <select name="targetCourseSlug" form="clone-module-form" defaultValue={selectedModule?.courseSlug || activeCourse?.courseSlug || ""} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                      <option value="">Select course</option>
-                      {courses.map((course) => (
-                        <option key={course.courseSlug} value={course.courseSlug}>{course.courseTitle}</option>
-                      ))}
-                    </select>
+                    <PremiumPicker
+                      name="targetCourseSlug"
+                      form="clone-module-form"
+                      defaultValue={selectedModule?.courseSlug || activeCourse?.courseSlug || ""}
+                      options={[{ value: "", label: "Select course" }, ...courseOptions]}
+                    />
                   </label>
                   <button form="clone-module-form" className="btn-secondary justify-center" type="submit" data-toast="Adding module to course">
                     Add To Course
@@ -608,12 +598,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
               </div>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Course</span>
-                <select name="courseSlug" defaultValue={selectedModule?.courseSlug || activeCourse?.courseSlug || ""} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="">Select course</option>
-                  {courses.map((course) => (
-                    <option key={course.courseSlug} value={course.courseSlug}>{course.courseTitle}</option>
-                  ))}
-                </select>
+                <PremiumPicker name="courseSlug" defaultValue={selectedModule?.courseSlug || activeCourse?.courseSlug || ""} options={[{ value: "", label: "Select course" }, ...courseOptions]} />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sort Order</span>

@@ -9,6 +9,7 @@ import {
   Users 
 } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
 import { INTERNAL_PAGE_OPTIONS, listAdminAccounts } from "@/lib/admin-accounts"
 import { requireAdmin } from "@/lib/auth"
 import { formatDate } from "@/lib/utils"
@@ -81,7 +82,7 @@ export default async function InternalAdminAccountsPage() {
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Temporary Password</span>
                 <div className="relative">
                   <Key className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input name="password" type="password" minLength={8} placeholder="Min. 8 characters" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 pl-9 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" required />
+                  <PasswordField name="password" minLength={8} placeholder="Min. 8 characters" inputClassName="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 pl-9 pr-12 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" required />
                 </div>
               </label>
             </div>
@@ -168,12 +169,11 @@ export default async function InternalAdminAccountsPage() {
                         </label>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                          <input 
+                          <PasswordField
                             name="password" 
-                            type="password" 
                             minLength={8} 
                             placeholder="Reset password (Optional)" 
-                            className="w-full rounded-md border border-input bg-background/50 px-3 py-2 pl-9 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+                            inputClassName="w-full rounded-md border border-input bg-background/50 px-3 py-2 pl-9 pr-11 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
                           />
                         </div>
                         <button className="btn-secondary w-full justify-center text-xs shadow-sm" type="submit">

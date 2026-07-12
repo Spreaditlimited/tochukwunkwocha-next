@@ -20,6 +20,10 @@ function maskAccount(value: string) {
   return value ? `${value.slice(0, 2)}******${value.slice(-2)}` : ""
 }
 
+function maskEmail(value: string) {
+  return clean(value, 220).replace(/(^.).*(@.*$)/, "$1***$2")
+}
+
 function paystackSecretKey() {
   return clean(process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET || process.env.PAYSTACK_SECRET_TEST_KEY, 1000)
 }
@@ -115,6 +119,29 @@ async function getAffiliateProfile(accountId: bigint) {
   return profile
 }
 
+async function findActivePayoutAccount(profileId: bigint, countryCode = "NG", currency = "NGN") {
+  const rows = await prisma.$queryRaw<Array<{ id: bigint; bankCode: string | null; accountNumberHash: string | null }>>(Prisma.sql`
+    SELECT id, bank_code AS bankCode, account_number_hash AS accountNumberHash
+    FROM tochukwu_affiliate_payout_accounts
+    WHERE affiliate_profile_id = ${profileId}
+      AND country_code = ${countryCode}
+      AND currency = ${currency}
+      AND status = 'active'
+    ORDER BY id DESC
+    LIMIT 1
+  `)
+  return rows[0] || null
+}
+
+function isPayoutAccountChange(existing: { bankCode: string | null; accountNumberHash: string | null } | null, bankCode: string, accountNumber: string) {
+  if (!existing) return false
+  const existingBankCode = clean(existing.bankCode, 40)
+  const existingHash = clean(existing.accountNumberHash, 128)
+  const targetHash = accountNumber ? sha256(`acct:${accountNumber}`) : ""
+  if (!existingBankCode || !existingHash || !bankCode || !targetHash) return false
+  return existingBankCode !== bankCode || existingHash !== targetHash
+}
+
 export async function listPayoutBanks() {
   const json = await paystackGet("/bank?country=nigeria&currency=NGN")
   return Array.isArray(json?.data)
@@ -145,6 +172,14 @@ export async function sendPayoutOtp(input: { accountId: bigint; email: string; f
   const bankCode = clean(input.bankCode, 40)
   const accountNumber = clean(input.accountNumber, 40).replace(/\D/g, "")
   if (!bankCode || accountNumber.length < 10) throw new Error("Bank and valid account number are required.")
+  const existing = await findActivePayoutAccount(profile.id)
+  if (!isPayoutAccountChange(existing, bankCode, accountNumber)) {
+    return {
+      otpRequired: false,
+      emailMasked: maskEmail(input.email),
+      message: existing ? "No account change detected." : "No existing payout account yet."
+    }
+  }
   const code = String(Math.floor(100000 + Math.random() * 900000))
   const now = new Date()
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
@@ -168,7 +203,7 @@ export async function sendPayoutOtp(input: { accountId: bigint; email: string; f
     html: `<p>Hi ${clean(input.fullName, 80) || "there"},</p><p>Use this code to verify your payout account change:</p><p style="font-size:24px;font-weight:700;letter-spacing:2px;">${code}</p><p>This code expires in 10 minutes.</p>`,
     text: `Verify payout account change\nCode: ${code}\nExpires in 10 minutes.`
   })
-  return { otpRequired: true, expiresInSeconds: 600 }
+  return { otpRequired: true, emailMasked: maskEmail(input.email), expiresInSeconds: 600 }
 }
 
 async function validateOtp(profileId: bigint, bankCode: string, accountNumber: string, otpCode: string) {
@@ -208,7 +243,11 @@ export async function savePayoutAccount(input: {
   const bankCode = clean(input.bankCode, 40)
   const accountNumber = clean(input.accountNumber, 40).replace(/\D/g, "")
   const resolved = await resolvePayoutAccount({ bankCode, accountNumber })
-  const otpId = await validateOtp(profile.id, bankCode, accountNumber, clean(input.otpCode, 12).replace(/\D/g, ""))
+  const existing = await findActivePayoutAccount(profile.id)
+  const changingExisting = isPayoutAccountChange(existing, bankCode, accountNumber)
+  const otpId = changingExisting
+    ? await validateOtp(profile.id, bankCode, accountNumber, clean(input.otpCode, 12).replace(/\D/g, ""))
+    : null
   const recipient = await paystackPost("/transferrecipient", {
     type: "nuban",
     name: resolved.accountName || input.accountName,
@@ -217,7 +256,7 @@ export async function savePayoutAccount(input: {
     currency: "NGN"
   })
   const now = new Date()
-  await prisma.$transaction([
+  const operations: Prisma.PrismaPromise<unknown>[] = [
     prisma.$executeRaw(Prisma.sql`
       UPDATE tochukwu_affiliate_payout_accounts
       SET status = 'inactive', updated_at = ${now}
@@ -235,17 +274,24 @@ export async function savePayoutAccount(input: {
          ${maskAccount(accountNumber)}, ${sha256(`acct:${accountNumber}`)}, ${clean(recipient?.data?.recipient_code, 120)}, ${clean(input.payoutEmail, 220) || null}, 'active', 1, ${now}, ${now})
     `),
     prisma.$executeRaw(Prisma.sql`
-      UPDATE tochukwu_affiliate_payout_change_otps
-      SET status = 'used', verified_at = COALESCE(verified_at, ${now}), consumed_at = ${now}, updated_at = ${now}
-      WHERE id = ${otpId}
-      LIMIT 1
-    `),
-    prisma.$executeRaw(Prisma.sql`
       UPDATE tochukwu_affiliate_profiles
       SET country_code = 'NG', payout_currency = 'NGN', payout_provider = 'paystack', updated_at = ${now}
       WHERE id = ${profile.id}
       LIMIT 1
     `)
-  ])
+  ]
+  if (otpId) {
+    operations.splice(
+      2,
+      0,
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE tochukwu_affiliate_payout_change_otps
+        SET status = 'used', verified_at = COALESCE(verified_at, ${now}), consumed_at = ${now}, updated_at = ${now}
+        WHERE id = ${otpId}
+        LIMIT 1
+      `)
+    )
+  }
+  await prisma.$transaction(operations)
   return { bankCode, accountName: resolved.accountName || input.accountName, accountNumberMasked: maskAccount(accountNumber) }
 }

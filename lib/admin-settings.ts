@@ -91,6 +91,7 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
   { key: "BREVO_FREE_TIER_DAILY_SEND_LIMIT", category: "Email/CRM" },
   { key: "SCHOOL_NOTIFICATION_EMAILS", category: "Schools Notifications" },
   { key: "SCHOOLS_MIN_SEATS", category: "Schools Pricing" },
+  { key: "SCHOOLS_ADVANCED_MIN_SEATS", category: "Schools Pricing" },
   { key: "SCHOOLS_PRICE_PER_STUDENT_NGN_MINOR", category: "Schools Pricing" },
   { key: "SCHOOLS_TRUST_TRAINED_VALUE", category: "Schools Landing" },
   { key: "SCHOOLS_TRUST_TRAINED_LABEL", category: "Schools Landing" },
@@ -266,5 +267,23 @@ export async function applyAdminSettingsToProcessEnv() {
     if (KNOWN_KEYS.has(row.settingKey) && row.settingValue) {
       process.env[row.settingKey] = row.settingValue
     }
+  }
+}
+
+export async function getAdminSettingValue(key: string) {
+  const safeKey = clean(key, 120)
+  if (!safeKey || !KNOWN_KEYS.has(safeKey)) return ""
+  try {
+    await ensureAdminSettingsTables()
+    const rows = await prisma.$queryRaw<Array<{ settingValue: string | null }>>`
+      SELECT setting_value AS settingValue
+      FROM tochukwu_admin_settings
+      WHERE setting_key = ${safeKey}
+      LIMIT 1
+    `
+    const overrideValue = clean(rows[0]?.settingValue)
+    return overrideValue || clean(process.env[safeKey])
+  } catch {
+    return clean(process.env[safeKey])
   }
 }

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react"
 import { Download, Mail, X } from "lucide-react"
+import { usePathname } from "next/navigation"
 
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
@@ -95,6 +96,7 @@ function eventId(prefix: string) {
 }
 
 export function LeadCapturePopup() {
+  const routePathname = usePathname()
   const [open, setOpen] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState("")
@@ -226,13 +228,20 @@ export function LeadCapturePopup() {
     const pathname = window.location.pathname || "/"
     if (excludedPrefixes.some((prefix) => pathname.startsWith(prefix))) return
     
+    triggeredRef.current = false
+    setOpen(false)
+    setSuccess(false)
+    setError("")
+    setLoading(false)
+    setDownloadUrl("")
     configRef.current = readConfig()
     const config = configRef.current
     const suffix = config?.leadMagnet?.slug ? `_${config.leadMagnet.slug}` : ""
+    const hasLeadMagnet = Boolean(config?.leadMagnet?.slug)
 
     const autoSuppressed = (
-      storageGet(window.localStorage, localKeys.subscribed) === "true" ||
-      Boolean(config?.leadMagnet && storageGet(window.localStorage, `tn_lead_magnet_claimed${suffix}`) === "true") ||
+      (!hasLeadMagnet && storageGet(window.localStorage, localKeys.subscribed) === "true") ||
+      Boolean(hasLeadMagnet && storageGet(window.localStorage, `tn_lead_magnet_claimed${suffix}`) === "true") ||
       storageGet(window.sessionStorage, `${localKeys.sessionDismissed}${suffix}`) === "true"
     )
     if (!storageGet(window.localStorage, localKeys.firstSeen)) storageSet(window.localStorage, localKeys.firstSeen, new Date().toISOString())
@@ -259,7 +268,10 @@ export function LeadCapturePopup() {
 
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null
-      if (!target?.closest("[data-lead-magnet-open]")) return
+      const trigger = target?.closest("[data-lead-magnet-open]") as HTMLElement | null
+      if (!trigger) return
+      const triggerSlug = String(trigger.getAttribute("data-lead-magnet-slug") || "").trim()
+      if (config?.leadMagnet?.slug && triggerSlug && triggerSlug !== config.leadMagnet.slug) return
       
       event.preventDefault()
       recordLeadEvent("cta_click")
@@ -301,7 +313,7 @@ export function LeadCapturePopup() {
       document.removeEventListener("click", onClick)
       observer?.disconnect()
     }
-  }, [])
+  }, [routePathname])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

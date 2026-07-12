@@ -60,6 +60,7 @@ export default function BuildScorecardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [resultStatus, setResultStatus] = useState<"idle" | "success" | "review" | "decline">("idle")
   const [checkoutUrl, setCheckoutUrl] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
 
   // Load draft from session storage on mount
   useEffect(() => {
@@ -91,22 +92,32 @@ export default function BuildScorecardPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
-    
-    // Simulate API Call / Server Action
-    setTimeout(() => {
-      setIsSubmitting(false)
-      sessionStorage.removeItem(DRAFT_KEY)
-      
-      // Basic mock logic to demonstrate routing based on answers
+    setErrorMessage("")
+
+    try {
       if (formData.complexity === "dq_fintech" || formData.complexity === "dq_marketplace") {
         setResultStatus("decline")
+        return
       } else if (formData.timeline === "dq_exploring") {
         setResultStatus("review")
-      } else {
-        setCheckoutUrl("/checkout/discovery") // Mock URL
-        setResultStatus("success")
+        return
       }
-    }, 1500)
+
+      const response = await fetch("/api/build-scorecard", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(formData)
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok || !json?.ok) throw new Error(json?.error || "Could not submit scorecard.")
+      setCheckoutUrl(String(json.checkoutUrl || ""))
+      setResultStatus("success")
+      sessionStorage.removeItem(DRAFT_KEY)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not submit scorecard.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Helper to check if current step is valid to enable the "Next" button
@@ -362,11 +373,6 @@ export default function BuildScorecardPage() {
                       </label>
 
                     </div>
-
-                    {/* Developer Note */}
-                    <div className="mt-8 rounded-md border border-amber-500/20 bg-amber-500/10 p-4 text-xs leading-relaxed text-amber-500">
-                      <strong>Developer Note:</strong> Submission routing logic is currently mocked. In the backend increment, this form will trigger a Next Server Action pointing to the existing Netlify DB/Payment workflow.
-                    </div>
                   </div>
                 )}
 
@@ -389,6 +395,12 @@ export default function BuildScorecardPage() {
                   </div>
                 )}
 
+                {errorMessage ? (
+                  <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-sm font-bold text-rose-200">
+                    {errorMessage}
+                  </p>
+                ) : null}
+
               </form>
             ) : (
               /* RESULTS VIEWS */
@@ -403,24 +415,6 @@ export default function BuildScorecardPage() {
                     <p className="mx-auto mt-4 max-w-md text-lg text-slate-400">
                       Based on your responses, your project aligns perfectly with the Build methodology. You can now book your paid discovery session.
                     </p>
-                    
-                    <div className="mx-auto mt-10 max-w-sm rounded-xl border border-white/10 bg-black/40 p-6 text-left">
-                      <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">Discovery Call Breakdown</p>
-                      <div className="space-y-3 text-sm text-slate-300">
-                        <div className="flex justify-between">
-                          <span>Discovery call fee</span>
-                          <span className="font-bold text-white">₦100,000</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>VAT (7.5%)</span>
-                          <span className="font-bold text-white">₦7,500</span>
-                        </div>
-                      </div>
-                      <div className="mt-5 border-t border-white/10 pt-5 flex justify-between items-center">
-                        <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Total Payable</span>
-                        <span className="font-heading text-2xl font-black text-white">₦107,500</span>
-                      </div>
-                    </div>
                     
                     <Link href={checkoutUrl} className="btn-primary mt-8 w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto">
                       Book Paid Discovery Call <ArrowRight className="ml-2 h-5 w-5" />

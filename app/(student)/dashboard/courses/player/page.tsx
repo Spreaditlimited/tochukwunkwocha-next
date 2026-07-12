@@ -65,7 +65,7 @@ export default async function StudentCoursePlayerPage({
           /* Standardized empty state matching the rest of the dashboard */
           <div className="mt-4">
             <EmptyStudentState
-              icon={LockKeyhole}
+              icon="lock"
               title={courseSlug ? "Course access not found" : "Choose a course"}
               description={payload && !payload.ok ? payload.error : "Open a course from your courses page to launch the interactive player."}
               action={

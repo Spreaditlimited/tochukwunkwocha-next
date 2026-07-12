@@ -1,16 +1,12 @@
 import crypto from "crypto"
 import { Prisma } from "@prisma/client"
 
+import { getAdminSettingValue } from "@/lib/admin-settings"
 import { initializePaystack, initializeStripe, isNigeriaCountry, retrieveStripeSession, siteBaseUrl, stripeCurrencyForCountry, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
 const DEFAULT_ADVANCED_MIN_SEATS = 5
-const DEFAULT_ADVANCED_PRICE_NGN_MINOR = 25_000_000
-const DEFAULT_ADVANCED_DISCOUNT_NGN_MINOR = 5_000_000
-const DEFAULT_ADVANCED_DISCOUNT_GBP_MINOR = 2_000
-const DEFAULT_ADVANCED_DISCOUNT_USD_MINOR = 2_000
-const DEFAULT_ADVANCED_DISCOUNT_EUR_MINOR = 2_000
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -21,26 +17,24 @@ function toInt(value: unknown, fallback = 0) {
   return Number.isFinite(numberValue) ? Math.trunc(numberValue) : fallback
 }
 
-function vatBps(provider: "paystack" | "stripe") {
-  const raw = Number(provider === "stripe" ? process.env.INTL_VAT_PERCENT : process.env.SITE_VAT_PERCENT)
-  const percent = Number.isFinite(raw) && raw >= 0 ? raw : provider === "stripe" ? 20 : 7.5
+async function vatBps(provider: "paystack" | "stripe") {
+  const raw = Number(await getAdminSettingValue(provider === "stripe" ? "INTL_VAT_PERCENT" : "SITE_VAT_PERCENT"))
+  const percent = Number.isFinite(raw) && raw >= 0 ? raw : 0
   return Math.round(percent * 100)
 }
 
-function stripeFixedFeeMinor(currency: string) {
+async function stripeFixedFeeMinor(currency: string) {
   const cur = currency.toUpperCase()
-  const raw = Number(process.env[`STRIPE_FEE_FIXED_${cur}_MINOR`])
+  const raw = Number(await getAdminSettingValue(`STRIPE_FEE_FIXED_${cur}_MINOR`))
   if (Number.isFinite(raw) && raw >= 0) return Math.round(raw)
-  if (cur === "GBP") return 20
-  if (cur === "EUR") return 25
-  return 30
+  return 0
 }
 
-function grossUpStripeAmount(netMinor: number, currency: string) {
+async function grossUpStripeAmount(netMinor: number, currency: string) {
   const net = Math.max(0, Math.round(netMinor))
-  const bpsRaw = Number(process.env.STRIPE_FEE_BPS)
-  const bps = Number.isFinite(bpsRaw) && bpsRaw >= 0 ? Math.round(bpsRaw) : 150
-  const fixed = stripeFixedFeeMinor(currency)
+  const bpsRaw = Number(await getAdminSettingValue("STRIPE_FEE_BPS"))
+  const bps = Number.isFinite(bpsRaw) && bpsRaw >= 0 ? Math.round(bpsRaw) : 0
+  const fixed = await stripeFixedFeeMinor(currency)
   if (bps >= 10000) return net + fixed
   return Math.ceil((net + fixed) / (1 - bps / 10000) + 1)
 }
@@ -149,31 +143,34 @@ async function advancedCoursePricing() {
   const course = rows[0] || {}
   const discounts = schoolsRows[0] || {}
   return {
-    ngn: toInt(course.price_ngn_minor, DEFAULT_ADVANCED_PRICE_NGN_MINOR),
-    gbp: toInt(course.price_gbp_minor, 10_000),
-    usd: toInt(course.price_usd_minor, 15_000),
-    eur: toInt(course.price_eur_minor, 10_000),
-    discountNgn: toInt(discounts.school_advanced_discount_ngn_minor, DEFAULT_ADVANCED_DISCOUNT_NGN_MINOR),
-    discountGbp: toInt(discounts.school_advanced_discount_gbp_minor, DEFAULT_ADVANCED_DISCOUNT_GBP_MINOR),
-    discountUsd: toInt(discounts.school_advanced_discount_usd_minor, DEFAULT_ADVANCED_DISCOUNT_USD_MINOR),
-    discountEur: toInt(discounts.school_advanced_discount_eur_minor, DEFAULT_ADVANCED_DISCOUNT_EUR_MINOR)
+    ngn: toInt(course.price_ngn_minor),
+    gbp: toInt(course.price_gbp_minor),
+    usd: toInt(course.price_usd_minor),
+    eur: toInt(course.price_eur_minor),
+    discountNgn: toInt(discounts.school_advanced_discount_ngn_minor),
+    discountGbp: toInt(discounts.school_advanced_discount_gbp_minor),
+    discountUsd: toInt(discounts.school_advanced_discount_usd_minor),
+    discountEur: toInt(discounts.school_advanced_discount_eur_minor)
   }
 }
 
 export async function quoteSchoolAdvancedSeats(input: { seatCount: unknown; country?: unknown }) {
   const seats = Math.max(0, toInt(input.seatCount, 0))
-  const seatMinimum = Math.max(1, toInt(process.env.SCHOOLS_ADVANCED_MIN_SEATS, DEFAULT_ADVANCED_MIN_SEATS))
+  const configuredSeatMinimum = toInt(await getAdminSettingValue("SCHOOLS_ADVANCED_MIN_SEATS"))
+  const seatMinimum = Math.max(1, configuredSeatMinimum || DEFAULT_ADVANCED_MIN_SEATS)
   const country = clean(input.country, 80) || "Nigeria"
   const provider = isNigeriaCountry(country) ? "paystack" : "stripe"
   const pricing = await advancedCoursePricing()
   const currency = provider === "paystack" ? "NGN" : stripeCurrencyForCountry(country)
   const base = currency === "GBP" ? pricing.gbp : currency === "EUR" ? pricing.eur : currency === "USD" ? pricing.usd : pricing.ngn
+  if (base <= 0) throw new Error(`Missing ${currency} price for Prompt to Profit Advanced in course settings.`)
   const discount = currency === "GBP" ? pricing.discountGbp : currency === "EUR" ? pricing.discountEur : currency === "USD" ? pricing.discountUsd : pricing.discountNgn
   const pricePerSeatMinor = Math.max(0, base - discount)
   const subtotalMinor = seats * pricePerSeatMinor
-  const vat = Math.round((subtotalMinor * vatBps(provider)) / 10000)
+  const configuredVatBps = await vatBps(provider)
+  const vat = Math.round((subtotalMinor * configuredVatBps) / 10000)
   const beforeFees = subtotalMinor + vat
-  const totalMinor = provider === "stripe" ? grossUpStripeAmount(beforeFees, currency) : beforeFees
+  const totalMinor = provider === "stripe" ? await grossUpStripeAmount(beforeFees, currency) : beforeFees
   return {
     provider,
     currency,
@@ -182,7 +179,7 @@ export async function quoteSchoolAdvancedSeats(input: { seatCount: unknown; coun
     basePricePerSeatMinor: base,
     discountPerSeatMinor: discount,
     pricePerSeatMinor,
-    vatBps: vatBps(provider),
+    vatBps: configuredVatBps,
     subtotalMinor,
     vatMinor: vat,
     processingFeeMinor: Math.max(0, totalMinor - beforeFees),

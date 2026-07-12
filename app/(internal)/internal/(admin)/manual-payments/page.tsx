@@ -16,6 +16,7 @@ import {
   XCircle 
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { TrademarkText } from "@/components/TrademarkText"
 import {
   enrollmentDashboardSummary,
@@ -103,6 +104,33 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   const approvedTotal = summary.find((item) => item.status === "approved")?.totalMinor || 0
   const dashboardProviders = dashboardSummary.providerCounts
   const dashboardTotal = formatTotalsByCurrency(dashboardSummary.totalsByCurrency)
+  const courseOptions = courses.map((course) => ({ value: course.slug, label: course.label }))
+  const courseOptionsWithAll = [{ value: "all", label: "All Programmes" }, ...courseOptions]
+  const summaryCourseOptions = [{ value: "all", label: "All courses" }, ...courseOptions]
+  const summaryBatchOptions = [
+    { value: "all", label: "All batches" },
+    ...summaryBatches.map((batch) => ({
+      key: `summary-${batch.courseSlug}-${batch.batchKey}`,
+      value: batch.batchKey,
+      label: batch.batchLabel
+    }))
+  ]
+  const externalBatchOptions = [
+    { value: "", label: "Default batch / Immediate access" },
+    ...allBatches.map((batch) => ({
+      key: `external-${batch.courseSlug}-${batch.batchKey}`,
+      value: batch.batchKey,
+      label: `${batch.courseSlug} / ${batch.batchLabel}`
+    }))
+  ]
+  const ledgerBatchOptions = [
+    { value: "all", label: selectedCourseMode === "immediate" ? "Immediate Access (N/A)" : "All Batches" },
+    ...batchesForSelected.map((batch) => ({
+      key: `ledger-${batch.courseSlug}-${batch.batchKey}`,
+      value: batch.batchKey,
+      label: batch.batchLabel
+    }))
+  ]
 
   return (
     <main className="space-y-8 pb-12">
@@ -151,21 +179,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               {summaryCourseSlug === "all" ? <input type="hidden" name="summaryBatch" value="all" /> : null}
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span>
-                <select name="summaryCourse" defaultValue={summaryCourseSlug} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary sm:w-auto">
-                  <option value="all">All courses</option>
-                  {courses.map((course) => <option key={`summary-${course.slug}`} value={course.slug}>{course.label}</option>)}
-                </select>
+                <PremiumPicker name="summaryCourse" defaultValue={summaryCourseSlug} options={summaryCourseOptions} className="sm:w-64" />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch</span>
-                <select name="summaryBatch" defaultValue={summaryBatchKey} disabled={summaryCourseSlug === "all"} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus:border-primary focus:ring-1 focus:ring-primary sm:w-auto">
-                  <option value="all">All batches</option>
-                  {summaryBatches.map((batch) => (
-                    <option key={`summary-${batch.courseSlug}-${batch.batchKey}`} value={batch.batchKey}>
-                      {batch.batchLabel}
-                    </option>
-                  ))}
-                </select>
+                <PremiumPicker name="summaryBatch" defaultValue={summaryBatchKey} disabled={summaryCourseSlug === "all"} options={summaryBatchOptions} className="sm:w-64" />
               </label>
               <button type="submit" className="btn-secondary justify-center shadow-sm">Update Summary</button>
             </form>
@@ -262,20 +280,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme</span>
-              <select name="courseSlug" defaultValue={courseSlug === "all" ? "prompt-to-profit" : courseSlug} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                {courses.map((course) => <option key={course.slug} value={course.slug}>{course.label}</option>)}
-              </select>
+              <PremiumPicker name="courseSlug" defaultValue={courseSlug === "all" ? "prompt-to-profit" : courseSlug} options={courseOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch Allocation</span>
-              <select name="batchKey" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="">Default batch / Immediate access</option>
-                {allBatches.map((batch) => (
-                  <option key={`${batch.courseSlug}-${batch.batchKey}`} value={batch.batchKey}>
-                    {batch.courseSlug} / {batch.batchLabel}
-                  </option>
-                ))}
-              </select>
+              <PremiumPicker name="batchKey" options={externalBatchOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</span>
@@ -295,10 +304,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Buyer Type</span>
-              <select name="buyerType" defaultValue="student" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="student">Single Learner</option>
-                <option value="family">Family / Group</option>
-              </select>
+              <PremiumPicker
+                name="buyerType"
+                defaultValue="student"
+                options={[
+                  { value: "student", label: "Single Learner" },
+                  { value: "family", label: "Family / Group" }
+                ]}
+              />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Seats</span>
@@ -364,10 +377,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Target Audience</span>
-                <select name="courseSlug" defaultValue={waCourse} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="all">All opted-in contacts</option>
-                  {courses.map((course) => <option key={`wa-${course.slug}`} value={course.slug}>{course.label}</option>)}
-                </select>
+                <PremiumPicker
+                  name="courseSlug"
+                  defaultValue={waCourse}
+                  options={[{ value: "all", label: "All opted-in contacts" }, ...courseOptions.map((option) => ({ ...option, key: `wa-${option.value}` }))]}
+                />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Template Name</span>
@@ -461,12 +475,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               <input type="hidden" name="course" value={courseSlug} />
               <input type="hidden" name="status" value={status} />
               <input type="hidden" name="batch" value={batchKey} />
-              <div className="relative">
-                <select name="waCourse" defaultValue={waCourse} className="w-full appearance-none rounded-lg border border-input bg-background px-4 py-2.5 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="all">All Programmes</option>
-                  {courses.map((course) => <option key={`wa-filter-${course.slug}`} value={course.slug}>{course.label}</option>)}
-                </select>
-              </div>
+              <PremiumPicker
+                name="waCourse"
+                defaultValue={waCourse}
+                options={courseOptionsWithAll.map((option) => ({ ...option, key: `wa-filter-${option.value}` }))}
+              />
               <input name="waSearch" defaultValue={waSearch} placeholder="Search by name, phone..." className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
               <button className="btn-secondary w-full justify-center px-6 py-2.5 text-xs shadow-sm sm:w-auto" type="submit">
                 <Filter className="mr-2 h-3.5 w-3.5" /> Filter
@@ -587,26 +600,24 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           <form className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme Filter</span>
-              <select name="course" defaultValue={courseSlug} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                <option value="all">All Programmes</option>
-                {courses.map((course) => <option key={course.slug} value={course.slug}>{course.label}</option>)}
-              </select>
+              <PremiumPicker name="course" defaultValue={courseSlug} options={courseOptionsWithAll} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status Filter</span>
-              <select name="status" defaultValue={status} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                <option value="pending_verification">Pending Review</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="all">All States</option>
-              </select>
+              <PremiumPicker
+                name="status"
+                defaultValue={status}
+                options={[
+                  { value: "pending_verification", label: "Pending Review" },
+                  { value: "approved", label: "Approved" },
+                  { value: "rejected", label: "Rejected" },
+                  { value: "all", label: "All States" }
+                ]}
+              />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch Filter</span>
-              <select name="batch" defaultValue={selectedCourseMode === "immediate" ? "all" : batchKey} disabled={selectedCourseMode === "immediate"} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm disabled:opacity-50">
-                <option value="all">{selectedCourseMode === "immediate" ? "Immediate Access (N/A)" : "All Batches"}</option>
-                {batchesForSelected.map((batch) => <option key={`${batch.courseSlug}-${batch.batchKey}`} value={batch.batchKey}>{batch.batchLabel}</option>)}
-              </select>
+              <PremiumPicker name="batch" defaultValue={selectedCourseMode === "immediate" ? "all" : batchKey} disabled={selectedCourseMode === "immediate"} options={ledgerBatchOptions} />
             </label>
             <label className="block sm:col-span-2 lg:col-span-1">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Global Search</span>

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client"
+import { Prisma, PrismaClient } from "@prisma/client"
 import fs from "node:fs"
 import crypto from "node:crypto"
 
@@ -365,6 +365,530 @@ const bundles = [
 const retiredBundleSlugs = bundles.map((bundle) => bundle.slug)
 bundles.length = 0
 
+function promptPlaybookText({ audience, area, prompts }) {
+  return `Use these prompts inside your preferred AI tool. Replace the bracketed parts with your real situation. The value is in the context you provide, not in copying the prompt exactly.
+
+${prompts.map((prompt, index) => `${index + 1}. ${prompt}`).join("\n\n")}
+
+After each response, ask one follow-up: "Make this more specific to my situation: [ADD DETAIL]." That second step is where the prompt becomes useful for real work.`
+}
+
+const audiencePromptAreas = [
+  {
+    audience: "waec-jamb-learners",
+    relatedCourse: "prompt-to-profit",
+    areas: [
+      {
+        slug: "waec-jamb-weak-topic-study-prompts",
+        category: "study",
+        title: "WAEC/JAMB Weak Topic Study Prompts",
+        summary: "Prompts for identifying weak topics, getting simple explanations, and practicing until the topic becomes clearer.",
+        area: "weak-topic revision",
+        prompts: [
+          "Act as my WAEC/JAMB study coach. Subject: [SUBJECT]. Topic: [TOPIC]. First ask me three questions to check what I already understand, then explain only the parts I am missing.",
+          "I keep getting questions on [TOPIC] wrong. Explain the topic simply, give two Nigerian classroom examples, then give me five practice questions one at a time.",
+          "Here are my wrong answers: [PASTE QUESTIONS AND ANSWERS]. Tell me the concept I missed, the correct reasoning, and three similar questions to practice next."
+        ]
+      },
+      {
+        slug: "waec-jamb-timetable-and-practice-prompts",
+        category: "study",
+        title: "WAEC/JAMB Timetable and Practice Prompts",
+        summary: "Prompts for building realistic revision schedules, timed quizzes, and weekly review plans.",
+        area: "study planning and timed practice",
+        prompts: [
+          "Create a realistic 7-day study plan for me. Exam: [WAEC/JAMB/NECO]. Subjects: [SUBJECTS]. Weak topics: [TOPICS]. Available study time: [HOURS]. Include past-question practice and rest.",
+          "Create a timed quiz for [SUBJECT] on [TOPIC]. Give me [NUMBER] questions. Do not show the answers until I submit mine.",
+          "Review my study week: [PASTE WHAT I STUDIED AND SCORES]. Tell me what improved, what I avoided, and what I should study next week."
+        ]
+      },
+      {
+        slug: "waec-jamb-essay-and-cbt-prompts",
+        category: "study",
+        title: "WAEC Essay and JAMB CBT Prompts",
+        summary: "Prompts for essay practice, CBT pacing, answer review, and exam confidence.",
+        area: "exam performance",
+        prompts: [
+          "Act as a WAEC English essay coach. Essay type: [TYPE]. Topic: [TOPIC]. Teach me the structure, then ask me to write one section at a time and mark each section.",
+          "Help me improve CBT speed for [SUBJECT]. Create a 20-minute practice plan, pacing rules, and a review checklist for careless mistakes.",
+          "I panic during exams. Create a simple routine for the night before, the morning of the exam, and the first five minutes inside the hall."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "parents",
+    relatedCourse: "prompt-to-profit",
+    areas: [
+      {
+        slug: "parent-ai-home-rules-prompts",
+        category: "safety",
+        title: "Parent AI Home Rules Prompts",
+        summary: "Prompts for creating family AI rules around privacy, homework, copying, and supervised learning.",
+        area: "home rules and safety",
+        prompts: [
+          "Help me create simple AI rules for my child aged [AGE]. Include privacy, schoolwork, copying, screen time, and when to ask an adult.",
+          "Create a child-friendly explanation of why they should not share addresses, phone numbers, passwords, school details, or family information with AI tools.",
+          "Turn these house rules into a one-page family agreement: [PASTE RULES]. Make it firm but not frightening."
+        ]
+      },
+      {
+        slug: "parent-study-support-prompts",
+        category: "study",
+        title: "Parent Study Support Prompts",
+        summary: "Prompts parents can use to support homework, revision, and accountability without doing the work for the child.",
+        area: "study support",
+        prompts: [
+          "My child is struggling with [SUBJECT/TOPIC]. Give me five simple questions I can ask to understand where they are stuck without doing the homework for them.",
+          "Create a weekly study check-in plan for my child preparing for [EXAM/CLASS]. Keep it calm, realistic, and parent-friendly.",
+          "Help me turn this wrong answer into a learning conversation: [PASTE QUESTION AND ANSWER]."
+        ]
+      },
+      {
+        slug: "parent-school-communication-prompts",
+        category: "schools",
+        title: "Parent School Communication Prompts",
+        summary: "Prompts for writing clear messages to teachers and schools about learning, safety, and progress.",
+        area: "school communication",
+        prompts: [
+          "Help me write a respectful message to my child's teacher about [CONCERN]. Keep it clear, calm, and focused on solutions.",
+          "Create questions I can ask during a parent-teacher meeting about my child's progress in [SUBJECT/AREA].",
+          "Rewrite this message so it sounds firm but respectful: [PASTE MESSAGE]."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "teachers",
+    relatedCourse: "prompt-to-profit-schools",
+    areas: [
+      {
+        slug: "teacher-lesson-planning-prompts",
+        category: "schools",
+        title: "Teacher Lesson Planning Prompts",
+        summary: "Prompts for planning lessons around class level, prior knowledge, local examples, activities, and assessment.",
+        area: "lesson planning",
+        prompts: [
+          "Create a [DURATION]-minute lesson plan for [CLASS] on [TOPIC] in [SUBJECT]. Include prior knowledge, local examples, class activity, assessment, and homework.",
+          "My students confuse [CONCEPT A] and [CONCEPT B]. Create a simple explanation, two examples, and five checking-for-understanding questions.",
+          "Adapt this lesson for weak learners and fast learners: [PASTE LESSON]."
+        ]
+      },
+      {
+        slug: "teacher-marking-feedback-prompts",
+        category: "schools",
+        title: "Teacher Marking and Feedback Prompts",
+        summary: "Prompts for rubrics, feedback comments, remediation notes, and parent-friendly learning updates.",
+        area: "marking and feedback",
+        prompts: [
+          "Create a simple rubric for marking [ASSIGNMENT] in [SUBJECT] for [CLASS]. Include content, structure, accuracy, and presentation.",
+          "Turn these common errors into short feedback comments I can write on scripts: [PASTE ERRORS].",
+          "Create a remedial mini-lesson for students who failed questions on [TOPIC]."
+        ]
+      },
+      {
+        slug: "teacher-classroom-materials-prompts",
+        category: "schools",
+        title: "Teacher Classroom Materials Prompts",
+        summary: "Prompts for quizzes, worksheets, starters, exit tickets, homework, and classroom activities.",
+        area: "classroom materials",
+        prompts: [
+          "Create ten questions on [TOPIC] for [CLASS], arranged from easy to difficult, with answers and marking guide.",
+          "Create a starter activity, group activity, and exit ticket for [TOPIC]. Use examples students in Nigeria can understand.",
+          "Turn this textbook section into a worksheet with short-answer questions: [PASTE SECTION]."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "school-owners",
+    relatedCourse: "prompt-to-profit-schools",
+    areas: [
+      {
+        slug: "school-owner-parent-communication-prompts",
+        category: "schools",
+        title: "School Parent Communication Prompts",
+        summary: "Prompts for school announcements, parent updates, admissions follow-up, and fee/payment communication.",
+        area: "parent communication",
+        prompts: [
+          "Write a parent update about [SCHOOL ISSUE/EVENT]. Keep it warm, clear, professional, and suitable for WhatsApp and email.",
+          "Create an admissions follow-up message for a parent who visited the school but has not enrolled. Context: [DETAILS].",
+          "Rewrite this fee reminder so it is respectful, firm, and not embarrassing: [PASTE MESSAGE]."
+        ]
+      },
+      {
+        slug: "school-owner-ai-policy-prompts",
+        category: "schools",
+        title: "School AI Policy Prompts",
+        summary: "Prompts for drafting school AI rules for teachers, students, data privacy, and classroom use.",
+        area: "AI policy and governance",
+        prompts: [
+          "Draft a simple AI use policy for a [PRIMARY/SECONDARY] school. Include teacher use, student use, privacy, homework, assessment, and parent communication.",
+          "Create a staff training outline for introducing AI responsibly to teachers who are beginners.",
+          "Review this AI policy and identify gaps around student data, assessment integrity, and teacher supervision: [PASTE POLICY]."
+        ]
+      },
+      {
+        slug: "school-owner-operations-prompts",
+        category: "schools",
+        title: "School Operations Prompts",
+        summary: "Prompts for improving admissions, staff memos, meeting notes, event planning, and internal school workflows.",
+        area: "school operations",
+        prompts: [
+          "Turn these school meeting notes into action items with owners, deadlines, and follow-up reminders: [PASTE NOTES].",
+          "Create a weekly operations checklist for a school administrator covering admissions, parent communication, attendance, and staff follow-up.",
+          "Write a clear internal memo to staff about [ISSUE]. Keep it respectful, direct, and school-appropriate."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "nysc-job-seekers",
+    relatedCourse: "prompt-to-profit",
+    areas: [
+      {
+        slug: "job-seeker-cv-prompts",
+        category: "career",
+        title: "CV Improvement Prompts for Job Seekers",
+        summary: "Prompts for turning real experience into stronger CV summaries, bullets, and role-specific applications.",
+        area: "CV improvement",
+        prompts: [
+          "Review my CV for [ROLE]. Tell me what is weak, generic, missing, or not supported by evidence: [PASTE CV].",
+          "Turn this experience into three honest CV bullet points with measurable value where possible: [PASTE EXPERIENCE].",
+          "Tailor this CV summary to this job description without inventing experience: [PASTE CV SUMMARY AND JOB DESCRIPTION]."
+        ]
+      },
+      {
+        slug: "job-seeker-interview-prompts",
+        category: "career",
+        title: "Interview Preparation Prompts",
+        summary: "Prompts for preparing role-specific answers, STAR stories, salary conversations, and confidence practice.",
+        area: "interview preparation",
+        prompts: [
+          "Act as an interviewer for [ROLE]. Ask me ten questions one at a time, wait for my answer, then score and improve it.",
+          "Help me turn this experience into a STAR interview story: [PASTE EXPERIENCE].",
+          "Create a simple answer for 'Tell me about yourself' using my background: [PASTE BACKGROUND]."
+        ]
+      },
+      {
+        slug: "job-seeker-portfolio-prompts",
+        category: "career",
+        title: "Portfolio Builder Prompts",
+        summary: "Prompts for turning school projects, NYSC work, internships, and personal work into a credible portfolio.",
+        area: "portfolio building",
+        prompts: [
+          "Help me identify portfolio projects from my background: [PASTE SCHOOL, NYSC, INTERNSHIP, VOLUNTEER, OR PERSONAL EXPERIENCE].",
+          "Create a one-page case study for this project: [PROJECT]. Include problem, role, process, result, and what I learned.",
+          "Plan a simple portfolio website structure for someone applying for [ROLE]."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "small-business-owners",
+    relatedCourse: "ai-for-everyday-business-owners",
+    areas: [
+      {
+        slug: "small-business-whatsapp-sales-prompts",
+        category: "business",
+        title: "WhatsApp Sales Prompts for Small Businesses",
+        summary: "Prompts for product enquiries, follow-up messages, objections, abandoned orders, and customer conversion.",
+        area: "WhatsApp sales",
+        prompts: [
+          "Write a WhatsApp reply to a customer asking about [PRODUCT]. Include price, benefits, delivery/payment next step, and a warm tone.",
+          "Create three follow-up messages for a customer who showed interest in [PRODUCT] but has not paid.",
+          "Help me respond to this objection without sounding desperate: [PASTE CUSTOMER OBJECTION]."
+        ]
+      },
+      {
+        slug: "small-business-content-prompts",
+        category: "business",
+        title: "Small Business Content Prompts",
+        summary: "Prompts for weekly content ideas, captions, customer education, testimonials, and offers.",
+        area: "content marketing",
+        prompts: [
+          "Create a 7-day content plan for my business. Business: [BUSINESS]. Audience: [AUDIENCE]. Products/services: [OFFERS].",
+          "Turn these customer questions into useful social media posts: [PASTE QUESTIONS].",
+          "Write five captions that educate customers about [PRODUCT/SERVICE] without sounding too salesy."
+        ]
+      },
+      {
+        slug: "small-business-customer-support-prompts",
+        category: "business",
+        title: "Customer Support Prompts for Small Businesses",
+        summary: "Prompts for complaints, refund explanations, delivery delays, unavailable products, and apology messages.",
+        area: "customer support",
+        prompts: [
+          "Rewrite this customer support reply for WhatsApp. Make it clear, calm, and professional: [PASTE REPLY].",
+          "Help me respond to an angry customer. Complaint: [COMPLAINT]. What we can do: [OPTIONS]. What we cannot do: [LIMITS].",
+          "Create a delivery delay update that is honest, apologetic, and does not overpromise. Details: [DETAILS]."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "non-technical-founders",
+    relatedCourse: "prompt-to-production",
+    areas: [
+      {
+        slug: "founder-idea-validation-prompts",
+        category: "project-building",
+        title: "Founder Idea Validation Prompts",
+        summary: "Prompts for testing whether an idea solves a real problem before building the wrong product.",
+        area: "idea validation",
+        prompts: [
+          "Challenge my startup idea like a skeptical product strategist. Idea: [IDEA]. Identify target user, painful problem, alternatives, assumptions, and validation tests.",
+          "Create ten customer interview questions for people who might have this problem: [PROBLEM]. Avoid leading questions.",
+          "List five reasons this idea could fail and what evidence I need before building."
+        ]
+      },
+      {
+        slug: "founder-mvp-scope-prompts",
+        category: "project-building",
+        title: "MVP Scope Prompts for Non-Technical Founders",
+        summary: "Prompts for deciding the smallest useful version and removing features that should wait.",
+        area: "MVP scope",
+        prompts: [
+          "Define the MVP for this idea: [IDEA]. Separate must-have, should-wait, and unnecessary features.",
+          "Turn this idea into a one-page product brief: user, problem, promise, features, non-features, and success metric.",
+          "Create a simple user journey for [USER] trying to solve [PROBLEM] with my product."
+        ]
+      },
+      {
+        slug: "founder-launch-copy-prompts",
+        category: "business",
+        title: "Founder Launch Copy Prompts",
+        summary: "Prompts for landing pages, waitlists, product positioning, and early user communication.",
+        area: "launch communication",
+        prompts: [
+          "Write a landing page outline for [PRODUCT]. Audience: [AUDIENCE]. Problem: [PROBLEM]. Promise: [PROMISE].",
+          "Create three positioning angles for this product: [PRODUCT]. Make each angle clear and not hype-driven.",
+          "Write a waitlist invitation message for early users. Keep it direct, useful, and credible."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "children-ai-safety",
+    relatedCourse: "prompt-to-profit",
+    areas: [
+      {
+        slug: "children-safe-learning-prompts",
+        category: "safety",
+        title: "Safe Learning Prompts for Children",
+        summary: "Prompts adults can supervise for quizzes, explanations, vocabulary practice, and learning games.",
+        area: "safe learning",
+        prompts: [
+          "Create a child-friendly quiz on [TOPIC] for age [AGE]. Ask one question at a time and explain gently after each answer.",
+          "Explain [TOPIC] to a child aged [AGE] using simple words and safe examples.",
+          "Create a vocabulary game for [SUBJECT/TOPIC] with ten words, meanings, and practice sentences."
+        ]
+      },
+      {
+        slug: "children-creative-project-prompts",
+        category: "safety",
+        title: "Child-Friendly Creative Project Prompts",
+        summary: "Prompts for supervised stories, drawings, presentations, simple coding ideas, and creative learning.",
+        area: "creative projects",
+        prompts: [
+          "Help a child aged [AGE] plan a short story about [THEME]. Ask questions first, then create a simple outline.",
+          "Create a safe project idea for a child using [TOOL/MATERIAL]. Include steps, adult supervision notes, and what the child will learn.",
+          "Turn this topic into a simple presentation plan for a child: [TOPIC]."
+        ]
+      },
+      {
+        slug: "children-ai-safety-conversation-prompts",
+        category: "safety",
+        title: "AI Safety Conversation Prompts for Children",
+        summary: "Prompts for adults to explain privacy, copying, mistakes, and safe AI behavior to children.",
+        area: "safety conversations",
+        prompts: [
+          "Create a simple conversation guide for explaining AI privacy to a child aged [AGE].",
+          "Help me explain why copying from AI is not the same as learning. Make it age-appropriate for [AGE].",
+          "Create a family checklist children can remember before using AI."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "building-real-projects",
+    relatedCourse: "prompt-to-profit",
+    areas: [
+      {
+        slug: "project-planning-prompts",
+        category: "project-building",
+        title: "Project Planning Prompts",
+        summary: "Prompts for defining users, screens, features, data, and success before building with AI.",
+        area: "project planning",
+        prompts: [
+          "Help me turn this idea into a simple project brief: [IDEA]. Include user, problem, core screens, data needed, and first version.",
+          "Create a screen-by-screen plan for a [WEBSITE/APP/DASHBOARD] that helps [USER] do [TASK].",
+          "List the smallest features needed for version one and what should wait."
+        ]
+      },
+      {
+        slug: "ai-build-debug-prompts",
+        category: "project-building",
+        title: "AI Build and Debug Prompts",
+        summary: "Prompts for generating, reviewing, fixing, and improving websites or simple software projects.",
+        area: "building and debugging",
+        prompts: [
+          "Review this error and tell me the likely cause and exact fix: [PASTE ERROR]. Ask for missing files if needed.",
+          "Improve this page layout for mobile and desktop without changing the core content: [PASTE CODE OR DESCRIPTION].",
+          "Create a step-by-step build plan for adding [FEATURE] to my project. Include files likely affected and tests to run."
+        ]
+      },
+      {
+        slug: "project-launch-prompts",
+        category: "project-building",
+        title: "Project Launch Prompts",
+        summary: "Prompts for testing, deployment readiness, feedback collection, and project presentation.",
+        area: "launch and review",
+        prompts: [
+          "Create a pre-launch checklist for my [WEBSITE/APP]. Include mobile, forms, links, SEO basics, security, and analytics.",
+          "Help me write a short project case study: problem, solution, features, tools used, screenshots needed, and lessons learned.",
+          "Create feedback questions for first users testing my project: [PROJECT DESCRIPTION]."
+        ]
+      }
+    ]
+  },
+  {
+    audience: "governments-public-institutions",
+    relatedCourse: "prompt-to-profit",
+    areas: [
+      {
+        slug: "public-sector-service-communication-prompts",
+        category: "public-sector",
+        title: "Public-Sector Service Communication Prompts",
+        summary: "Prompts for clearer citizen FAQs, announcements, service explanations, and internal communication.",
+        area: "service communication",
+        prompts: [
+          "Rewrite this public service announcement so it is clear, respectful, and easy for citizens to understand: [PASTE ANNOUNCEMENT].",
+          "Create FAQs for citizens about [SERVICE]. Include eligibility, steps, documents needed, timeline, and contact route.",
+          "Turn this internal note into a citizen-facing explanation without exposing confidential details: [PASTE NOTE]."
+        ]
+      },
+      {
+        slug: "public-sector-policy-research-prompts",
+        category: "public-sector",
+        title: "Public-Sector Policy Research Prompts",
+        summary: "Prompts for summarizing policy documents, comparing options, and preparing briefing notes with human review.",
+        area: "policy research",
+        prompts: [
+          "Summarize this policy document for a non-technical public-sector audience. Separate facts, assumptions, risks, and questions: [PASTE TEXT].",
+          "Create a briefing note on [TOPIC] with background, options, risks, implementation considerations, and recommended next questions.",
+          "Compare these policy options using cost, public impact, implementation difficulty, risk, and accountability: [PASTE OPTIONS]."
+        ]
+      },
+      {
+        slug: "public-sector-ai-governance-prompts",
+        category: "public-sector",
+        title: "Public-Sector AI Governance Prompts",
+        summary: "Prompts for identifying low-risk pilots, data boundaries, human review, and accountability checks.",
+        area: "AI governance",
+        prompts: [
+          "Assess whether this workflow is suitable for a low-risk AI pilot: [WORKFLOW]. Check data sensitivity, public impact, human review, and success metrics.",
+          "Create AI use guidelines for a public institution. Include approved use cases, prohibited data, review process, and accountability.",
+          "Review this AI pilot plan and identify governance, privacy, procurement, and public trust risks: [PASTE PLAN]."
+        ]
+      }
+    ]
+  }
+]
+
+function slugPart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+const expandedPromptAudienceSpecs = [
+  { audience: "university-students", label: "University Students", category: "study", relatedCourse: "prompt-to-profit", areas: ["coursework planning", "research and citations", "presentation preparation"] },
+  { audience: "polytechnic-students", label: "Polytechnic Students", category: "study", relatedCourse: "prompt-to-profit", areas: ["practical assignments", "technical reports", "industrial training preparation"] },
+  { audience: "undergraduates-final-year", label: "Final-Year Students", category: "study", relatedCourse: "prompt-to-profit", areas: ["project topic refinement", "chapter writing support", "defense preparation"] },
+  { audience: "postgraduate-researchers", label: "Postgraduate Researchers", category: "study", relatedCourse: "prompt-to-profit", areas: ["literature review planning", "methodology design", "academic writing review"] },
+  { audience: "lecturers-academics", label: "Lecturers & Academics", category: "schools", relatedCourse: "prompt-to-profit-schools", areas: ["lecture preparation", "assessment design", "research supervision"] },
+  { audience: "school-administrators", label: "School Administrators", category: "schools", relatedCourse: "prompt-to-profit-schools", areas: ["school operations", "parent communication", "staff coordination"] },
+  { audience: "private-tutors", label: "Private Tutors", category: "schools", relatedCourse: "prompt-to-profit", areas: ["learner diagnosis", "custom lesson planning", "parent progress updates"] },
+  { audience: "online-course-creators", label: "Online Course Creators", category: "business", relatedCourse: "prompt-to-profit", areas: ["course outline design", "lesson script writing", "learner engagement"] },
+  { audience: "corporate-trainers", label: "Corporate Trainers", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["training needs analysis", "facilitation activities", "assessment and feedback"] },
+  { audience: "hr-professionals", label: "HR Professionals", category: "career", relatedCourse: "prompt-to-profit", areas: ["job descriptions", "onboarding communication", "performance support"] },
+  { audience: "customer-support-teams", label: "Customer Support Teams", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["support replies", "complaint escalation", "knowledge base writing"] },
+  { audience: "sales-professionals", label: "Sales Professionals", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["prospecting messages", "follow-up sequences", "objection handling"] },
+  { audience: "marketers", label: "Marketers", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["campaign planning", "audience research", "copy improvement"] },
+  { audience: "social-media-managers", label: "Social Media Managers", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["content calendars", "caption writing", "community replies"] },
+  { audience: "content-creators", label: "Content Creators", category: "business", relatedCourse: "prompt-to-profit", areas: ["content ideas", "script hooks", "repurposing content"] },
+  { audience: "youtube-creators", label: "YouTube Creators", category: "business", relatedCourse: "prompt-to-profit", areas: ["video outlines", "title and thumbnail angles", "audience retention"] },
+  { audience: "tiktok-instagram-creators", label: "TikTok & Instagram Creators", category: "business", relatedCourse: "prompt-to-profit", areas: ["short-form hooks", "series planning", "caption and CTA writing"] },
+  { audience: "writers-bloggers", label: "Writers & Bloggers", category: "business", relatedCourse: "prompt-to-profit", areas: ["article outlines", "headline improvement", "editing and clarity"] },
+  { audience: "designers-creatives", label: "Designers & Creatives", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["creative briefs", "concept development", "client presentation"] },
+  { audience: "software-developers", label: "Software Developers", category: "project-building", relatedCourse: "prompt-to-production", areas: ["debugging", "architecture planning", "documentation"] },
+  { audience: "product-managers", label: "Product Managers", category: "project-building", relatedCourse: "prompt-to-production", areas: ["user stories", "roadmap planning", "stakeholder updates"] },
+  { audience: "data-analysts", label: "Data Analysts", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["analysis planning", "dashboard narratives", "SQL assistance"] },
+  { audience: "lawyers-legal-teams", label: "Lawyers & Legal Teams", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["document review planning", "client communication", "legal research organization"] },
+  { audience: "accountants-finance-teams", label: "Accountants & Finance Teams", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["financial explanations", "reporting notes", "budget planning"] },
+  { audience: "healthcare-administrators", label: "Healthcare Administrators", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["patient communication", "staff notes", "admin workflow planning"] },
+  { audience: "ngo-nonprofit-teams", label: "NGO & Nonprofit Teams", category: "public-sector", relatedCourse: "prompt-to-profit", areas: ["programme design", "impact reporting", "donor communication"] },
+  { audience: "grant-writers", label: "Grant Writers", category: "public-sector", relatedCourse: "prompt-to-profit", areas: ["needs statements", "proposal structure", "impact measurement"] },
+  { audience: "church-ministry-teams", label: "Church & Ministry Teams", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["volunteer coordination", "event communication", "teaching outlines"] },
+  { audience: "event-planners", label: "Event Planners", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["event briefs", "vendor communication", "run-of-show planning"] },
+  { audience: "real-estate-professionals", label: "Real Estate Professionals", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["property descriptions", "client follow-up", "market education"] },
+  { audience: "farmers-agribusiness", label: "Farmers & Agribusiness", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["farm planning", "customer education", "record keeping"] },
+  { audience: "ecommerce-sellers", label: "Ecommerce Sellers", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["product descriptions", "customer replies", "offer planning"] },
+  { audience: "import-export-traders", label: "Import & Export Traders", category: "business", relatedCourse: "ai-for-everyday-business-owners", areas: ["supplier communication", "product research", "buyer education"] },
+  { audience: "freelancers-consultants", label: "Freelancers & Consultants", category: "business", relatedCourse: "prompt-to-profit", areas: ["proposal writing", "client onboarding", "project reporting"] },
+  { audience: "executives-managers", label: "Executives & Managers", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["decision briefs", "meeting summaries", "delegation notes"] },
+  { audience: "personal-productivity", label: "Personal Productivity", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["weekly planning", "prioritization", "reflection and review"] },
+  { audience: "diaspora-professionals", label: "Diaspora Professionals", category: "career", relatedCourse: "prompt-to-profit", areas: ["cross-border communication", "relocation planning", "African market research"] },
+  { audience: "civil-servants", label: "Civil Servants", category: "public-sector", relatedCourse: "prompt-to-profit", areas: ["memo writing", "public communication", "report summaries"] },
+  { audience: "local-government-officers", label: "Local Government Officers", category: "public-sector", relatedCourse: "prompt-to-profit", areas: ["citizen communication", "service documentation", "programme planning"] },
+  { audience: "ai-beginners", label: "AI Beginners", category: "productivity", relatedCourse: "prompt-to-profit", areas: ["asking better questions", "safe AI practice", "everyday learning"] }
+]
+
+const expandedAudiencePromptAreas = expandedPromptAudienceSpecs.map((spec) => ({
+  audience: spec.audience,
+  relatedCourse: spec.relatedCourse,
+  areas: spec.areas.map((area) => ({
+    slug: `${spec.audience}-${slugPart(area)}-prompts`,
+    category: spec.category,
+    title: `${spec.label}: ${area.replace(/\b\w/g, (letter) => letter.toUpperCase())} Prompts`,
+    summary: `Practical AI prompts for ${area} designed for ${spec.label.toLowerCase()}.`,
+    area,
+    prompts: [
+      `Act as an AI assistant for ${spec.label.toLowerCase()}. I need help with ${area}. My context is [CONTEXT]. Ask me up to three clarifying questions, then give me a practical first draft.`,
+      `Create a step-by-step workflow for ${area}. Audience or stakeholder: [AUDIENCE]. Goal: [GOAL]. Constraints: [CONSTRAINTS]. Keep it realistic for my environment.`,
+      `Review this output for ${area}: [PASTE OUTPUT]. Tell me what is unclear, generic, risky, missing, or not specific enough for ${spec.label.toLowerCase()}.`,
+      `Give me three versions of this ${area} output: simple, professional, and warm. Context: [CONTEXT]. Draft: [PASTE DRAFT].`,
+      `Create a reusable prompt template I can use every time I need help with ${area}. Include placeholders for context, goal, audience, tone, constraints, and review criteria.`
+    ]
+  }))
+}))
+
+audiencePromptAreas.push(...expandedAudiencePromptAreas)
+
+const promptOnlyResources = audiencePromptAreas.flatMap((audienceGroup, audienceIndex) =>
+  audienceGroup.areas.map((area, areaIndex) => ({
+    slug: area.slug,
+    type: "prompt",
+    audience: audienceGroup.audience,
+    category: area.category,
+    title: area.title,
+    summary: area.summary,
+    body: `## ${area.area}\nThese prompts are designed for ${audienceName(audienceGroup.audience)}. Use them when you need practical help with ${area.area}, then adapt the response to your real context before using it.`,
+    prompt: promptPlaybookText({
+      audience: audienceName(audienceGroup.audience),
+      area: area.area,
+      prompts: area.prompts
+    }),
+    useCase: `Use this when you need AI support for ${area.area} in a way that matches ${audienceName(audienceGroup.audience)}.`,
+    customization: "Replace every bracketed placeholder with your real context. Add your location, audience, goal, constraints, tone, and examples. Ask one follow-up prompt to make the answer more specific before using it.",
+    relatedCourse: audienceGroup.relatedCourse,
+    featured: audienceIndex < 2 && areaIndex === 0
+  }))
+)
+
 const waecFoundation = `## Why this resource exists
 WAEC, JAMB, NECO, and school mock examinations reward preparation that is consistent, honest, and specific. You may be working hard already, but hard work becomes weaker when it is scattered. If you keep reading only the topics you enjoy, avoiding the topics that expose your weakness, copying answers you do not understand, or waiting until the final weeks before practicing under pressure, you will not get the full value of your effort. Artificial Intelligence can help, but only when you use it as a disciplined learning assistant rather than a shortcut for avoiding study.
 
@@ -628,58 +1152,364 @@ function readerVoice(content) {
 }
 
 function premiumAudienceGuide({ audience, promise, context, method, routine, mistakes, safety, nextStep }) {
-  return `## Why this resource matters
+  const normalized = audience.toLowerCase()
+
+  if (normalized.includes("parent")) {
+    return `## Start with the real problem at home
 ${context}
 
-AI is most useful when you connect it to a real outcome. You should not treat it as a magic answer machine or a replacement for your judgment. Use it as a thinking partner, planning assistant, reviewer, writing coach, workflow helper, and practice environment. The difference is important. When you ask AI to do everything for you, you lose skill. When you ask AI to help you think through a task, you gain speed and confidence.
+Your child may already be using AI before you have had time to form an opinion about it. They may hear about ChatGPT from classmates, see AI features inside search, use writing tools on a phone, or ask AI to explain homework when no adult is nearby. Your job is not to panic or pretend the technology does not exist. Your job is to create clear rules that protect privacy, honesty, learning, and emotional safety.
 
-This resource is written for ${audience}. It focuses on practical use, local realities, and everyday constraints. You may be working with limited time, limited data, staff who are still learning, children who need supervision, students who need structure, customers who expect quick replies, or stakeholders who need simple explanations before they trust a new tool. The goal is not to impress people with AI language. The goal is to help you use AI in a way that produces visible improvement.
+## What good AI use looks like for your child
+${promise}
+
+Good AI use at home should look like explanation, practice, revision, creativity, and supervised building. It should not look like secret conversations, copied assignments, private family details inside a chatbot, or a child submitting work they cannot explain. A useful rule is simple: AI may help you learn, but it must not replace your thinking.
+
+## A parent conversation that works
+${method}
+
+Do not begin with a lecture. Ask your child three questions: What AI tools have you seen? What do your classmates use them for? What do you think AI gets wrong? Their answers will show you whether they see AI as a toy, shortcut, tutor, or mystery. From there, agree on house rules that are short enough to remember.
+
+Use this script: "You can use AI to explain topics, create practice questions, plan revision, and improve your own draft. You cannot use it to copy schoolwork, hide what you are doing, share private information, or pretend an AI answer is your own understanding."
+
+## Your first week of AI rules at home
+${routine}
+
+Day 1: ask your child to show you one AI interaction. Day 2: write the no-private-information rule together. Day 3: turn one homework question into a learning prompt instead of an answer prompt. Day 4: ask your child to explain an AI answer back to you. Day 5: discuss copying and honesty. Day 6: choose approved times and places for AI use. Day 7: review what felt helpful or unsafe.
+
+## Mistakes parents commonly make
+${mistakes}
+
+One mistake is banning everything so the child simply learns to hide it. Another is allowing everything because it looks educational. The better middle ground is supervised confidence. You do not need to know every tool; you need to know the rules. You should also avoid praising polished AI-written work unless your child can explain the ideas in their own words.
+
+## Privacy and safety boundaries
+${safety}
+
+Your child should not enter home addresses, school passwords, family problems, phone numbers, pictures, full names of classmates, or private school portal information into AI tools. If a tool asks for age, payment, account permissions, or uploads, pause first. Children need adults around these decisions.
+
+## What to check every week
+Ask what your child used AI for, what prompt they typed, what they learned, and what they changed after reading the output. If they cannot explain the answer, the session was not learning. If they can explain it better than before, AI helped.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("teacher")) {
+    return `## Start from your classroom, not from a blank prompt
+${context}
+
+Your class is not generic. You know the learners who rush through work, the ones who are quiet but capable, the ones who need examples before the concept lands, and the ones who can handle extension tasks. AI becomes useful for teaching only when you give it that classroom reality. If you ask for "a lesson plan on photosynthesis", you will get ordinary notes. If you describe your class level, timing, weak areas, available materials, and learning outcome, you get something closer to a teachable plan.
+
+## What you should be able to prepare faster
+${promise}
+
+Use AI for lesson structure, starter questions, examples, differentiated tasks, rubrics, feedback comments, parent-friendly explanations, and remedial practice. Keep your professional judgment in charge. AI can draft; you decide whether the draft fits your syllabus, school culture, class level, and time.
+
+## The lesson planning workflow
+${method}
+
+Start with the exact class and topic. Add what students already know, what confused them last time, and how long the lesson will last. Ask for a plan with teacher explanation, student activity, quick assessment, and homework. Then ask for two adaptations: one for struggling learners and one for fast learners.
+
+For example: "I teach JSS2 Basic Science. My students confuse evaporation and boiling. I have 40 minutes and no lab equipment. Create a lesson with local examples, questions, and a quick exit ticket."
+
+## A practical teaching week
+${routine}
+
+Day 1: generate the lesson outline. Day 2: create starter questions to test prior knowledge. Day 3: create class activities and examples from the students' environment. Day 4: create assessment questions and marking guidance. Day 5: generate remedial support for students who fail the exit ticket. Day 6: teach and record what confused students. Day 7: ask AI to help improve next week's lesson based on your notes.
+
+## Mistakes that make AI lesson plans weak
+${mistakes}
+
+Do not accept activities that require resources your class does not have. Do not use examples that are foreign to your students when local examples would work better. Do not let AI make the lesson longer than the period allows. Do not paste names or private student issues into AI. Describe learning patterns instead.
+
+## Responsible classroom use
+${safety}
+
+When using AI for feedback, remove student names and sensitive details. When creating questions, check every answer. When preparing parent communication, keep the tone respectful and specific. AI should reduce your workload, but it must not reduce your care.
+
+## How to know it is working
+You should see clearer lesson flow, faster preparation, more targeted questions, and better feedback. Students should still hear your voice, your examples, and your expectations. If the material sounds like it could be used in any classroom anywhere, add your class reality before using it.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("school owner") || normalized.includes("school leader")) {
+    return `## AI adoption is now a leadership decision
+${context}
+
+As a school leader, your problem is not simply whether AI is exciting. Your problem is how to introduce it without confusing parents, exposing students, overwhelming teachers, or buying tools that do not improve learning. AI must serve a school outcome: better teaching preparation, stronger revision support, clearer parent communication, faster administration, improved admissions follow-up, or more confident digital learning.
+
+## What responsible adoption should produce
+${promise}
+
+You should be able to choose one useful pilot, set boundaries for staff, explain the direction to parents, and measure whether the pilot saves time or improves quality. Do not begin with a school-wide announcement. Begin with a controlled workflow that proves value.
+
+## Choose the first pilot carefully
+${method}
+
+Good first pilots include teacher lesson planning support, parent newsletter drafting, admissions follow-up, internal memo drafting, revision question generation, staff training notes, or school policy summaries. Poor first pilots include unsupervised student chatbots, automated grading without review, or tools that collect student data before privacy has been discussed.
+
+## A 30-day school rollout
+${routine}
+
+Week 1: list repeated staff and admin tasks. Week 2: choose one low-risk pilot and write the rules. Week 3: train a small group of teachers or admin staff. Week 4: collect evidence: time saved, quality improved, mistakes found, and staff confidence. Only expand after the pilot has produced evidence.
+
+## Leadership mistakes to avoid
+${mistakes}
+
+Do not buy an AI subscription because another school mentioned AI. Do not make teachers feel judged for not knowing the tools yet. Do not tell parents AI will replace teaching. Do not allow staff to paste student records into public tools. Do not launch a student-facing system before adults understand the risks.
+
+## Policy and trust
+${safety}
+
+Your policy should cover approved tools, prohibited data, teacher review, student use, parent communication, assessment integrity, and incident reporting. Keep it short enough to use. A beautiful policy nobody follows is not governance.
+
+## What success looks like
+Success is not a poster that says your school uses AI. Success is a teacher preparing better questions faster, an admissions officer following up more consistently, parents receiving clearer updates, and students getting better support without privacy being compromised.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("job seeker") || normalized.includes("nysc")) {
+    return `## Your CV problem is probably not grammar
+${context}
+
+Many NYSC members and job seekers ask AI to "make my CV better" and receive polished but empty wording. That does not solve the real problem. Employers need evidence. They want to know what you have done, what tools you can use, what problems you have solved, how you communicate, and whether you can explain your work.
+
+## What AI should help you clarify
+${promise}
+
+Use AI to organize your experience, turn vague responsibilities into evidence, tailor your CV to a role, prepare interview stories, and plan a simple portfolio. Do not use it to invent experience. Anything AI writes must be something you can defend in an interview.
+
+## Build from real evidence
+${method}
+
+List school projects, NYSC tasks, volunteer work, internships, personal projects, small businesses, leadership roles, certifications, and tools you have used. For each one, write what you did, who benefited, what changed, and what proof exists. Then ask AI to help you express it clearly.
+
+Example: instead of "hardworking team player", give AI the raw material: "I organized weekly CDS attendance records for 74 corps members using Google Sheets and reduced missing records." That can become a credible bullet.
+
+## Seven days to a stronger application
+${routine}
+
+Day 1: gather real experience. Day 2: rewrite your CV summary for one role. Day 3: improve bullet points with evidence. Day 4: tailor the CV to a real job description. Day 5: prepare five interview stories using the STAR method. Day 6: outline a portfolio page. Day 7: review every claim and remove anything you cannot defend.
+
+## Mistakes that make applications weak
+${mistakes}
+
+Do not let AI fill your CV with empty phrases like "dynamic professional" and "results-driven individual" unless there is evidence behind them. Do not submit the same CV to every role. Do not use tools, numbers, or responsibilities you have never touched. Do not paste private referee details or ID numbers into AI.
+
+## Interview integrity and privacy
+${safety}
+
+AI can help you practice, but it cannot attend the interview for you. Practice explaining your work aloud. Remove private addresses, referee phone numbers, identification numbers, and confidential employer information before using AI.
+
+## What progress looks like
+Your CV should become more specific, your interview answers should sound more natural, and your portfolio should show visible proof. A recruiter should be able to understand your direction within one minute.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("business")) {
+    return `## Start with the business task that wastes your time
+${context}
+
+If you run a small business, AI is useful only when it touches work you already do: replying customers on WhatsApp, describing products, following up unpaid orders, planning content, writing staff instructions, handling complaints, summarizing supplier messages, or preparing simple records. You do not need AI theatre. You need a cleaner workflow.
+
+## What the workflow should change
+${promise}
+
+Pick one repeated task and make it easier, faster, or more consistent. A good AI workflow should help you respond faster without sounding careless, plan content without guessing, explain policies without sounding rude, and train staff without repeating yourself every day.
+
+## Build one reusable business prompt
+${method}
+
+Write your business context first: what you sell, who you sell to, your tone, your policies, delivery limits, refund rules, location, price range, and common customer objections. Then ask AI to help with one task. If you run a food brand, your prompt should not sound like a fashion store. If you sell courses, your reply should not sound like a logistics company.
+
+## A one-week workflow test
+${routine}
+
+Day 1: list repeated messages and admin tasks. Day 2: choose one painful workflow. Day 3: write the business context AI needs. Day 4: test three prompts using real but anonymized scenarios. Day 5: create approved templates. Day 6: use the best template in real conversations. Day 7: review whether it saved time or improved tone.
+
+## Mistakes that cost trust
+${mistakes}
+
+Do not let AI promise delivery dates, refunds, discounts, stock availability, or outcomes you cannot honour. Do not paste full customer addresses or payment details. Do not sound robotic on WhatsApp. Your customers should still feel they are speaking with your business, not a random corporate script.
+
+## Customer privacy and operational control
+${safety}
+
+Summarize customer issues instead of pasting private data. Keep final approval with you or a trained staff member. Save only templates that match your brand. If a message involves money, complaints, safety, or legal terms, review it carefully before sending.
+
+## What success looks like
+You should have fewer repeated typing tasks, clearer customer replies, better follow-up, and content that actually reflects your offers. AI should make your business more consistent, not more generic.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("founder")) {
+    return `## Do not start with the app
+${context}
+
+As a non-technical founder, your biggest risk is not that you cannot code. Your biggest risk is building the wrong thing with confidence. AI can help you think through the idea before you pay for development, hire someone, or spend weeks prompting a tool to create features nobody wants.
+
+## What you should prove first
+${promise}
+
+Before you build, clarify the user, the painful problem, the current workaround, the promise, the smallest useful version, and the evidence that someone cares. AI should challenge your thinking, not flatter your idea.
+
+## Use AI as a product strategist
+${method}
+
+Describe your idea plainly. Then ask AI to identify assumptions, missing user details, risky features, competitors, interview questions, and the smallest version worth testing. If the answer is too positive, ask for the skeptical version. You need pressure before you need praise.
+
+## Seven days before you build
+${routine}
+
+Day 1: define the user and problem. Day 2: list how people solve it today. Day 3: write customer interview questions. Day 4: define the MVP and remove non-essential features. Day 5: sketch the user journey. Day 6: create a landing page or clickable prototype. Day 7: decide whether to build, narrow, pause, or test again.
+
+## Founder mistakes AI can hide
+${mistakes}
+
+Do not ask AI to validate your idea by agreeing with you. Do not turn every idea into a platform. Do not treat a feature list as a business model. Do not let AI produce a polished product document that has no evidence behind it.
+
+## Confidentiality and judgment
+${safety}
+
+Avoid pasting confidential investor terms, private customer records, proprietary contracts, or sensitive strategy into public AI tools. Use anonymized summaries. If you are discussing legal or financial commitments, get professional advice.
+
+## What progress looks like
+You should end the process with a sharper product scope, fewer unnecessary features, better interview questions, and a clearer decision about what to test next. The goal is not a bigger idea. The goal is a more testable one.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("children")) {
+    return `## Children need supervised imagination, not unrestricted access
+${context}
+
+AI can make learning playful for children. It can create spelling games, story ideas, quiz questions, vocabulary practice, coding explanations, and simple project plans. But a child may not know when an answer is false, when a question is too private, or when a tool is asking for information they should not share.
+
+## What safe use should look like
+${promise}
+
+The goal is to help a child learn, create, and explain, while an adult remains close enough to guide privacy, honesty, and emotional safety. AI should not become a secret companion, a homework shortcut, or an unsupervised adult-like voice in the child's life.
+
+## Start with one supervised activity
+${method}
+
+Choose a simple activity: create a story plan, practice vocabulary, revise multiplication, ask for a quiz, or plan a small Scratch/project idea. Sit with the child. Read the response together. Ask what they understood and what they think may be wrong.
+
+## One week of safe introduction
+${routine}
+
+Day 1: explain that AI can be helpful but can make mistakes. Day 2: agree on private information that must never be shared. Day 3: use AI for a quiz. Day 4: find one wrong or weak AI answer together. Day 5: create a story or project. Day 6: discuss copying. Day 7: write simple family or classroom rules.
+
+## Mistakes adults should avoid
+${mistakes}
+
+Do not give children unsupervised access to unknown tools. Do not reward copied AI output as if it were understanding. Do not allow children to upload photos, school details, or personal stories without review. Do not turn AI into a babysitter.
+
+## Safety rules children can remember
+${safety}
+
+Use rules a child can repeat: do not share your full name, school, address, phone number, password, photos, family problems, or private messages. If AI says something scary, confusing, rude, or too personal, stop and tell an adult.
+
+## What progress looks like
+The child should become more curious, more able to explain ideas, and more careful with information. If AI use makes the child more secretive, more dependent, or less honest with schoolwork, pause and reset the rules.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("project")) {
+    return `## A real project starts with one user and one task
+${context}
+
+AI can help you build faster, but it cannot rescue a vague idea. If you ask for a complete app with no user, no screen plan, no data structure, and no testing habit, you will get confusion quickly. A useful project begins with a small promise: one person needs to do one thing better.
+
+## What you should build first
+${promise}
+
+Start with a first version that proves the core workflow. If it is a website, define the sections and call to action. If it is a dashboard, define the data and actions. If it is a tool, define the input, output, and success condition. Add features only after the first version works.
+
+## How to guide AI like a builder
+${method}
+
+Give AI the user, goal, screens, data, constraints, and design direction. Ask for one piece at a time. Test before expanding. Keep a changelog of prompts, errors, and fixes. When something breaks, paste the exact error and ask for a focused correction instead of starting again.
+
+## A practical build week
+${routine}
+
+Day 1: write the project brief. Day 2: sketch screens. Day 3: generate the first version. Day 4: test on desktop and mobile. Day 5: add one important feature. Day 6: fix bugs and improve content. Day 7: deploy or prepare for feedback from a real user.
+
+## Mistakes beginners make
+${mistakes}
+
+Do not build ten features before the first page works. Do not ignore errors because the design looks nice once. Do not paste API keys, database passwords, or real customer data into prompts. Do not accept code you cannot run.
+
+## Security and data discipline
+${safety}
+
+Use test data. Keep secrets in environment variables. Do not expose admin pages publicly. Do not collect information you do not need. If users will log in or pay, treat security as part of the project, not an afterthought.
+
+## What progress looks like
+Progress is a working version someone can open, test, and understand. A small live project is more valuable than a large unfinished idea.
+
+${nextStep}`
+  }
+
+  if (normalized.includes("government") || normalized.includes("public-sector")) {
+    return `## Public-sector AI must begin with trust
+${context}
+
+A ministry, agency, local government office, school board, or public institution cannot adopt AI the same way an individual experiments with a chatbot. Public work involves citizens, records, accountability, procurement, policy, and reputation. The first question is not "Which AI tool should we buy?" The first question is "Which low-risk public workflow can improve without harming trust?"
+
+## What readiness should mean
+${promise}
+
+You should be able to identify workflows suitable for AI support, remove high-risk decisions from the first pilot, define human review, protect sensitive data, and measure whether service delivery improves. AI should assist public servants; it should not make citizen-impacting decisions without governance.
+
+## Choose low-risk pilots first
+${method}
+
+Better starting points include public FAQ drafts, internal memo summaries, meeting note organization, training material, policy research support, citizen communication templates, and document classification where no rights or benefits are decided automatically. Avoid automated approvals, eligibility decisions, sensitive citizen profiling, or anything involving confidential records in the first pilot.
+
+## A responsible pilot week
+${routine}
+
+Day 1: list repeated service tasks. Day 2: classify each by data sensitivity and public impact. Day 3: choose one low-risk pilot. Day 4: define what data is allowed. Day 5: train a small team. Day 6: test outputs against official sources. Day 7: document errors, benefits, and governance needs.
+
+## Institutional mistakes to avoid
+${mistakes}
+
+Do not confuse a vendor demo with readiness. Do not put citizen records into public tools. Do not allow every department to improvise separately. Do not automate decisions affecting rights, access, money, or public services without legal, ethical, and operational review.
+
+## Data protection and accountability
+${safety}
+
+Remove personally identifiable information where possible. Keep human review for public communication and decisions. Document who used the tool, for what purpose, what data was entered, and how outputs were checked. Trust depends on traceability.
+
+## What progress looks like
+Progress is a small, documented pilot that improves speed or clarity while preserving accountability. The public should not experience AI as confusion. They should experience it as clearer communication, faster service support, and better organized institutions.
+
+${nextStep}`
+  }
+
+  return `## Why this resource matters
+${context}
 
 ## What you will be able to do
 ${promise}
 
-By the end, you should be able to identify a real task, decide whether AI is appropriate for it, write a clear prompt, review the output, improve it, and turn it into an action. This is the habit that matters. The best AI users are not people who collect the most prompts. They are people who can define a problem clearly, guide the tool step by step, and judge whether the result is useful.
-
 ## The practical method
 ${method}
 
-Use this simple working cycle:
-
-1. Define the task in plain language.
-2. Give AI the relevant context.
-3. Ask for a first draft, plan, explanation, or checklist.
-4. Review the output with your own judgment.
-5. Ask AI to improve one specific part.
-6. Turn the result into a real action.
-7. Save the best version so you can reuse it later.
-
-Do not rush from prompt to final answer. Most useful AI work improves through two or three rounds. Your first prompt creates direction. Your follow-up prompts create quality. Your review protects accuracy, tone, ethics, and usefulness.
-
-## A seven-day implementation routine
+## Implementation routine
 ${routine}
-
-Day 1 should be for choosing one real use case. Day 2 should be for writing a clear description of the task. Day 3 should be for testing two or three prompts. Day 4 should be for reviewing the output against your real needs. Day 5 should be for improving the best version. Day 6 should be for using it in a real workflow. Day 7 should be for documenting what worked, what failed, and what you will repeat next week.
-
-This weekly rhythm matters because AI adoption fails when it stays theoretical. You do not need twenty tools in your first week. You need one useful workflow that saves time, improves quality, or helps someone learn better.
 
 ## Common mistakes to avoid
 ${mistakes}
 
-The biggest mistake is accepting AI output because it sounds confident. Confident writing is not the same as correct writing. Always check facts, names, prices, dates, policies, calculations, and anything that affects people. Another mistake is asking broad questions and expecting precise answers. If your prompt is vague, the output will usually be vague. A third mistake is copying AI text without adapting it to your voice, audience, and local context.
-
-You should also avoid using AI to hide weak thinking. If you do not understand the task, ask AI to help you understand it first. If you do not know what good output looks like, ask AI to create a checklist for judging the output. If the result still feels generic, give examples from your real situation.
-
-## Safety, trust, and responsible use
+## Safety and responsible use
 ${safety}
-
-Do not paste private passwords, account details, sensitive student records, confidential business information, medical records, government secrets, or private family information into public AI tools. If you are working with children, students, customers, staff, or citizens, be especially careful with identifiable information. Remove names where possible and describe the situation without exposing people.
-
-You should also be transparent where it matters. AI can support your work, but it should not be used to deceive people. If a decision affects someone, your human judgment remains responsible. Use AI to prepare, organize, explain, draft, and review. Do not use it to avoid accountability.
-
-## How to measure progress
-Measure progress by evidence. Did the workflow save time? Did the output become clearer? Did the student understand better? Did the customer receive a better response? Did the team make a better decision? Did you reduce repeated manual work? Did you create something you can reuse?
-
-Keep a simple record of the prompt, the output, what you changed, and the final result. After a few weeks, you will have your own practical AI playbook. That playbook is more valuable than a random list of internet prompts because it is built from your reality.
 
 ${nextStep}`
 }
@@ -971,7 +1801,10 @@ const nonWaecPremiumResources = Object.fromEntries(
 )
 
 function audienceName(key) {
+  const expanded = expandedPromptAudienceSpecs.find((spec) => spec.audience === key)
+  if (expanded) return expanded.label.toLowerCase()
   return {
+    "waec-jamb-learners": "WAEC/JAMB learners",
     parents: "parents and guardians",
     teachers: "teachers",
     "school-owners": "school owners and school leaders",
@@ -1099,6 +1932,13 @@ async function upsertBundle(bundle) {
 
 async function main() {
   await ensureTables()
+  const activePromptSlugs = promptOnlyResources.map((resource) => resource.slug)
+  await prisma.$executeRaw`
+    UPDATE tochukwu_resources
+    SET status = 'draft', featured = 0, updated_at = ${now}
+    WHERE resource_type <> 'video'
+      AND slug NOT IN (${Prisma.join(activePromptSlugs)})
+  `
   if (retiredBundleSlugs.length) {
     for (const slug of retiredBundleSlugs) {
       await prisma.$executeRaw`
@@ -1108,21 +1948,19 @@ async function main() {
       `
     }
   }
-  for (const resource of resources) {
-    const premiumResource = premiumFor(resource)
+  for (const resource of promptOnlyResources) {
     await upsertResource({
       ...resource,
-      ...premiumResource,
-      body: premiumResource.body ? readerVoice(premiumResource.body) : resource.body,
-      prompt: premiumResource.prompt ? readerVoice(premiumResource.prompt) : resource.prompt,
-      useCase: premiumResource.useCase ? readerVoice(premiumResource.useCase) : resource.useCase,
-      customization: premiumResource.customization ? readerVoice(premiumResource.customization) : resource.customization
+      body: readerVoice(resource.body),
+      prompt: readerVoice(resource.prompt),
+      useCase: readerVoice(resource.useCase),
+      customization: readerVoice(resource.customization)
     })
   }
   for (const bundle of bundles) {
     await upsertBundle(bundle)
   }
-  console.log(`seeded_resources=${resources.length}`)
+  console.log(`seeded_resources=${promptOnlyResources.length}`)
   console.log(`seeded_bundles=${bundles.length}`)
 }
 

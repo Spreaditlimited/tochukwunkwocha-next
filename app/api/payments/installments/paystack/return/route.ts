@@ -5,12 +5,12 @@ import { markInstallmentPaymentPaid, siteBaseUrl, verifyPaystackTransaction } fr
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const reference = String(url.searchParams.get("reference") || url.searchParams.get("trxref") || "").trim()
-  if (!reference) return NextResponse.redirect(`${siteBaseUrl()}/dashboard?payment=failed`)
+  if (!reference) return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=failed`)
   try {
     const tx = await verifyPaystackTransaction(reference)
     await markInstallmentPaymentPaid(tx.reference, tx.providerOrderId)
-    return NextResponse.redirect(`${siteBaseUrl()}/dashboard?payment=success`)
+    return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=success`)
   } catch (_error) {
-    return NextResponse.redirect(`${siteBaseUrl()}/dashboard?payment=failed`)
+    return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=failed`)
   }
 }

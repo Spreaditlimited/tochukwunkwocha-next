@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { 
+import {
   AlertTriangle, 
   Building2, 
+  ChevronDown,
   CheckCircle2, 
   Hash, 
   KeyRound, 
   Landmark, 
   Loader2, 
+  Search,
   Send, 
   ShieldCheck, 
   UserRound 
@@ -22,6 +24,13 @@ type Bank = {
   code: string
 }
 
+type InitialPayoutAccount = {
+  bankCode?: string | null
+  bankName?: string | null
+  accountName?: string | null
+  accountNumberMasked?: string | null
+}
+
 function uniqueBanksByCode(input: Bank[]) {
   const seen = new Set<string>()
   return input.filter((bank) => {
@@ -30,6 +39,85 @@ function uniqueBanksByCode(input: Bank[]) {
     seen.add(code)
     return true
   })
+}
+
+function BankSearchPicker({
+  banks,
+  value,
+  onChange,
+  placeholder = "Search and select your bank..."
+}: {
+  banks: Bank[]
+  value: string
+  onChange: (bankCode: string) => void
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const selectedBank = banks.find((bank) => bank.code === value)
+  const displayValue = open ? query : selectedBank?.name || ""
+  const filteredBanks = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return banks
+    return banks.filter((bank) => `${bank.name} ${bank.code}`.toLowerCase().includes(needle))
+  }, [banks, query])
+
+  function selectBank(bank: Bank) {
+    onChange(bank.code)
+    setQuery("")
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          className="brand-focus h-12 w-full rounded-lg border border-border bg-card px-10 pr-12 text-sm font-semibold text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground/60 hover:border-primary/40 hover:bg-background focus:border-primary focus:bg-background focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]"
+          value={displayValue}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder}
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+        />
+        <button
+          type="button"
+          className="absolute inset-y-1.5 right-1.5 flex w-9 items-center justify-center rounded-md border border-border/70 bg-muted/70 text-muted-foreground shadow-sm"
+          onClick={() => setOpen((current) => !current)}
+          aria-label="Toggle bank list"
+        >
+          <ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open ? (
+        <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-2xl ring-1 ring-border/60 dark:bg-slate-950">
+          {filteredBanks.length ? (
+            filteredBanks.map((bank) => (
+              <button
+                key={bank.code}
+                type="button"
+                className={`flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm font-semibold transition hover:bg-primary/10 hover:text-primary ${
+                  bank.code === value ? "bg-primary/10 text-primary" : "bg-card text-foreground dark:bg-slate-950"
+                }`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectBank(bank)}
+              >
+                <span>{bank.name}</span>
+                <span className="ml-3 shrink-0 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{bank.code}</span>
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-4 text-sm font-medium text-muted-foreground">No bank matches your search.</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 async function postJson<T>(url: string, body: Record<string, unknown>) {
@@ -43,12 +131,12 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   return payload as T
 }
 
-export function AffiliatePayoutSetup() {
+export function AffiliatePayoutSetup({ initialAccount }: { initialAccount?: InitialPayoutAccount | null }) {
   const router = useRouter()
   const [banks, setBanks] = useState<Bank[]>([])
-  const [bankCode, setBankCode] = useState("")
-  const [accountNumber, setAccountNumber] = useState("")
-  const [accountName, setAccountName] = useState("")
+  const [bankCode, setBankCode] = useState(String(initialAccount?.bankCode || ""))
+  const [accountNumber, setAccountNumber] = useState(String(initialAccount?.accountNumberMasked || ""))
+  const [accountName, setAccountName] = useState(String(initialAccount?.accountName || ""))
   const [otpCode, setOtpCode] = useState("")
   
   // Feedback & Action Tracking
@@ -56,7 +144,12 @@ export function AffiliatePayoutSetup() {
   const [error, setError] = useState("")
   const [activeAction, setActiveAction] = useState<"resolve" | "otp" | "save" | null>(null)
 
-  const bankName = useMemo(() => banks.find((bank) => bank.code === bankCode)?.name || "", [bankCode, banks])
+  const accountDigits = accountNumber.replace(/\D/g, "")
+  const bankOptions = useMemo(() => {
+    if (banks.length) return banks
+    return bankCode && initialAccount?.bankName ? [{ code: bankCode, name: initialAccount.bankName }] : []
+  }, [bankCode, banks, initialAccount?.bankName])
+  const bankName = useMemo(() => bankOptions.find((bank) => bank.code === bankCode)?.name || initialAccount?.bankName || "", [bankCode, bankOptions, initialAccount?.bankName])
 
   useEffect(() => {
     fetch("/api/student/affiliate/payout/banks")
@@ -95,8 +188,11 @@ export function AffiliatePayoutSetup() {
 
   async function sendOtp() {
     await run("otp", async () => {
-      await postJson("/api/student/affiliate/payout/otp", { bankCode, accountNumber })
-      return "Verification code sent to your account email."
+      const result = await postJson<{ result?: { otpRequired?: boolean; emailMasked?: string; message?: string } }>("/api/student/affiliate/payout/otp", { bankCode, accountNumber })
+      if (result.result?.otpRequired === false) return result.result.message || "No payout account change detected."
+      return result.result?.emailMasked
+        ? `Verification code sent to ${result.result.emailMasked}.`
+        : "Verification code sent to your account email."
     })
   }
 
@@ -134,22 +230,11 @@ export function AffiliatePayoutSetup() {
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 <Landmark className="h-3.5 w-3.5" /> Select Bank
               </span>
-              <div className="relative">
-                <select 
-                  className="w-full appearance-none rounded-md border border-input bg-background/50 px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50" 
-                  value={bankCode} 
-                  onChange={(event) => setBankCode(event.target.value)} 
-                  required
-                >
-                  <option value="" disabled>Select your bank...</option>
-                  {banks.map((bank) => (
-                    <option key={bank.code} value={bank.code}>{bank.name}</option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
-                  <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                </div>
-              </div>
+              <BankSearchPicker
+                banks={bankOptions}
+                value={bankCode}
+                onChange={setBankCode}
+              />
             </label>
             
             <label className="block">
@@ -160,7 +245,7 @@ export function AffiliatePayoutSetup() {
                 className="w-full rounded-md border border-input bg-background/50 px-4 py-3 text-sm font-medium outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
                 value={accountNumber} 
                 onChange={(event) => setAccountNumber(event.target.value.replace(/\D/g, "").slice(0, 10))} 
-                placeholder="10-digit number" 
+                placeholder={initialAccount?.accountNumberMasked || "10-digit number"} 
                 required 
               />
             </label>
@@ -171,7 +256,7 @@ export function AffiliatePayoutSetup() {
               type="button" 
               className="btn-secondary w-full sm:w-auto" 
               onClick={resolveAccount} 
-              disabled={isLoading || !bankCode || accountNumber.length < 10}
+              disabled={isLoading || !bankCode || accountDigits.length < 10}
             >
               {activeAction === "resolve" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Building2 className="mr-2 h-4 w-4" />}
               Resolve Account Name
@@ -211,7 +296,6 @@ export function AffiliatePayoutSetup() {
                 value={otpCode} 
                 onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} 
                 placeholder="6-digit code" 
-                required 
               />
             </label>
             
@@ -220,7 +304,7 @@ export function AffiliatePayoutSetup() {
                 type="button" 
                 className="btn-secondary w-full justify-center whitespace-nowrap py-3" 
                 onClick={sendOtp} 
-                disabled={isLoading || !bankCode || accountNumber.length < 10}
+                disabled={isLoading || !bankCode || accountDigits.length < 10}
               >
                 {activeAction === "otp" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Request OTP
@@ -248,7 +332,7 @@ export function AffiliatePayoutSetup() {
           <button 
             type="submit" 
             className="btn-primary w-full shadow-sm sm:w-auto" 
-            disabled={isLoading || !accountName || otpCode.length < 6}
+            disabled={isLoading || !bankCode || !accountName || accountDigits.length < 10}
           >
             {activeAction === "save" ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving Details...</>

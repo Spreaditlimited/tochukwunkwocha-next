@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto"
 
 import { sendEmail } from "@/lib/email"
-import { initializePaystack, initializeStripe, siteBaseUrl } from "@/lib/payments/course-checkout"
+import { siteBaseUrl } from "@/lib/payments/course-checkout"
+import { serviceCheckoutPricing } from "@/lib/payments/service-checkout"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -734,41 +735,6 @@ export async function bookBuildCallFromLead(input: { leadUuid: string; slotStart
   })
 }
 
-function envMinor(name: string, fallback: number) {
-  const raw = Number(process.env[name])
-  return Number.isFinite(raw) && raw >= 0 ? Math.round(raw) : fallback
-}
-
-function isNigeriaCountry(value: unknown) {
-  const raw = clean(value, 80).toLowerCase()
-  return raw === "ng" || raw === "nga" || raw === "nigeria"
-}
-
-function resolveStripeCurrency(country: unknown) {
-  const raw = clean(country, 80).toLowerCase()
-  if (["us", "usa", "united states", "united states of america"].includes(raw)) return "USD"
-  if (["ie", "irl", "ireland", "fr", "france", "de", "germany"].includes(raw)) return "EUR"
-  return "GBP"
-}
-
-function resolveProvider(country: unknown, explicitProvider: unknown) {
-  const provider = clean(explicitProvider, 40).toLowerCase()
-  if (provider === "paystack" || provider === "stripe") return provider
-  return isNigeriaCountry(country) ? "paystack" : "stripe"
-}
-
-function buildDiscoveryPricing(country: unknown, providerInput: unknown) {
-  const provider = resolveProvider(country, providerInput)
-  const currency = provider === "paystack" ? "NGN" : resolveStripeCurrency(country)
-  const defaults: Record<string, number> = { NGN: 10000000, GBP: 5000, USD: 6000, EUR: 6000 }
-  const baseMinor = envMinor(`BUILD_DISCOVERY_FEE_${currency}_MINOR`, defaults[currency] || 5000)
-  const vatPercent = provider === "paystack" ? Number(process.env.SITE_VAT_PERCENT || 7.5) : Number(process.env.INTL_VAT_PERCENT || 0)
-  const vatMinor = Math.round((baseMinor * (Number.isFinite(vatPercent) ? vatPercent : 0)) / 100)
-  const subtotal = baseMinor + vatMinor
-  const processingFeeMinor = provider === "paystack" ? Math.min(200000, Math.round(subtotal * 0.015) + (subtotal >= 250000 ? 10000 : 0)) : 0
-  return { provider, currency, payableMinor: subtotal + processingFeeMinor }
-}
-
 export async function sendBuildDiscoveryPaymentLink(input: { leadUuid: string; actor: string; country: string; provider: string }) {
   const leadUuid = clean(input.leadUuid, 64)
   if (!leadUuid) throw new Error("leadUuid is required.")
@@ -809,58 +775,12 @@ export async function sendBuildDiscoveryPaymentLink(input: { leadUuid: string; a
   `
   const latest = latestRows[0]
   if (clean(latest?.payment_status, 40).toLowerCase() === "paid") throw new Error("Discovery payment has already been completed.")
-  let checkoutUrl = clean(latest?.checkout_url, 1200)
-  let reference = clean(latest?.payment_reference, 120)
-  const pricing = buildDiscoveryPricing(input.country, input.provider)
-  if (!checkoutUrl) {
-    reference = `BLD_${leadUuid.replace(/[^a-z0-9]/gi, "").slice(0, 34).toUpperCase()}_${Date.now().toString().slice(-6)}`
-    const metadata = {
-      build_lead_uuid: leadUuid,
-      lead_source_type: "build",
-      manual_review_approved: "true",
-      full_name: clean(lead.full_name, 180),
-      business_name: clean(lead.business_name, 220),
-      country: clean(input.country, 80)
-    }
-    const initialized = pricing.provider === "stripe"
-      ? await initializeStripe({
-          email: normalizeEmail(lead.work_email),
-          amountMinor: pricing.payableMinor,
-          currency: pricing.currency,
-          courseName: "Build Discovery Call",
-          orderUuid: reference,
-          courseSlug: "build-discovery",
-          successUrl: `${siteBaseUrl()}/api/build-discovery/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${siteBaseUrl()}/build-scorecard?payment=cancelled`,
-          metadata
-        })
-      : await initializePaystack({
-          email: normalizeEmail(lead.work_email),
-          amountMinor: pricing.payableMinor,
-          reference,
-          callbackUrl: `${siteBaseUrl()}/api/build-discovery/paystack/return`,
-          metadata
-        })
-    checkoutUrl = initialized.checkoutUrl
-    reference = initialized.providerReference || reference
-    await prisma.$executeRaw`
-      INSERT INTO tochukwu_build_discovery_payments
-        (payment_uuid, lead_uuid, work_email, full_name, amount_minor, payment_provider, payment_reference, checkout_url, payment_status, created_at, updated_at)
-      VALUES
-        (${`buildpay_${Date.now()}_${randomUUID().slice(0, 8)}`}, ${leadUuid}, ${normalizeEmail(lead.work_email)}, ${clean(lead.full_name, 180)},
-         ${pricing.payableMinor}, ${pricing.provider}, ${reference}, ${checkoutUrl}, 'initiated', UTC_TIMESTAMP(), UTC_TIMESTAMP())
-    `
-  }
-  const amountText = new Intl.NumberFormat(pricing.currency === "NGN" ? "en-NG" : "en-GB", {
-    style: "currency",
-    currency: pricing.currency,
-    maximumFractionDigits: pricing.currency === "NGN" ? 0 : 2
-  }).format(pricing.payableMinor / 100)
+  const checkoutUrl = `${siteBaseUrl()}/checkout/build-discovery?lead=${encodeURIComponent(leadUuid)}`
+  const pricing = await serviceCheckoutPricing({ slug: "build-discovery", country: clean(input.country, 80) || "NG" })
   const text = [
     `Hello ${firstName(clean(lead.full_name, 180))},`,
     "",
     "Your Build application has been reviewed and approved to proceed to a paid discovery call.",
-    `Total payable: ${amountText}`,
     `Pay here: ${checkoutUrl}`,
     "",
     "After successful payment, you will be redirected to select an available call slot."
@@ -878,7 +798,7 @@ export async function sendBuildDiscoveryPaymentLink(input: { leadUuid: string; a
     WHERE lead_uuid = ${leadUuid}
     LIMIT 1
   `
-  return { checkoutUrl, reference, provider: pricing.provider }
+  return { checkoutUrl, reference: clean(latest?.payment_reference, 120), provider: pricing.provider }
 }
 
 export async function resendRecentBuildCallNotifications(input: { lookbackHours: number }) {

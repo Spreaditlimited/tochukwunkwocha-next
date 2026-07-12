@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { AlertTriangle, LockKeyhole, Mail, ShieldCheck } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
 import { getAdminSession, loginAdmin, setAdminSession } from "@/lib/auth"
 
 async function loginAction(formData: FormData) {
@@ -81,10 +82,9 @@ export default async function LoginPage({
                 <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                   <LockKeyhole className="h-3.5 w-3.5" /> Password
                 </span>
-                <input 
-                  className="w-full rounded-lg border border-input bg-background/50 px-4 py-3.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
+                <PasswordField
+                  inputClassName="w-full rounded-lg border border-input bg-background/50 px-4 py-3.5 pr-12 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
                   name="password" 
-                  type="password" 
                   required 
                   autoComplete="current-password" 
                   placeholder="••••••••••••"

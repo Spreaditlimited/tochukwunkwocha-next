@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 
 import { getStudentSession } from "@/lib/student-auth"
+import { PasswordField } from "@/components/PasswordField"
 import { GroupCodeLoginForm } from "@/components/student-dashboard/GroupCodeLoginForm"
 import { StudentActionToaster } from "@/components/student-dashboard/StudentActionToaster"
 import { studentLoginAction } from "../actions"
@@ -89,10 +90,9 @@ export default async function StudentLoginPage({
                     Forgot?
                   </Link>
                 </span>
-                <input 
-                  className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
+                <PasswordField
+                  inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
                   name="password" 
-                  type="password" 
                   placeholder="••••••••"
                   required 
                   autoComplete="current-password" 

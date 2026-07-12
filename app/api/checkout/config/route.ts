@@ -28,6 +28,10 @@ export async function POST(request: Request) {
         ...pricing.pricing,
         label: formatMinorAmount(pricing.pricing.finalAmountMinor, pricing.pricing.currency),
         baseLabel: formatMinorAmount(pricing.pricing.baseAmountMinor, pricing.pricing.currency),
+        courseAmountLabel: formatMinorAmount(Number(pricing.pricing.courseAmountMinor || 0), pricing.pricing.currency),
+        vatLabel: formatMinorAmount(Number(pricing.pricing.vatAmountMinor || 0), pricing.pricing.currency),
+        subtotalLabel: formatMinorAmount(Number(pricing.pricing.subtotalAmountMinor || 0), pricing.pricing.currency),
+        processingFeeLabel: formatMinorAmount(Number(pricing.pricing.processingFeeMinor || 0), pricing.pricing.currency),
         discountLabel: formatMinorAmount(pricing.pricing.discountMinor, pricing.pricing.currency),
         groupDiscountLabel: formatMinorAmount(Number(pricing.pricing.groupDiscountMinor || 0), pricing.pricing.currency),
         groupUnitLabel: pricing.pricing.groupUnitAmountMinor ? formatMinorAmount(Number(pricing.pricing.groupUnitAmountMinor), pricing.pricing.currency) : null

@@ -541,8 +541,9 @@ export async function updateStudentProfile(accountId: bigint, input: {
 export async function confirmStudentCertificateName(accountId: bigint) {
   const existing = await prisma.studentAccount.findUnique({ where: { id: accountId } })
   if (!existing) throw new Error("Account not found")
+  if (!clean(existing.fullName, 180)) throw new Error("Profile name is required before confirmation")
   if (existing.certificateNameConfirmedAt) {
-    throw new Error("Certificate name has already been confirmed.")
+    throw new Error("Certificate name has already been confirmed and cannot be confirmed again.")
   }
   const now = new Date()
   return prisma.studentAccount.update({

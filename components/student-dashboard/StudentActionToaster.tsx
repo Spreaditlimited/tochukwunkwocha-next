@@ -56,7 +56,6 @@ export function StudentActionToaster() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [toast, setToast] = useState<Toast | null>(null)
-  const pendingStartedAt = useRef(0)
   const idRef = useRef(1)
 
   function show(input: Omit<Toast, "id">) {
@@ -100,7 +99,6 @@ export function StudentActionToaster() {
       if (!form || !form.closest("[data-student-dashboard-shell]")) return
       const submitter = event.submitter instanceof HTMLElement ? event.submitter : null
       const label = labelFromSubmitter(submitter)
-      pendingStartedAt.current = Date.now()
       show({
         type: "loading",
         title: `${label} in progress`,
@@ -116,13 +114,7 @@ export function StudentActionToaster() {
         }
         if (attempts >= 24) {
           window.clearInterval(timer)
-          if (Date.now() - pendingStartedAt.current > 900) {
-            show({
-              type: "success",
-              title: `${label} submitted`,
-              message: "The dashboard has received the action."
-            })
-          }
+          setToast((current) => (current?.type === "loading" ? null : current))
         }
       }, 250)
     }

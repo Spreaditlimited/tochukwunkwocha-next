@@ -112,7 +112,7 @@ export default async function StudentDashboardPage() {
                 </div>
               ) : (
                 <EmptyStudentState
-                  icon={BookOpen}
+                  icon="book"
                   title="No course access yet"
                   description="Your paid courses and pending manual verifications will appear here once they are connected to this email address."
                   action={<Link href="/courses" className="btn-primary">Explore Courses</Link>}

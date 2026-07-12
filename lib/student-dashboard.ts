@@ -217,6 +217,15 @@ export interface StudentCertificateRow {
   certificateUrl: string
 }
 
+export interface StudentCertificatePublic {
+  certificateNo: string
+  issuedAt: string | null
+  courseSlug: string
+  courseName: string
+  studentName: string
+  studentEmail: string
+}
+
 export interface StudentAffiliateSummary {
   profile: {
     profileUuid: string
@@ -303,40 +312,38 @@ export async function listStudentCourseAccess(email: string): Promise<StudentCou
   const normalized = String(email || "").trim().toLowerCase()
   if (!normalized) return []
 
-  const [cardRows, manualRows] = await Promise.all([
-    prisma.$queryRaw<StudentCourseAccessRow[]>(
-      Prisma.sql`
-        SELECT
-          'card_checkout' AS source,
-          COALESCE(order_uuid, CONCAT('order_', id)) AS uuid,
-          COALESCE(course_slug, '') AS courseSlug,
-          batch_key AS batchKey,
-          batch_label AS batchLabel,
-          currency,
-          COALESCE(amount_minor, final_amount_minor, 0) AS amountMinor,
-          COALESCE(status, '') AS status,
-          created_at AS createdAt
-        FROM course_orders
-        WHERE LOWER(email) = ${normalized}
-      `
-    ),
-    prisma.$queryRaw<StudentCourseAccessRow[]>(
-      Prisma.sql`
-        SELECT
-          'manual_payment' AS source,
-          payment_uuid AS uuid,
-          course_slug AS courseSlug,
-          batch_key AS batchKey,
-          batch_label AS batchLabel,
-          currency,
-          amount_minor AS amountMinor,
-          status,
-          created_at AS createdAt
-        FROM course_manual_payments
-        WHERE LOWER(email) = ${normalized}
-      `
-    )
-  ])
+  const cardRows = await prisma.$queryRaw<StudentCourseAccessRow[]>(
+    Prisma.sql`
+      SELECT
+        'card_checkout' AS source,
+        COALESCE(order_uuid, CONCAT('order_', id)) AS uuid,
+        COALESCE(course_slug, '') AS courseSlug,
+        batch_key AS batchKey,
+        batch_label AS batchLabel,
+        currency,
+        COALESCE(amount_minor, final_amount_minor, 0) AS amountMinor,
+        COALESCE(status, '') AS status,
+        created_at AS createdAt
+      FROM course_orders
+      WHERE LOWER(email) = ${normalized}
+    `
+  )
+  const manualRows = await prisma.$queryRaw<StudentCourseAccessRow[]>(
+    Prisma.sql`
+      SELECT
+        'manual_payment' AS source,
+        payment_uuid AS uuid,
+        course_slug AS courseSlug,
+        batch_key AS batchKey,
+        batch_label AS batchLabel,
+        currency,
+        amount_minor AS amountMinor,
+        status,
+        created_at AS createdAt
+      FROM course_manual_payments
+      WHERE LOWER(email) = ${normalized}
+    `
+  )
 
   return [...cardRows, ...manualRows]
     .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())
@@ -402,13 +409,11 @@ export async function listStudentCourses(email: string): Promise<StudentCourseIt
 }
 
 export async function getStudentOverview(accountId: bigint, email: string) {
-  const [courses, family, domains, projects, businessPlans] = await Promise.all([
-    listStudentCourses(email),
-    getFamilyDashboard(accountId).catch(() => ({ family: null, seats: [], children: [] })),
-    listStudentDomains(accountId).catch(() => []),
-    listStudentProjects(email).catch(() => []),
-    listStudentBusinessPlans(email).catch(() => [])
-  ])
+  const courses = await listStudentCourses(email)
+  const family = await getFamilyDashboard(accountId).catch(() => ({ family: null, seats: [], children: [] }))
+  const domains = await listStudentDomains(accountId).catch(() => [])
+  const projects = await listStudentProjects(email).catch(() => [])
+  const businessPlans = await listStudentBusinessPlans(email).catch(() => [])
 
   return {
     courses,
@@ -445,43 +450,41 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
   const family = families[0]
   if (!family) return { family: null, seats: [], children: [] }
 
-  const [children, seats] = await Promise.all([
-    prisma.$queryRaw<FamilyChildRow[]>(Prisma.sql`
-      SELECT
-        CAST(c.id AS SIGNED) AS childId,
-        COALESCE(c.child_uuid, '') AS childUuid,
-        COALESCE(c.full_name, '') AS fullName,
-        COALESCE(c.age, '') AS age,
-        COALESCE(c.class_level, '') AS classLevel,
-        COALESCE(c.email, '') AS email,
-        COALESCE(c.access_code, '') AS accessCode,
-        COALESCE(c.status, '') AS status,
-        COALESCE(e.course_slug, '') AS courseSlug,
-        e.batch_key AS batchKey,
-        e.batch_label AS batchLabel,
-        COALESCE(e.status, '') AS enrollmentStatus,
-        e.paid_at AS paidAt
-      FROM family_children c
-      LEFT JOIN family_child_enrollments e ON e.child_id = c.id
-      WHERE c.family_id = ${family.id}
-        AND c.parent_account_id = ${parentAccountId}
-      ORDER BY c.id ASC, e.id ASC
-    `),
-    prisma.$queryRaw<FamilySeatRow[]>(Prisma.sql`
-      SELECT
-        COALESCE(course_slug, '') AS courseSlug,
-        batch_key AS batchKey,
-        batch_label AS batchLabel,
-        CAST(COALESCE(seats_purchased, 0) AS SIGNED) AS seatsPurchased,
-        CAST(COALESCE(seats_consumed, 0) AS SIGNED) AS seatsUsed,
-        CAST(GREATEST(0, COALESCE(seats_purchased, 0) - COALESCE(seats_consumed, 0)) AS SIGNED) AS seatsAvailable,
-        '' AS paymentProvider,
-        '' AS paymentCurrency
-      FROM family_seat_balances
-      WHERE family_id = ${family.id}
-      ORDER BY course_slug ASC, batch_label ASC, batch_key ASC
-    `)
-  ])
+  const children = await prisma.$queryRaw<FamilyChildRow[]>(Prisma.sql`
+    SELECT
+      CAST(c.id AS SIGNED) AS childId,
+      COALESCE(c.child_uuid, '') AS childUuid,
+      COALESCE(c.full_name, '') AS fullName,
+      COALESCE(c.age, '') AS age,
+      COALESCE(c.class_level, '') AS classLevel,
+      COALESCE(c.email, '') AS email,
+      COALESCE(c.access_code, '') AS accessCode,
+      COALESCE(c.status, '') AS status,
+      COALESCE(e.course_slug, '') AS courseSlug,
+      e.batch_key AS batchKey,
+      e.batch_label AS batchLabel,
+      COALESCE(e.status, '') AS enrollmentStatus,
+      e.paid_at AS paidAt
+    FROM family_children c
+    LEFT JOIN family_child_enrollments e ON e.child_id = c.id
+    WHERE c.family_id = ${family.id}
+      AND c.parent_account_id = ${parentAccountId}
+    ORDER BY c.id ASC, e.id ASC
+  `)
+  const seats = await prisma.$queryRaw<FamilySeatRow[]>(Prisma.sql`
+    SELECT
+      COALESCE(course_slug, '') AS courseSlug,
+      batch_key AS batchKey,
+      batch_label AS batchLabel,
+      CAST(COALESCE(seats_purchased, 0) AS SIGNED) AS seatsPurchased,
+      CAST(COALESCE(seats_consumed, 0) AS SIGNED) AS seatsUsed,
+      CAST(GREATEST(0, COALESCE(seats_purchased, 0) - COALESCE(seats_consumed, 0)) AS SIGNED) AS seatsAvailable,
+      '' AS paymentProvider,
+      '' AS paymentCurrency
+    FROM family_seat_balances
+    WHERE family_id = ${family.id}
+    ORDER BY course_slug ASC, batch_label ASC, batch_key ASC
+  `)
 
   return {
     family: {
@@ -791,6 +794,45 @@ export async function listStudentCertificates(accountId: bigint): Promise<Studen
     .sort((a, b) => new Date(b.issuedAt || 0).getTime() - new Date(a.issuedAt || 0).getTime())
 }
 
+export async function getStudentCertificatePublic(certificateNo: string): Promise<StudentCertificatePublic | null> {
+  const certNo = cleanText(certificateNo, 140).toUpperCase()
+  if (!certNo) return null
+  const rows = await prisma.$queryRaw<
+    Array<{
+      certificateNo: string | null
+      recipientName: string | null
+      issuedAt: Date | null
+      courseSlug: string | null
+      studentName: string | null
+      studentEmail: string | null
+    }>
+  >(Prisma.sql`
+    SELECT
+      c.certificate_no AS certificateNo,
+      c.recipient_name AS recipientName,
+      c.issued_at AS issuedAt,
+      c.course_slug AS courseSlug,
+      a.full_name AS studentName,
+      a.email AS studentEmail
+    FROM student_certificates c
+    JOIN student_accounts a ON a.id = c.account_id
+    WHERE c.certificate_no COLLATE utf8mb4_unicode_ci = ${certNo} COLLATE utf8mb4_unicode_ci
+      AND c.status = 'issued'
+    LIMIT 1
+  `)
+  const row = rows[0]
+  if (!row) return null
+  const courseSlug = cleanText(row.courseSlug, 120)
+  return {
+    certificateNo: cleanText(row.certificateNo, 140),
+    issuedAt: row.issuedAt ? row.issuedAt.toISOString() : null,
+    courseSlug,
+    courseName: courseName(courseSlug),
+    studentName: cleanText(row.recipientName || row.studentName, 180),
+    studentEmail: cleanText(row.studentEmail, 220)
+  }
+}
+
 export async function getStudentAffiliateSummary(accountId: bigint): Promise<StudentAffiliateSummary> {
   const defaultPolicy = {
     defaultHoldDays: defaultAffiliateHoldDays(),
@@ -922,97 +964,95 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
   }
   const minSeats = policy.schoolProgram.minSeats
 
-  const [earningsRows, referrals, payoutAccounts, payouts, eligibleCourses] = await Promise.all([
-    prisma.$queryRaw<
-      {
-        earnedMinor: number
-        pendingMinor: number
-        approvedMinor: number
-        paidMinor: number
-        blockedMinor: number
-        currency: string | null
-        totalCount: number
-      }[]
-    >(Prisma.sql`
-      SELECT
-        CAST(COALESCE(SUM(commission_amount_minor), 0) AS SIGNED) AS earnedMinor,
-        CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS pendingMinor,
-        CAST(COALESCE(SUM(CASE WHEN status = 'approved' THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS approvedMinor,
-        CAST(COALESCE(SUM(CASE WHEN status = 'paid' THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS paidMinor,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('blocked','reversed') THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS blockedMinor,
-        COALESCE(MAX(currency), 'NGN') AS currency,
-        CAST(COUNT(*) AS SIGNED) AS totalCount
-      FROM tochukwu_affiliate_commissions
-      WHERE affiliate_profile_id = ${profile.id}
-    `),
-    prisma.$queryRaw<StudentAffiliateSummary["referrals"]>(Prisma.sql`
-      SELECT
-        commission_uuid AS commissionUuid,
-        COALESCE(order_uuid, '') AS orderUuid,
-        COALESCE(course_slug, '') AS courseSlug,
-        COALESCE(buyer_email, '') AS buyerEmail,
-        COALESCE(buyer_email, '') AS buyerEmailMasked,
-        COALESCE(currency, 'NGN') AS currency,
-        CAST(COALESCE(order_amount_minor, 0) AS SIGNED) AS orderAmountMinor,
-        CAST(COALESCE(commission_amount_minor, 0) AS SIGNED) AS commissionAmountMinor,
-        COALESCE(status, '') AS status,
-        created_at AS createdAt
-      FROM tochukwu_affiliate_commissions
-      WHERE affiliate_profile_id = ${profile.id}
-      ORDER BY created_at DESC
-      LIMIT 100
-    `),
-    prisma.$queryRaw<NonNullable<StudentAffiliateSummary["profile"]>["payoutAccount"][]>(Prisma.sql`
-      SELECT
-        COALESCE(country_code, '') AS countryCode,
-        COALESCE(currency, '') AS currency,
-        COALESCE(payout_provider, '') AS payoutProvider,
-        COALESCE(account_name, '') AS accountName,
-        COALESCE(bank_code, '') AS bankCode,
-        COALESCE(bank_name, '') AS bankName,
-        COALESCE(account_number_masked, '') AS accountNumberMasked,
-        COALESCE(is_verified, 0) AS isVerified
-      FROM tochukwu_affiliate_payout_accounts
-      WHERE affiliate_profile_id = ${profile.id}
-        AND status = 'active'
-      ORDER BY id DESC
-      LIMIT 1
-    `).catch(() => []),
-    prisma.$queryRaw<StudentAffiliateSummary["payouts"]>(Prisma.sql`
-      SELECT
-        COALESCE(b.batch_uuid, '') AS batchUuid,
-        b.period_start AS periodStart,
-        b.period_end AS periodEnd,
-        COALESCE(b.currency, 'NGN') AS currency,
-        CAST(COALESCE(b.total_items, 0) AS SIGNED) AS totalItems,
-        CAST(COALESCE(b.total_amount_minor, 0) AS SIGNED) AS totalAmountMinor,
-        COALESCE(b.status, '') AS status,
-        b.created_at AS createdAt,
-        b.completed_at AS completedAt
-      FROM tochukwu_affiliate_payout_batches b
-      JOIN tochukwu_affiliate_payout_items i ON i.payout_batch_id = b.id
-      WHERE i.affiliate_profile_id = ${profile.id}
-      GROUP BY b.id
-      ORDER BY b.id DESC
-      LIMIT 30
-    `).catch(() => []),
-    prisma.$queryRaw<StudentAffiliateSummary["eligibleCourses"]>(Prisma.sql`
-      SELECT
-        COALESCE(course_slug, '') AS courseSlug,
-        COALESCE(commission_type, '') AS commissionType,
-        CAST(COALESCE(commission_value, 0) AS SIGNED) AS commissionValue,
-        COALESCE(commission_currency, 'NGN') AS commissionCurrency,
-        CAST(COALESCE(min_order_amount_minor, 0) AS SIGNED) AS minOrderAmountMinor,
-        CAST(COALESCE(hold_days, ${policy.defaultHoldDays}) AS SIGNED) AS holdDays,
-        CAST(0 AS SIGNED) AS projectedMinCommissionMinor,
-        CAST(0 AS SIGNED) AS projectedMinSeats
-      FROM tochukwu_affiliate_course_rules
-      WHERE is_affiliate_eligible = 1
-        AND (starts_at IS NULL OR starts_at <= NOW())
-        AND (ends_at IS NULL OR ends_at >= NOW())
-      ORDER BY course_slug ASC
-    `).catch(() => [])
-  ])
+  const earningsRows = await prisma.$queryRaw<
+    {
+      earnedMinor: number
+      pendingMinor: number
+      approvedMinor: number
+      paidMinor: number
+      blockedMinor: number
+      currency: string | null
+      totalCount: number
+    }[]
+  >(Prisma.sql`
+    SELECT
+      CAST(COALESCE(SUM(commission_amount_minor), 0) AS SIGNED) AS earnedMinor,
+      CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS pendingMinor,
+      CAST(COALESCE(SUM(CASE WHEN status = 'approved' THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS approvedMinor,
+      CAST(COALESCE(SUM(CASE WHEN status = 'paid' THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS paidMinor,
+      CAST(COALESCE(SUM(CASE WHEN status IN ('blocked','reversed') THEN commission_amount_minor ELSE 0 END), 0) AS SIGNED) AS blockedMinor,
+      COALESCE(MAX(currency), 'NGN') AS currency,
+      CAST(COUNT(*) AS SIGNED) AS totalCount
+    FROM tochukwu_affiliate_commissions
+    WHERE affiliate_profile_id = ${profile.id}
+  `)
+  const referrals = await prisma.$queryRaw<StudentAffiliateSummary["referrals"]>(Prisma.sql`
+    SELECT
+      commission_uuid AS commissionUuid,
+      COALESCE(order_uuid, '') AS orderUuid,
+      COALESCE(course_slug, '') AS courseSlug,
+      COALESCE(buyer_email, '') AS buyerEmail,
+      COALESCE(buyer_email, '') AS buyerEmailMasked,
+      COALESCE(currency, 'NGN') AS currency,
+      CAST(COALESCE(order_amount_minor, 0) AS SIGNED) AS orderAmountMinor,
+      CAST(COALESCE(commission_amount_minor, 0) AS SIGNED) AS commissionAmountMinor,
+      COALESCE(status, '') AS status,
+      created_at AS createdAt
+    FROM tochukwu_affiliate_commissions
+    WHERE affiliate_profile_id = ${profile.id}
+    ORDER BY created_at DESC
+    LIMIT 100
+  `)
+  const payoutAccounts = await prisma.$queryRaw<NonNullable<StudentAffiliateSummary["profile"]>["payoutAccount"][]>(Prisma.sql`
+    SELECT
+      COALESCE(country_code, '') AS countryCode,
+      COALESCE(currency, '') AS currency,
+      COALESCE(payout_provider, '') AS payoutProvider,
+      COALESCE(account_name, '') AS accountName,
+      COALESCE(bank_code, '') AS bankCode,
+      COALESCE(bank_name, '') AS bankName,
+      COALESCE(account_number_masked, '') AS accountNumberMasked,
+      COALESCE(is_verified, 0) AS isVerified
+    FROM tochukwu_affiliate_payout_accounts
+    WHERE affiliate_profile_id = ${profile.id}
+      AND status = 'active'
+    ORDER BY id DESC
+    LIMIT 1
+  `).catch(() => [])
+  const payouts = await prisma.$queryRaw<StudentAffiliateSummary["payouts"]>(Prisma.sql`
+    SELECT
+      COALESCE(b.batch_uuid, '') AS batchUuid,
+      b.period_start AS periodStart,
+      b.period_end AS periodEnd,
+      COALESCE(b.currency, 'NGN') AS currency,
+      CAST(COALESCE(b.total_items, 0) AS SIGNED) AS totalItems,
+      CAST(COALESCE(b.total_amount_minor, 0) AS SIGNED) AS totalAmountMinor,
+      COALESCE(b.status, '') AS status,
+      b.created_at AS createdAt,
+      b.completed_at AS completedAt
+    FROM tochukwu_affiliate_payout_batches b
+    JOIN tochukwu_affiliate_payout_items i ON i.payout_batch_id = b.id
+    WHERE i.affiliate_profile_id = ${profile.id}
+    GROUP BY b.id
+    ORDER BY b.id DESC
+    LIMIT 30
+  `).catch(() => [])
+  const eligibleCourses = await prisma.$queryRaw<StudentAffiliateSummary["eligibleCourses"]>(Prisma.sql`
+    SELECT
+      COALESCE(course_slug, '') AS courseSlug,
+      COALESCE(commission_type, '') AS commissionType,
+      CAST(COALESCE(commission_value, 0) AS SIGNED) AS commissionValue,
+      COALESCE(commission_currency, 'NGN') AS commissionCurrency,
+      CAST(COALESCE(min_order_amount_minor, 0) AS SIGNED) AS minOrderAmountMinor,
+      CAST(COALESCE(hold_days, ${policy.defaultHoldDays}) AS SIGNED) AS holdDays,
+      CAST(0 AS SIGNED) AS projectedMinCommissionMinor,
+      CAST(0 AS SIGNED) AS projectedMinSeats
+    FROM tochukwu_affiliate_course_rules
+    WHERE is_affiliate_eligible = 1
+      AND (starts_at IS NULL OR starts_at <= NOW())
+      AND (ends_at IS NULL OR ends_at >= NOW())
+    ORDER BY course_slug ASC
+  `).catch(() => [])
 
   const earnings = earningsRows[0]
   const affiliateCode = profile.affiliateCode || ""

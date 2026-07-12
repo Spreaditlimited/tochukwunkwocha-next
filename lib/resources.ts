@@ -1,13 +1,12 @@
 import crypto from "crypto"
 
 import { prisma } from "@/lib/prisma"
+import { createResourceDownloadToken } from "@/lib/resource-download-token"
 import { slugify } from "@/lib/utils"
 
 export const resourceTypes = [
   { key: "video", label: "Video" },
-  { key: "prompt", label: "Prompt" },
-  { key: "download", label: "Download" },
-  { key: "guide", label: "Guide" }
+  { key: "prompt", label: "Prompt" }
 ] as const
 
 export const resourceAccessTypes = [
@@ -25,7 +24,47 @@ export const resourceAudiences = [
   { key: "non-technical-founders", label: "Non-Technical Founders", description: "Resources for validating, planning, prototyping, and building digital products with AI." },
   { key: "children-ai-safety", label: "Children & AI Safety", description: "Age-aware resources for safe, productive, and supervised AI learning for children." },
   { key: "building-real-projects", label: "Building Real Projects", description: "Practical project-based resources for websites, software, dashboards, and useful digital tools." },
-  { key: "governments-public-institutions", label: "Governments & Public Institutions", description: "AI productivity, service delivery, policy, training, and responsible adoption resources for public-sector teams." }
+  { key: "governments-public-institutions", label: "Governments & Public Institutions", description: "AI productivity, service delivery, policy, training, and responsible adoption resources for public-sector teams." },
+  { key: "university-students", label: "University Students", description: "Prompts for coursework, research, presentations, study planning, and career preparation." },
+  { key: "polytechnic-students", label: "Polytechnic Students", description: "Prompts for practical assignments, projects, technical reports, and workplace readiness." },
+  { key: "undergraduates-final-year", label: "Final-Year Students", description: "Prompts for final-year projects, research structure, presentations, and defense preparation." },
+  { key: "postgraduate-researchers", label: "Postgraduate Researchers", description: "Prompts for research planning, literature review, methodology, and academic writing support." },
+  { key: "lecturers-academics", label: "Lecturers & Academics", description: "Prompts for lecture planning, research supervision, assessment, feedback, and publication workflows." },
+  { key: "school-administrators", label: "School Administrators", description: "Prompts for school operations, records, parent communication, staff coordination, and reporting." },
+  { key: "private-tutors", label: "Private Tutors", description: "Prompts for lesson planning, learner diagnosis, parent updates, worksheets, and revision support." },
+  { key: "online-course-creators", label: "Online Course Creators", description: "Prompts for course outlines, lesson scripts, exercises, sales pages, and learner engagement." },
+  { key: "corporate-trainers", label: "Corporate Trainers", description: "Prompts for training design, facilitation guides, exercises, assessments, and learner follow-up." },
+  { key: "hr-professionals", label: "HR Professionals", description: "Prompts for job descriptions, onboarding, staff communication, policies, and performance support." },
+  { key: "customer-support-teams", label: "Customer Support Teams", description: "Prompts for support replies, escalation notes, knowledge base articles, and complaint handling." },
+  { key: "sales-professionals", label: "Sales Professionals", description: "Prompts for prospecting, follow-up, objections, proposals, and customer relationship management." },
+  { key: "marketers", label: "Marketers", description: "Prompts for campaign planning, content ideas, audience research, copy review, and reporting." },
+  { key: "social-media-managers", label: "Social Media Managers", description: "Prompts for content calendars, captions, community replies, analytics, and campaign ideas." },
+  { key: "content-creators", label: "Content Creators", description: "Prompts for video ideas, scripts, hooks, captions, repurposing, and publishing consistency." },
+  { key: "youtube-creators", label: "YouTube Creators", description: "Prompts for video strategy, titles, thumbnails, scripts, outlines, and audience retention." },
+  { key: "tiktok-instagram-creators", label: "TikTok & Instagram Creators", description: "Prompts for short-form hooks, scripts, series ideas, captions, and content batching." },
+  { key: "writers-bloggers", label: "Writers & Bloggers", description: "Prompts for article planning, editing, research angles, headlines, and content improvement." },
+  { key: "designers-creatives", label: "Designers & Creatives", description: "Prompts for briefs, concepts, client communication, portfolio stories, and creative direction." },
+  { key: "software-developers", label: "Software Developers", description: "Prompts for debugging, architecture thinking, documentation, code review, and feature planning." },
+  { key: "product-managers", label: "Product Managers", description: "Prompts for product strategy, user stories, roadmaps, discovery, and stakeholder communication." },
+  { key: "data-analysts", label: "Data Analysts", description: "Prompts for data cleaning, analysis plans, dashboard narratives, SQL help, and insight communication." },
+  { key: "lawyers-legal-teams", label: "Lawyers & Legal Teams", description: "Prompts for drafting support, research organization, client communication, and document review workflows." },
+  { key: "accountants-finance-teams", label: "Accountants & Finance Teams", description: "Prompts for reporting, reconciliation notes, client explanations, budgeting, and finance communication." },
+  { key: "healthcare-administrators", label: "Healthcare Administrators", description: "Prompts for patient communication, operations, staff notes, training materials, and admin workflows." },
+  { key: "ngo-nonprofit-teams", label: "NGO & Nonprofit Teams", description: "Prompts for grant writing, impact reporting, donor communication, programme design, and field operations." },
+  { key: "grant-writers", label: "Grant Writers", description: "Prompts for proposals, needs statements, impact frameworks, budgets, and donor reporting." },
+  { key: "church-ministry-teams", label: "Church & Ministry Teams", description: "Prompts for communication, volunteer coordination, teaching outlines, events, and media planning." },
+  { key: "event-planners", label: "Event Planners", description: "Prompts for event briefs, vendor communication, schedules, checklists, and client updates." },
+  { key: "real-estate-professionals", label: "Real Estate Professionals", description: "Prompts for property descriptions, client follow-up, listing content, viewing scripts, and market education." },
+  { key: "farmers-agribusiness", label: "Farmers & Agribusiness", description: "Prompts for farm planning, customer education, record keeping, marketing, and operations." },
+  { key: "ecommerce-sellers", label: "Ecommerce Sellers", description: "Prompts for product pages, customer replies, offers, reviews, and store operations." },
+  { key: "import-export-traders", label: "Import & Export Traders", description: "Prompts for supplier communication, product research, customer education, and trading workflows." },
+  { key: "freelancers-consultants", label: "Freelancers & Consultants", description: "Prompts for proposals, client onboarding, project scopes, reporting, and service packaging." },
+  { key: "executives-managers", label: "Executives & Managers", description: "Prompts for decision briefs, meeting summaries, delegation, strategy notes, and team communication." },
+  { key: "personal-productivity", label: "Personal Productivity", description: "Prompts for planning, prioritization, habit building, reflection, and everyday decision support." },
+  { key: "diaspora-professionals", label: "Diaspora Professionals", description: "Prompts for cross-border work, relocation planning, professional communication, and African market context." },
+  { key: "civil-servants", label: "Civil Servants", description: "Prompts for memos, public communication, policy notes, reporting, and responsible productivity." },
+  { key: "local-government-officers", label: "Local Government Officers", description: "Prompts for citizen communication, service documentation, meeting notes, and local programme planning." },
+  { key: "ai-beginners", label: "AI Beginners", description: "Prompts for learning AI basics, practicing safely, asking better questions, and building confidence." }
 ] as const
 
 export const resourceCategories = [
@@ -39,7 +78,7 @@ export const resourceCategories = [
   { key: "public-sector", label: "Public Sector" }
 ] as const
 
-export type ResourceType = typeof resourceTypes[number]["key"]
+export type ResourceType = typeof resourceTypes[number]["key"] | "download" | "guide"
 export type ResourceAccessType = typeof resourceAccessTypes[number]["key"] | "paid" | "bundle_only"
 
 export type ResourceRow = {
@@ -430,11 +469,14 @@ export async function listAdminResources(search = "") {
   return rows.map(rowToResource)
 }
 
-export async function listPublishedResources(input: { type?: string; audience?: string; limit?: number } = {}) {
+export async function listPublishedResources(input: { type?: string; audience?: string; category?: string; search?: string; limit?: number } = {}) {
   await ensureResourceTables()
   const type = clean(input.type, 40)
   const audience = clean(input.audience, 80)
-  const limit = Math.min(100, Math.max(1, input.limit || 36))
+  const category = clean(input.category, 80)
+  const search = clean(input.search, 120)
+  const q = `%${search}%`
+  const limit = Math.min(300, Math.max(1, input.limit || 36))
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT id, resource_uuid AS resourceUuid, resource_type AS resourceType, audience_key AS audienceKey, category_key AS categoryKey,
       title, slug, summary, body_content AS bodyContent, prompt_text AS promptText, use_case_text AS useCaseText,
@@ -445,7 +487,10 @@ export async function listPublishedResources(input: { type?: string; audience?: 
     FROM tochukwu_resources
     WHERE status = 'published'
       AND (${type} = '' OR resource_type = ${type})
+      AND (${type} <> '' OR resource_type IN ('prompt', 'video'))
       AND (${audience} = '' OR audience_key = ${audience})
+      AND (${category} = '' OR category_key = ${category})
+      AND (${search} = '' OR title LIKE ${q} OR summary LIKE ${q} OR body_content LIKE ${q} OR prompt_text LIKE ${q} OR use_case_text LIKE ${q} OR customization_notes LIKE ${q})
     ORDER BY featured DESC, published_at DESC, updated_at DESC
     LIMIT ${limit}
   `
@@ -639,20 +684,25 @@ function resourceGenerationPrompt(input: {
   return [
     "Create a practical AI education resource for Tochukwu Tech and AI Academy.",
     "Context: The academy serves Nigerian and African learners, parents, teachers, school owners, job seekers, business owners, founders, children/safety audiences, project builders, and public-sector teams.",
-    "The content must be practical, local, outcome-based, and suitable for a premium paid-quality resource library. Do not produce shallow blog filler, generic AI advice, or thin checklist copy.",
+    "The resource library now has only two active resource types: prompt and video. Do not create guides, downloads, worksheets, toolkits, or long generic articles.",
+    "The content must be practical, local, outcome-based, and suitable for a premium AI education library. Do not produce shallow filler, generic AI advice, or thin checklist copy.",
+    "Do not use a reusable universal structure that could apply to every audience. The sections, examples, scenarios, risks, prompts, and implementation steps must clearly belong to the selected audience and topic.",
+    "Before writing, anchor the resource in the reader's real environment: Nigerian school calendar, WAEC/JAMB pressure, parent-child home rules, classroom workload, school admissions, NYSC/job search, WhatsApp commerce, founder validation, child safety, project building, or public-sector governance as appropriate.",
+    "Every section must contain audience-specific details. If a paragraph would still make sense after replacing the audience with another audience, rewrite it.",
+    "Use concrete examples, sample scripts, decision checklists, daily routines, mistakes, and review questions that match the audience. Avoid generic statements like 'AI can improve productivity' unless immediately tied to the audience's real work.",
     "Write directly to the reader in second person. Use you, your, and we where appropriate. Do not write the main content in distant third person such as 'the learner can', 'the user should', 'students can', or 'they should'.",
     "Keep voice consistent from beginning to end. If the resource is for WAEC/JAMB learners, speak to the student as 'you'. If a section is for parents, speak to the parent as 'you'.",
-    "Every full resource must be premium and substantial: at least 1,000 words for bodyContent, with clear sections, local Nigerian context, examples, practical routines, safety guidance, and implementation steps.",
-    "For prompt resources, include 10-20 prompt approaches from different angles, not one thin prompt. Explain when to use the prompt pack and how to review outputs.",
-    "Quality bar: the reader should be able to apply the resource immediately without needing another article to understand what to do next.",
+    "For prompt resources, identify one clear work area for the audience, then include 5-10 strong reusable prompts for that area. Each prompt must be immediately usable inside an AI tool.",
+    "For video resources, create a strong title, summary, short video outline, and practical notes. Do not invent a video URL.",
+    "Quality bar: the reader should feel this was written for their exact situation and should be able to apply it immediately without needing another article to understand what to do next.",
     "Return only valid JSON. Do not include markdown fences.",
     "",
     "Required JSON shape:",
     "{",
     '  "title": "max 90 chars",',
     '  "summary": "max 220 chars",',
-    '  "bodyContent": "plain text long-form guide content, at least 1000 words for complete resources",',
-    '  "promptText": "10-20 actual reusable prompt approaches if resource type is prompt, otherwise empty string",',
+    '  "bodyContent": "short context, video outline, or usage notes; not a long guide",',
+    '  "promptText": "5-10 actual reusable prompts if resource type is prompt, otherwise empty string",',
     '  "useCaseText": "when and why to use this resource",',
     '  "customizationNotes": "how to adapt it to the user context",',
     '  "seoTitle": "max 70 chars",',
@@ -747,10 +797,14 @@ export async function captureResourceLead(input: {
   await ensureResourceTables()
   const email = clean(input.email, 190).toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.")
-  const rows = await prisma.$queryRaw<Array<{ brevoListId: number | bigint | null }>>`
-    SELECT brevo_list_id AS brevoListId FROM tochukwu_resources WHERE resource_uuid = ${clean(input.resourceUuid, 80)} LIMIT 1
+  const rows = await prisma.$queryRaw<Array<{ brevoListId: number | bigint | null; slug: string; accessType: string }>>`
+    SELECT brevo_list_id AS brevoListId, slug, access_type AS accessType
+    FROM tochukwu_resources
+    WHERE resource_uuid = ${clean(input.resourceUuid, 80)} AND status = 'published'
+    LIMIT 1
   `
   if (!rows.length) throw new Error("Resource not found.")
+  if (String(rows[0].accessType || "") !== "gated") throw new Error("This resource does not require unlock.")
   const now = new Date()
   const leadUuid = crypto.randomUUID()
   await prisma.$executeRaw`
@@ -761,5 +815,6 @@ export async function captureResourceLead(input: {
        ${clean(input.source, 100) || "resource_gate"}, ${clean(input.pageUrl, 2000) || null},
        ${clean(input.pathname, 500) || null}, ${Number(rows[0].brevoListId || 0) || null}, ${now}, ${now})
   `
-  return { leadUuid }
+  const token = createResourceDownloadToken({ slug: clean(rows[0].slug, 255), email })
+  return { leadUuid, downloadUrl: `/api/resources/${clean(rows[0].slug, 255)}/download?token=${encodeURIComponent(token)}` }
 }

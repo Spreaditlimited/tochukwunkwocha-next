@@ -201,7 +201,7 @@ export default async function StudentAffiliatePage() {
                 ) : (
                   <div className="p-8">
                     <EmptyStudentState 
-                      icon={Link2} 
+                      icon="link" 
                       title="No direct links yet" 
                       description="Eligible course links will appear when affiliate course rules are active." 
                     />
@@ -297,7 +297,7 @@ export default async function StudentAffiliatePage() {
                     No payout account is saved yet.
                   </div>
                 )}
-                <AffiliatePayoutSetup />
+                <AffiliatePayoutSetup initialAccount={profile.payoutAccount} />
               </div>
               
             </div>
@@ -345,7 +345,7 @@ export default async function StudentAffiliatePage() {
                 </table>
               ) : (
                 <div className="p-8">
-                  <EmptyStudentState icon={UsersRound} title="No eligible courses" description="Affiliate course rules have not been activated yet." />
+                  <EmptyStudentState icon="users" title="No eligible courses" description="Affiliate course rules have not been activated yet." />
                 </div>
               )}
             </div>
@@ -394,7 +394,7 @@ export default async function StudentAffiliatePage() {
                 </table>
               ) : (
                 <div className="p-8">
-                  <EmptyStudentState icon={Network} title="No referrals yet" description="Affiliate commissions connected to your profile will appear here." />
+                  <EmptyStudentState icon="network" title="No referrals yet" description="Affiliate commissions connected to your profile will appear here." />
                 </div>
               )}
             </div>
@@ -439,7 +439,7 @@ export default async function StudentAffiliatePage() {
                 </table>
               ) : (
                 <div className="p-8">
-                  <EmptyStudentState icon={Banknote} title="No payout history yet" description="Completed payout batches will appear here." />
+                  <EmptyStudentState icon="banknote" title="No payout history yet" description="Completed payout batches will appear here." />
                 </div>
               )}
             </div>
@@ -448,7 +448,7 @@ export default async function StudentAffiliatePage() {
         </div>
       ) : (
         <EmptyStudentState
-          icon={AlertTriangle}
+          icon="alert"
           title="Affiliate Profile Unavailable"
           description="We could not prepare your affiliate profile. Please ensure your student account is in good standing or contact support."
         />

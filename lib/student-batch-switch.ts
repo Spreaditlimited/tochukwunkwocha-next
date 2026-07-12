@@ -118,85 +118,83 @@ async function countEnrolledSeats(courseSlug: string, batchKey: string) {
 
 async function loadSwitchableEnrollments(account: { id: bigint; email: string; fullName: string }): Promise<SwitchItem[]> {
   const email = clean(account.email, 220).toLowerCase()
-  const [orders, manuals, families] = await Promise.all([
-    prisma.$queryRaw<Array<{
-      id: bigint
-      orderUuid: string | null
-      courseSlug: string
-      batchKey: string
-      batchLabel: string | null
-      firstName: string | null
-      email: string
-      phone: string | null
-      seatCount: bigint | number | null
-      brevoListId: string | null
-      batchStartAt: Date | null
-    }>>(Prisma.sql`
-      SELECT o.id, o.order_uuid AS orderUuid, o.course_slug AS courseSlug, o.batch_key AS batchKey,
-             o.batch_label AS batchLabel, o.first_name AS firstName, o.email, o.phone,
-             COALESCE(o.seat_count, 1) AS seatCount, b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt
-      FROM course_orders o
-      LEFT JOIN course_batches b
-        ON b.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
-       AND b.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
-      WHERE LOWER(o.email) COLLATE utf8mb4_unicode_ci = ${email} COLLATE utf8mb4_unicode_ci
-        AND o.status = 'paid'
-        AND COALESCE(o.buyer_type, 'student') <> 'family'
-        AND COALESCE(TRIM(o.batch_key), '') <> ''
-    `),
-    prisma.$queryRaw<Array<{
-      id: bigint
-      paymentUuid: string | null
-      courseSlug: string
-      batchKey: string
-      batchLabel: string | null
-      firstName: string | null
-      email: string
-      phone: string | null
-      seatCount: bigint | number | null
-      brevoListId: string | null
-      batchStartAt: Date | null
-    }>>(Prisma.sql`
-      SELECT m.id, m.payment_uuid AS paymentUuid, m.course_slug AS courseSlug, m.batch_key AS batchKey,
-             m.batch_label AS batchLabel, m.first_name AS firstName, m.email, m.phone,
-             COALESCE(m.seat_count, 1) AS seatCount, b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt
-      FROM course_manual_payments m
-      LEFT JOIN course_batches b
-        ON b.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
-       AND b.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
-      WHERE LOWER(m.email) COLLATE utf8mb4_unicode_ci = ${email} COLLATE utf8mb4_unicode_ci
-        AND m.status = 'approved'
-        AND COALESCE(m.buyer_type, 'student') <> 'family'
-        AND COALESCE(TRIM(m.batch_key), '') <> ''
-    `),
-    prisma.$queryRaw<Array<{
-      familyId: bigint
-      courseSlug: string
-      batchKey: string
-      batchLabel: string | null
-      seatsPurchased: bigint | number
-      seatsConsumed: bigint | number
-      brevoListId: string | null
-      batchStartAt: Date | null
-      parentName: string | null
-      parentEmail: string | null
-      parentPhone: string | null
-    }>>(Prisma.sql`
-      SELECT f.id AS familyId, s.course_slug AS courseSlug, s.batch_key AS batchKey, s.batch_label AS batchLabel,
-             s.seats_purchased AS seatsPurchased, s.seats_consumed AS seatsConsumed,
-             b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt,
-             f.parent_name AS parentName, f.parent_email AS parentEmail, f.parent_phone AS parentPhone
-      FROM family_accounts f
-      JOIN family_seat_balances s ON s.family_id = f.id
-      LEFT JOIN course_batches b
-        ON b.course_slug COLLATE utf8mb4_unicode_ci = s.course_slug COLLATE utf8mb4_unicode_ci
-       AND b.batch_key COLLATE utf8mb4_unicode_ci = s.batch_key COLLATE utf8mb4_unicode_ci
-      WHERE f.parent_account_id = ${account.id}
-        AND f.status = 'active'
-        AND COALESCE(TRIM(s.batch_key), '') <> ''
-        AND COALESCE(s.seats_purchased, 0) > 0
-    `).catch(() => [])
-  ])
+  const orders = await prisma.$queryRaw<Array<{
+    id: bigint
+    orderUuid: string | null
+    courseSlug: string
+    batchKey: string
+    batchLabel: string | null
+    firstName: string | null
+    email: string
+    phone: string | null
+    seatCount: bigint | number | null
+    brevoListId: string | null
+    batchStartAt: Date | null
+  }>>(Prisma.sql`
+    SELECT o.id, o.order_uuid AS orderUuid, o.course_slug AS courseSlug, o.batch_key AS batchKey,
+           o.batch_label AS batchLabel, o.first_name AS firstName, o.email, o.phone,
+           COALESCE(o.seat_count, 1) AS seatCount, b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt
+    FROM course_orders o
+    LEFT JOIN course_batches b
+      ON b.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
+     AND b.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
+    WHERE LOWER(o.email) COLLATE utf8mb4_unicode_ci = ${email} COLLATE utf8mb4_unicode_ci
+      AND o.status = 'paid'
+      AND COALESCE(o.buyer_type, 'student') <> 'family'
+      AND COALESCE(TRIM(o.batch_key), '') <> ''
+  `)
+  const manuals = await prisma.$queryRaw<Array<{
+    id: bigint
+    paymentUuid: string | null
+    courseSlug: string
+    batchKey: string
+    batchLabel: string | null
+    firstName: string | null
+    email: string
+    phone: string | null
+    seatCount: bigint | number | null
+    brevoListId: string | null
+    batchStartAt: Date | null
+  }>>(Prisma.sql`
+    SELECT m.id, m.payment_uuid AS paymentUuid, m.course_slug AS courseSlug, m.batch_key AS batchKey,
+           m.batch_label AS batchLabel, m.first_name AS firstName, m.email, m.phone,
+           COALESCE(m.seat_count, 1) AS seatCount, b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt
+    FROM course_manual_payments m
+    LEFT JOIN course_batches b
+      ON b.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
+     AND b.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
+    WHERE LOWER(m.email) COLLATE utf8mb4_unicode_ci = ${email} COLLATE utf8mb4_unicode_ci
+      AND m.status = 'approved'
+      AND COALESCE(m.buyer_type, 'student') <> 'family'
+      AND COALESCE(TRIM(m.batch_key), '') <> ''
+  `)
+  const families = await prisma.$queryRaw<Array<{
+    familyId: bigint
+    courseSlug: string
+    batchKey: string
+    batchLabel: string | null
+    seatsPurchased: bigint | number
+    seatsConsumed: bigint | number
+    brevoListId: string | null
+    batchStartAt: Date | null
+    parentName: string | null
+    parentEmail: string | null
+    parentPhone: string | null
+  }>>(Prisma.sql`
+    SELECT f.id AS familyId, s.course_slug AS courseSlug, s.batch_key AS batchKey, s.batch_label AS batchLabel,
+           s.seats_purchased AS seatsPurchased, s.seats_consumed AS seatsConsumed,
+           b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt,
+           f.parent_name AS parentName, f.parent_email AS parentEmail, f.parent_phone AS parentPhone
+    FROM family_accounts f
+    JOIN family_seat_balances s ON s.family_id = f.id
+    LEFT JOIN course_batches b
+      ON b.course_slug COLLATE utf8mb4_unicode_ci = s.course_slug COLLATE utf8mb4_unicode_ci
+     AND b.batch_key COLLATE utf8mb4_unicode_ci = s.batch_key COLLATE utf8mb4_unicode_ci
+    WHERE f.parent_account_id = ${account.id}
+      AND f.status = 'active'
+      AND COALESCE(TRIM(s.batch_key), '') <> ''
+      AND COALESCE(s.seats_purchased, 0) > 0
+  `).catch(() => [])
 
   return [
     ...orders.map((row): SwitchItem => ({

@@ -28,10 +28,8 @@ export const dynamic = "force-dynamic"
 
 export default async function StudentCoursesPage() {
   const session = await requireStudent()
-  const [courses, batchSwitchOptions] = await Promise.all([
-    listStudentCourses(session.account.email),
-    getBatchSwitchOptions(session.account)
-  ])
+  const courses = await listStudentCourses(session.account.email)
+  const batchSwitchOptions = await getBatchSwitchOptions(session.account)
   const batchSwitchEnrollments: BatchSwitchEnrollment[] = batchSwitchOptions.map((item) => ({
     sourceType: item.sourceType,
     sourceId: item.sourceId,
@@ -185,7 +183,7 @@ export default async function StudentCoursesPage() {
           </div>
         ) : (
           <EmptyStudentState
-            icon={BookOpen}
+            icon="book"
             title="No courses found"
             description="You do not have any paid or pending course records connected to this student account. Explore our curriculum to begin your learning journey."
             action={

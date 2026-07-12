@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Laptop, LockKeyhole, ShieldAlert, Smartphone, Trash2, UserRound } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 
 type Profile = {
@@ -78,6 +80,32 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
   // Loading states
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const ageBandOptions = [
+    { value: "", label: "Select age band" },
+    { value: "under-13", label: "Under 13" },
+    { value: "13-17", label: "13-17" },
+    { value: "18-24", label: "18-24" },
+    { value: "25-34", label: "25-34" },
+    { value: "35-44", label: "35-44" },
+    { value: "45-plus", label: "45+" }
+  ]
+  const genderOptions = [
+    { value: "", label: "Prefer not to say" },
+    { value: "female", label: "Female" },
+    { value: "male", label: "Male" },
+    { value: "non-binary", label: "Non-binary" }
+  ]
+  const learnerCategoryOptions = [
+    { value: "", label: "Select learner category" },
+    { value: "child-learner", label: "Child learner" },
+    { value: "secondary-school-student", label: "Secondary school student" },
+    { value: "higher-education-student", label: "Higher education student" },
+    { value: "job-seeker", label: "Job seeker" },
+    { value: "working-professional", label: "Working professional" },
+    { value: "business-owner", label: "Business owner" },
+    { value: "teacher-educator", label: "Teacher / educator" },
+    { value: "parent-guardian", label: "Parent / guardian" }
+  ]
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -187,9 +215,9 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
 
               <div className="rounded-xl border border-border bg-muted/20 p-5">
                 <div className="mb-5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Learning Demographics</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Learner Profile</p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Optional information used for impact reporting and grant applications. Do not enter child-identifying personal details here.
+                    The information below helps us understand our learner community, improve our programmes, and measure our impact across different demographics.
                   </p>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
@@ -213,50 +241,27 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Age Band</span>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    <PremiumPicker
                       value={profile.ageBand}
+                      options={ageBandOptions}
                       onChange={(event) => setProfile((current) => ({ ...current, ageBand: event.target.value }))}
-                    >
-                      <option value="">Select age band</option>
-                      <option value="under-13">Under 13</option>
-                      <option value="13-17">13-17</option>
-                      <option value="18-24">18-24</option>
-                      <option value="25-34">25-34</option>
-                      <option value="35-44">35-44</option>
-                      <option value="45-plus">45+</option>
-                    </select>
+                    />
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Gender</span>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    <PremiumPicker
                       value={profile.gender}
+                      options={genderOptions}
                       onChange={(event) => setProfile((current) => ({ ...current, gender: event.target.value }))}
-                    >
-                      <option value="">Prefer not to say</option>
-                      <option value="female">Female</option>
-                      <option value="male">Male</option>
-                      <option value="non-binary">Non-binary</option>
-                    </select>
+                    />
                   </label>
                   <label className="block sm:col-span-2">
                     <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Learner Category</span>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    <PremiumPicker
                       value={profile.learnerCategory}
+                      options={learnerCategoryOptions}
                       onChange={(event) => setProfile((current) => ({ ...current, learnerCategory: event.target.value }))}
-                    >
-                      <option value="">Select learner category</option>
-                      <option value="child-learner">Child learner</option>
-                      <option value="secondary-school-student">Secondary school student</option>
-                      <option value="higher-education-student">Higher education student</option>
-                      <option value="job-seeker">Job seeker</option>
-                      <option value="working-professional">Working professional</option>
-                      <option value="business-owner">Business owner</option>
-                      <option value="teacher-educator">Teacher / educator</option>
-                      <option value="parent-guardian">Parent / guardian</option>
-                    </select>
+                    />
                   </label>
                 </div>
               </div>
@@ -335,27 +340,24 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
           </div>
           <div className="p-6 sm:p-8">
             <form onSubmit={changePassword} className="grid gap-5">
-              <input 
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+              <PasswordField
+                inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                 name="currentPassword" 
-                type="password" 
                 placeholder="Current password" 
                 required 
                 autoComplete="current-password" 
               />
-              <input 
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+              <PasswordField
+                inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                 name="newPassword" 
-                type="password" 
                 minLength={8} 
                 placeholder="New password (min 8 characters)" 
                 required 
                 autoComplete="new-password" 
               />
-              <input 
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+              <PasswordField
+                inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                 name="confirmPassword" 
-                type="password" 
                 minLength={8} 
                 placeholder="Confirm new password" 
                 required 

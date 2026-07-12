@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 
 const COOKIE_NAME = "tochukwu_internal_toast"
+const EVENT_NAME = "tochukwu:internal-toast"
 
 type ToastType = "success" | "error" | "info" | "loading"
 
@@ -15,6 +16,11 @@ type Toast = {
   type: ToastType
   title: string
   message?: string
+}
+
+export function showInternalToast(input: Omit<Toast, "id">) {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: input }))
 }
 
 function readCookieToast() {
@@ -56,7 +62,6 @@ export function InternalActionToaster() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [toast, setToast] = useState<Toast | null>(null)
-  const pendingStartedAt = useRef(0)
   const idRef = useRef(1)
 
   function show(input: Omit<Toast, "id">) {
@@ -67,6 +72,17 @@ export function InternalActionToaster() {
     const fromCookie = readCookieToast()
     if (fromCookie) show(fromCookie)
   }, [pathname, searchParams])
+
+  useEffect(() => {
+    function onToast(event: Event) {
+      const detail = (event as CustomEvent<Omit<Toast, "id">>).detail
+      if (!detail?.title) return
+      show(detail)
+    }
+
+    window.addEventListener(EVENT_NAME, onToast)
+    return () => window.removeEventListener(EVENT_NAME, onToast)
+  }, [])
 
   useEffect(() => {
     if (!toast || toast.type === "loading") return
@@ -90,7 +106,6 @@ export function InternalActionToaster() {
       const submitter = event.submitter instanceof HTMLElement ? event.submitter : null
       const label = labelFromSubmitter(submitter)
       const maxAttempts = submitter?.getAttribute("data-toast-long") === "true" ? 1200 : 24
-      pendingStartedAt.current = Date.now()
       show({
         type: "loading",
         title: loadingTitle(label),
@@ -106,13 +121,7 @@ export function InternalActionToaster() {
         }
         if (attempts >= maxAttempts) {
           window.clearInterval(timer)
-          if (Date.now() - pendingStartedAt.current > 900) {
-            show({
-              type: "success",
-              title: `${label} submitted`,
-              message: "The dashboard received the request. Refresh this page if you do not see the final result."
-            })
-          }
+          setToast((current) => (current?.type === "loading" ? null : current))
         }
       }, 250)
     }

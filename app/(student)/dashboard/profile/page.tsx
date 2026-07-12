@@ -6,10 +6,8 @@ export const dynamic = "force-dynamic"
 
 export default async function StudentProfilePage() {
   const session = await requireStudent()
-  const [profile, security] = await Promise.all([
-    getStudentProfile(session.account.id),
-    listStudentSecurity(session.account.id, session.token)
-  ])
+  const profile = await getStudentProfile(session.account.id)
+  const security = await listStudentSecurity(session.account.id, session.token)
 
   return (
     <StudentDashboardShell 

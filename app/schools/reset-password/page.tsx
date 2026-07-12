@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, LockKeyhole, ShieldCheck } from "lucide-react"
 
+import { PasswordField } from "@/components/PasswordField"
 import { consumeSchoolAdminPasswordResetToken, createSchoolAdminSession } from "@/lib/school-auth"
 import { buildMetadata } from "@/lib/site-seo"
 
@@ -61,7 +62,7 @@ export default async function SchoolResetPasswordPage({
               <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                 <LockKeyhole className="h-3.5 w-3.5" /> New Password
               </span>
-              <input name="password" type="password" required minLength={8} placeholder="••••••••" autoComplete="new-password" className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" />
+              <PasswordField name="password" required minLength={8} placeholder="••••••••" autoComplete="new-password" inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" />
             </label>
             <button className="btn-primary mt-2 w-full px-8 py-3.5 text-base shadow-lg shadow-primary/20 disabled:pointer-events-none disabled:opacity-60" type="submit" disabled={!token}>Reset and sign in</button>
           </form>

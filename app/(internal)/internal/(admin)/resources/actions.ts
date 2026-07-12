@@ -13,7 +13,6 @@ export async function saveResourceAction(formData: FormData) {
   revalidatePath("/resources")
   revalidatePath("/resources/videos")
   revalidatePath("/resources/prompts")
-  revalidatePath("/resources/downloads")
   revalidatePath("/internal/resources")
   await setInternalToast({
     title: "Resource saved",
@@ -40,7 +39,7 @@ export async function generateResourceDraftAction(formData: FormData) {
   revalidatePath("/internal/resources")
   await setInternalToast({
     title: "Resource draft generated",
-    message: "Review the draft, add any media/download assets, then publish when ready."
+    message: "Review the draft, add prompt text or video media, then publish when ready."
   })
   redirect(`/internal/resources?generated=${resource.slug}`)
 }

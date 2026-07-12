@@ -1,8 +1,9 @@
 "use client"
 
-import { FormEvent, useState } from "react"
-import { AlertTriangle, Award, CheckCircle2, ChevronDown, Link2, Loader2, UserCheck } from "lucide-react"
+import { FormEvent, ReactNode, useState } from "react"
+import { AlertTriangle, Award, CheckCircle2, Link2, Loader2, UserCheck } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 
 type CourseOption = {
@@ -12,10 +13,12 @@ type CourseOption = {
 
 export function CertificateActionsPanel({
   certificateNameConfirmedAt,
-  courses
+  courses,
+  certificateContent
 }: {
   certificateNameConfirmedAt: string | null
   courses: CourseOption[]
+  certificateContent?: ReactNode
 }) {
   const [confirmedAt, setConfirmedAt] = useState(certificateNameConfirmedAt)
   const [courseSlug, setCourseSlug] = useState(courses[0]?.courseSlug || "")
@@ -70,11 +73,8 @@ export function CertificateActionsPanel({
     }
   }
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-      
-      {/* Name Confirmation Card */}
-      <div className="flex flex-col justify-between rounded-xl border border-border bg-background p-6 transition-colors hover:border-primary/20 sm:p-8">
+  const nameCard = (
+    <div className="flex flex-col justify-between rounded-xl border border-border bg-background p-6 transition-colors hover:border-primary/20 sm:p-8">
         <div>
           <div className="flex items-center gap-3">
             <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${confirmedAt ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-primary/10 text-primary'}`}>
@@ -111,9 +111,10 @@ export function CertificateActionsPanel({
           </button>
         </div>
       </div>
+  )
 
-      {/* Proof Submission Card */}
-      <form onSubmit={submitProof} className="flex flex-col justify-between rounded-xl border border-border bg-background p-6 transition-colors hover:border-primary/20 sm:p-8">
+  const proofCard = (
+    <form onSubmit={submitProof} className="flex flex-col justify-between rounded-xl border border-border bg-background p-6 transition-colors hover:border-primary/20 sm:p-8">
         <div>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -128,25 +129,12 @@ export function CertificateActionsPanel({
           <div className="mt-6 grid gap-5">
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Select Programme</span>
-              <div className="relative">
-                <select
-                  value={courseSlug}
-                  onChange={(event) => setCourseSlug(event.target.value)}
-                  className="w-full appearance-none rounded-md border border-input bg-background/50 py-3 pl-4 pr-10 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
-                  disabled={!courses.length || busy !== null}
-                >
-                  {courses.length ? (
-                    courses.map((course, index) => (
-                      <option key={`${course.courseSlug}-${index}`} value={course.courseSlug}>
-                        {course.courseName}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">No eligible courses found</option>
-                  )}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              </div>
+              <PremiumPicker
+                value={courseSlug}
+                onChange={(event) => setCourseSlug(event.target.value)}
+                options={courses.length ? courses.map((course, index) => ({ value: course.courseSlug, label: course.courseName, key: `${course.courseSlug}-${index}` })) : [{ value: "", label: "No eligible courses found" }]}
+                disabled={!courses.length || busy !== null}
+              />
             </label>
             
             <label className="block">
@@ -182,9 +170,10 @@ export function CertificateActionsPanel({
           )}
         </div>
       </form>
+  )
 
-      {/* Global Form Alerts */}
-      <div className="lg:col-span-2">
+  const alerts = (
+    <div>
         {message ? (
           <div className="flex items-start gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-600 dark:text-emerald-400 animate-in fade-in slide-in-from-bottom-2">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
@@ -199,7 +188,26 @@ export function CertificateActionsPanel({
           </div>
         ) : null}
       </div>
-      
+  )
+
+  if (certificateContent) {
+    return (
+      <div className="grid gap-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)] xl:items-start">
+          <div className="min-w-0">{certificateContent}</div>
+          {proofCard}
+        </div>
+        {alerts}
+        <div className="max-w-3xl">{nameCard}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+      {nameCard}
+      {proofCard}
+      <div className="lg:col-span-2">{alerts}</div>
     </div>
   )
 }

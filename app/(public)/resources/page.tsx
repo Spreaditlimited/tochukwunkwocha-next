@@ -2,7 +2,6 @@ import Link from "next/link"
 import { 
   ArrowRight, 
   BookOpen, 
-  Download, 
   MessageSquare, 
   Play, 
   Sparkles, 
@@ -20,8 +19,8 @@ import { buildMetadata } from "@/lib/site-seo"
 export const dynamic = "force-dynamic"
 
 export const metadata = buildMetadata({
-  title: "AI Resources, Videos, Prompts, Downloads and Toolkits",
-  description: "Practical AI resources for learners, parents, teachers, school owners, job seekers, business owners, founders, and public institutions.",
+  title: "AI Prompts and Videos",
+  description: "Practical AI prompts and videos for learners, parents, teachers, school owners, job seekers, business owners, founders, and public institutions.",
   path: "/resources"
 })
 
@@ -72,11 +71,10 @@ function ResourceStrip({
 }
 
 export default async function ResourcesPage() {
-  const [featured, videos, prompts, downloads] = await Promise.all([
-    listPublishedResources({ limit: 6 }),
+  const [featured, videos, prompts] = await Promise.all([
+    listPublishedResources({ type: "prompt", limit: 6 }),
     listPublishedResources({ type: "video", limit: 3 }),
-    listPublishedResources({ type: "prompt", limit: 3 }),
-    listPublishedResources({ type: "download", limit: 3 })
+    listPublishedResources({ type: "prompt", limit: 3 })
   ])
 
   return (
@@ -92,10 +90,10 @@ export default async function ResourcesPage() {
               The Knowledge Library
             </p>
             <h1 className="font-heading text-5xl font-black tracking-tighter text-foreground sm:text-6xl lg:text-7xl lg:leading-[1.1]">
-              AI resources built around <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-sky-500">real audiences.</span>
+              AI prompts and videos for <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-sky-500">real audiences.</span>
             </h1>
             <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              Videos, prompts, downloads, and guides for learners, parents, teachers, schools, business owners, founders, and public-sector teams.
+              Practical prompt playbooks and short videos for learners, parents, teachers, schools, business owners, founders, and public-sector teams.
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <Link href="/resources/videos" className="btn-primary px-8 py-3.5 text-base">
@@ -142,9 +140,9 @@ export default async function ResourcesPage() {
 
       {/* 3. Featured Resources */}
       <ResourceStrip 
-        eyebrow="Curated Library" 
-        title="Featured Resources" 
-        href="/resources/guides" 
+        eyebrow="Prompt Library" 
+        title="Featured Prompt Playbooks" 
+        href="/resources/prompts" 
         resources={featured} 
         bg="bg-background"
       />
@@ -165,14 +163,6 @@ export default async function ResourcesPage() {
         resources={prompts} 
         bg="bg-background"
       />
-      
-      <ResourceStrip 
-        eyebrow="Assets" 
-        title="Downloads and Templates" 
-        href="/resources/downloads" 
-        resources={downloads} 
-        bg="bg-muted/20"
-      />
 
       {/* 5. Final CTA */}
       <section className="py-24 text-center lg:py-32">
@@ -181,14 +171,14 @@ export default async function ResourcesPage() {
             Need a structured learning path?
           </h2>
           <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-            Resources help you start. Programmes help you build complete practical outcomes with guidance, feedback, and accountability. Whether you prefer reading, watching, or building, there is always another step in your learning journey.
+            Prompts and videos help you start. Programmes help you build complete practical outcomes with guidance, feedback, and accountability.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link className="btn-primary px-8 py-3.5 text-base" href="/courses">
               Explore Programmes
             </Link>
-            <Link className="btn-secondary px-8 py-3.5 text-base" href="/resources/downloads">
-              View Downloads
+            <Link className="btn-secondary px-8 py-3.5 text-base" href="/resources/videos">
+              Watch Videos
             </Link>
           </div>
         </div>

@@ -18,11 +18,9 @@ export const dynamic = "force-dynamic"
 
 export default async function StudentFamilyPage() {
   const session = await requireStudent()
-  const [data, courses, batchSwitchOptions] = await Promise.all([
-    getFamilyDashboard(session.account.id),
-    listActiveLearningCourseOptions(),
-    getBatchSwitchOptions(session.account)
-  ])
+  const data = await getFamilyDashboard(session.account.id)
+  const courses = await listActiveLearningCourseOptions()
+  const batchSwitchOptions = await getBatchSwitchOptions(session.account)
   const batchSwitchEnrollments: BatchSwitchEnrollment[] = batchSwitchOptions.map((item) => ({
     sourceType: item.sourceType,
     sourceId: item.sourceId,
@@ -143,7 +141,7 @@ export default async function StudentFamilyPage() {
               </div>
             ) : (
               <EmptyStudentState
-                icon={UsersRound}
+                icon="users"
                 title="No group seats"
                 description="Group seat purchases connected to this account will appear here."
                 action={<Link href="/courses/prompt-to-profit" className="btn-primary shadow-sm">Explore Programmes</Link>}
@@ -219,7 +217,7 @@ export default async function StudentFamilyPage() {
               </div>
             ) : (
               <EmptyStudentState
-                icon={UserRound}
+                icon="user"
                 title="No learners assigned"
                 description="Learners assigned to group seats will appear here with their course, batch, status, and access code."
               />

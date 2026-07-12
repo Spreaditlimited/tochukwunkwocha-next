@@ -43,7 +43,7 @@ export default async function ResourceVideosPage() {
               Short, practical <span className="text-primary italic">AI videos</span>.
             </h1>
             <p className="mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
-              A growing library of quick, useful videos—spanning landscape tutorials and portrait shorts—for learning and applying AI in real contexts.
+              A growing library of quick, useful videos for learning and applying AI in real contexts.
             </p>
           </div>
         </div>

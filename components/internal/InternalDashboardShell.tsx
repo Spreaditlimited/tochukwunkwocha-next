@@ -26,6 +26,7 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
+  MessageCircle,
   UserRound,
   WalletCards
 } from "lucide-react"
@@ -43,6 +44,7 @@ const navSections = [
     items: [
       { href: "/internal", label: "Overview", icon: LayoutDashboard },
       { href: "/internal/marketing", label: "Marketing", icon: Megaphone },
+      { href: "/internal/whatsapp", label: "WhatsApp", icon: MessageCircle },
       { href: "/internal/seo", label: "SEO Queue", icon: Search },
       { href: "/internal/blog", label: "Blog CMS", icon: FileText },
       { href: "/internal/resources", label: "Resources", icon: BookOpenCheck }
@@ -115,7 +117,7 @@ export function InternalDashboardShell({
   return (
     <div data-internal-dashboard-shell className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.08),transparent_34rem),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.3))] text-foreground selection:bg-primary/30">
       <InternalActionToaster />
-      <div className={cn("grid min-h-screen transition-[grid-template-columns] duration-200", collapsed ? "lg:grid-cols-[88px_1fr]" : "lg:grid-cols-[260px_1fr]")}>
+      <div className={cn("grid min-h-screen transition-[grid-template-columns] duration-200 lg:h-screen lg:overflow-hidden", collapsed ? "lg:grid-cols-[88px_1fr]" : "lg:grid-cols-[260px_1fr]")}>
         <aside className="relative hidden flex-col border-r border-border bg-card/80 shadow-sm backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-screen">
           <button
             type="button"
@@ -198,7 +200,7 @@ export function InternalDashboardShell({
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-col lg:h-screen lg:overflow-y-auto">
           <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
             <div className="flex min-h-[4.5rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
               <div className="min-w-0">

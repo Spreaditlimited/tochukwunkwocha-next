@@ -18,8 +18,6 @@ const staticRoutes = [
   "/resources",
   "/resources/videos",
   "/resources/prompts",
-  "/resources/downloads",
-  "/resources/guides",
   "/contact",
   "/privacy-policy",
   "/terms-and-conditions"

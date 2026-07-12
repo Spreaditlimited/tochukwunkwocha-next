@@ -9,6 +9,7 @@ export const INTERNAL_PAGE_OPTIONS = [
   { path: "/internal/installments", label: "Installments" },
   { path: "/internal/coupons", label: "Coupons" },
   { path: "/internal/marketing", label: "Marketing" },
+  { path: "/internal/whatsapp", label: "WhatsApp" },
   { path: "/internal/domains", label: "Domains" },
   { path: "/internal/video-library", label: "Video Library" },
   { path: "/internal/learning", label: "Learning Support" },

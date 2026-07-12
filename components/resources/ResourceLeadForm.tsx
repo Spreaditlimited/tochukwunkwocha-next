@@ -6,14 +6,13 @@ import { Download, Loader2 } from "lucide-react"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 export function ResourceLeadForm({
-  resourceUuid,
-  downloadUrl
+  resourceUuid
 }: {
   resourceUuid: string
-  downloadUrl: string
 }) {
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [message, setMessage] = useState("")
+  const [downloadUrl, setDownloadUrl] = useState("")
 
   async function submit(formData: FormData) {
     setStatus("loading")
@@ -38,6 +37,7 @@ export function ResourceLeadForm({
       return
     }
     setStatus("ready")
+    setDownloadUrl(String(result.downloadUrl || ""))
     setMessage("Unlocked. Your download is ready.")
   }
 
@@ -61,7 +61,7 @@ export function ResourceLeadForm({
           {message}
         </p>
       ) : null}
-      {status === "ready" ? (
+      {status === "ready" && downloadUrl ? (
         <a href={downloadUrl} className="btn-secondary mt-4 w-full justify-center" target="_blank" rel="noreferrer">
           <Download className="h-4 w-4" />
           Download Now

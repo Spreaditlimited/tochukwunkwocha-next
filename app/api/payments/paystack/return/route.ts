@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
-import { markCourseOrderPaid, siteBaseUrl, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
+import { createAffiliateCommissionForOrder, markCourseOrderPaid, siteBaseUrl, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { setStudentSessionCookie } from "@/lib/student-auth"
 
@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       providerReference: verified.reference,
       providerOrderId: verified.providerOrderId
     })
+    await createAffiliateCommissionForOrder(orderUuid)
     const provisioned = await provisionStudentForPaidOrder(order)
     await sendCourseOrderMetaPurchase({
       orderUuid,
@@ -32,7 +33,8 @@ export async function GET(request: Request) {
       course_slug: String(order?.course_slug || courseSlug || "prompt-to-profit"),
       order: orderUuid
     })
-    return NextResponse.redirect(`${siteBaseUrl()}/dashboard?${params.toString()}`)
+    const successPath = String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard"
+    return NextResponse.redirect(`${siteBaseUrl()}${successPath}?${params.toString()}`)
   } catch (error) {
     return NextResponse.redirect(`${siteBaseUrl()}/checkout/prompt-to-profit?payment=failed&reason=${encodeURIComponent(error instanceof Error ? error.message : "Payment verification failed")}`)
   }

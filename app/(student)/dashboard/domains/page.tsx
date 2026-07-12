@@ -43,11 +43,9 @@ function byDomain<T extends { domainName: string }>(items: T[]) {
 
 export default async function StudentDomainsPage() {
   const session = await requireStudent()
-  const [domains, orders, netlifyRows] = await Promise.all([
-    listStudentDomains(session.account.id),
-    listStudentDomainOrders(session.account.id),
-    listStudentDomainNetlifyAccess(session.account.id)
-  ])
+  const domains = await listStudentDomains(session.account.id)
+  const orders = await listStudentDomainOrders(session.account.id)
+  const netlifyRows = await listStudentDomainNetlifyAccess(session.account.id)
   const netlifyByDomain = byDomain(netlifyRows)
   const activeDomains = domains.filter((domain) => domain.status.toLowerCase() === "registered").length
   const nextRenewal = domains
@@ -305,7 +303,7 @@ export default async function StudentDomainsPage() {
           ) : (
             <StudentDashboardCard>
               <EmptyStudentState
-                icon={Globe}
+                icon="globe"
                 title="No registered domains"
                 description="Domains registered and connected to this student account will appear here."
                 action={
@@ -358,7 +356,7 @@ export default async function StudentDomainsPage() {
               </div>
             ) : (
               <EmptyStudentState
-                icon={CreditCard}
+                icon="creditCard"
                 title="No domain orders"
                 description="Domain checkout records and historical payments connected to this account will appear here."
               />

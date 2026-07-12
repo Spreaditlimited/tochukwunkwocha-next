@@ -50,7 +50,8 @@ export async function POST(request: Request) {
       couponCode: body.couponCode,
       buyerType: body.buyerType,
       seatCount: body.seatCount,
-      batchKey: body.batchKey
+      batchKey: body.batchKey,
+      manualTransfer: true
     })
     const paymentUuid = await createManualPayment({
       courseSlug,
