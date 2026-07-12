@@ -1,0 +1,13 @@
+node_modules
+.next
+.next-dev
+.env
+.env.local
+.vercel
+dist
+coverage
+npm-debug.log*
+.DS_Store
+tsconfig.tsbuildinfo
+env variables from Netlify.notepad
+Untitled.notepad

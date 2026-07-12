@@ -1,0 +1,369 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 
+      Tochukwu Tech Premium Brand Direction
+      Sharp, credible, practical AI education.
+    */
+    --background: 210 33% 98%;
+    --foreground: 216 72% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 216 72% 9%;
+    --primary: 211 84% 31%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 197 77% 70%;
+    --secondary-foreground: 216 72% 9%;
+    --accent: 217 76% 16%;
+    --accent-foreground: 0 0% 100%;
+    --muted: 210 26% 94%;
+    --muted-foreground: 215 18% 45%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 213 28% 86%;
+    --input: 213 28% 86%;
+    --ring: 211 84% 31%;
+    
+    /* Core Brand Tokens */
+    --brand-navy: 216 72% 9%;
+    --brand-blue: 211 84% 31%;
+    --brand-sky: 197 77% 70%;
+    --brand-ink: 218 69% 6%;
+    --brand-paper: 210 33% 98%;
+    --radius: 0.5rem;
+    --site-max-width: 88rem;
+
+    /*
+      Keep these local until we intentionally add next/font.
+      The replaced stylesheet referenced these variables before defining them,
+      which can invalidate font-family declarations in the browser.
+    */
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-heading: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  .dark {
+    --background: 218 69% 6%;
+    --foreground: 210 33% 98%;
+    --card: 216 40% 9%;
+    --card-foreground: 210 33% 98%;
+    --primary: 197 77% 70%;
+    --primary-foreground: 218 69% 6%;
+    --secondary: 211 84% 31%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 210 33% 98%;
+    --accent-foreground: 218 69% 6%;
+    --muted: 216 38% 12%;
+    --muted-foreground: 215 24% 65%;
+    --destructive: 0 74% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 216 31% 15%;
+    --input: 216 31% 15%;
+    --ring: 197 77% 70%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: 0;
+  }
+
+  a {
+    @apply underline-offset-4;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-[var(--site-max-width)] px-5 sm:px-6 lg:px-8;
+    min-width: 0;
+  }
+
+  .site-container {
+    @apply mx-auto w-full max-w-[var(--site-max-width)] px-5 sm:px-6 lg:px-8;
+    min-width: 0;
+  }
+
+  .brand-shell {
+    @apply border-b border-border/60 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80;
+  }
+
+  .brand-nav-link {
+    @apply inline-flex items-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground no-underline transition-colors hover:bg-muted/50 hover:text-foreground;
+  }
+
+  .brand-focus {
+    @apply outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .btn-primary {
+    @apply brand-focus inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground no-underline transition-all duration-200 hover:bg-primary/90 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply brand-focus inline-flex items-center justify-center rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground no-underline transition-all duration-200 hover:border-muted-foreground/30 hover:bg-muted active:scale-[0.98];
+  }
+
+  .btn-inverse {
+    @apply brand-focus inline-flex items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-brand-ink no-underline transition-all duration-200 hover:bg-slate-200 active:scale-[0.98];
+  }
+
+  .btn-inverse-secondary {
+    @apply brand-focus inline-flex items-center justify-center rounded-md border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white no-underline transition-all duration-200 hover:bg-white/10 active:scale-[0.98];
+  }
+
+  .field {
+    @apply w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none ring-0 transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+
+  .label {
+    @apply text-xs font-bold uppercase tracking-wide text-muted-foreground;
+  }
+
+  .admin-card {
+    @apply rounded-lg border border-border bg-card p-5 shadow-sm;
+  }
+
+  .surface-raised {
+    @apply rounded-lg border border-border bg-card shadow-sm transition-shadow duration-300 hover:shadow-brand;
+  }
+
+  .eyebrow {
+    @apply text-xs font-black uppercase tracking-wider text-primary;
+  }
+
+  /* Blog & Typography scaling */
+  .blog-content {
+    @apply text-[17px] leading-relaxed text-foreground/85;
+  }
+
+  .blog-content h2 {
+    @apply mb-4 mt-10 text-2xl font-bold tracking-tight text-foreground font-heading;
+  }
+
+  .blog-content h3 {
+    @apply mb-3 mt-8 text-xl font-bold tracking-tight text-foreground font-heading;
+  }
+
+  .blog-content p {
+    @apply my-5;
+  }
+
+  .blog-content ul,
+  .blog-content ol {
+    @apply my-5 pl-6;
+  }
+
+  .blog-content ul {
+    @apply list-disc;
+  }
+
+  .blog-content ol {
+    @apply list-decimal;
+  }
+
+  .blog-content a {
+    @apply font-semibold text-primary underline decoration-primary/30 transition-colors hover:decoration-primary;
+  }
+
+  .student-dashboard {
+    --sd-bg: #c7ebf8;
+    --sd-text: hsl(var(--foreground));
+    --sd-panel: rgba(248, 253, 255, 0.78);
+    --sd-sidebar: rgba(198, 234, 248, 0.96);
+    --sd-header: rgba(199, 235, 248, 0.92);
+    --sd-border: rgba(13, 79, 154, 0.23);
+    --sd-border-strong: rgba(13, 79, 154, 0.34);
+    --sd-soft: rgba(117, 200, 232, 0.36);
+    --sd-glow: rgba(117, 200, 232, 0.58);
+    --sd-grid: rgba(13, 79, 154, 0.105);
+  }
+
+  .dark .student-dashboard {
+    --sd-bg: #060b14;
+    --sd-text: hsl(var(--foreground));
+    --sd-panel: #0d1117;
+    --sd-sidebar: rgba(8, 17, 31, 0.95);
+    --sd-header: rgba(6, 11, 20, 0.9);
+    --sd-border: rgba(255, 255, 255, 0.1);
+    --sd-border-strong: rgba(255, 255, 255, 0.15);
+    --sd-soft: rgba(255, 255, 255, 0.03);
+    --sd-glow: rgba(13, 79, 154, 0.22);
+    --sd-grid: rgba(255, 255, 255, 0.035);
+  }
+
+  .student-dashboard .text-white {
+    color: hsl(var(--foreground));
+  }
+
+  .student-dashboard .text-slate-200,
+  .student-dashboard .text-slate-300 {
+    color: hsl(var(--foreground) / 0.84);
+  }
+
+  .student-dashboard .text-slate-400,
+  .student-dashboard .text-slate-500 {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .student-dashboard .text-sky-200,
+  .student-dashboard .text-sky-300 {
+    color: hsl(var(--primary));
+  }
+
+  .student-dashboard .border-white\/10,
+  .student-dashboard .border-white\/15 {
+    border-color: var(--sd-border);
+  }
+
+  .student-dashboard .bg-white\/\[0\.03\],
+  .student-dashboard .bg-white\/\[0\.04\],
+  .student-dashboard .bg-white\/5 {
+    background-color: var(--sd-soft);
+  }
+
+  .student-dashboard .btn-inverse {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  .student-dashboard .btn-inverse-secondary {
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+  }
+
+  .student-dashboard .student-status-paid {
+    border-color: rgba(13, 79, 154, 0.26);
+    background-color: rgba(13, 79, 154, 0.1);
+    color: #06366d;
+  }
+
+  .student-dashboard .student-status-pending {
+    border-color: rgba(180, 83, 9, 0.28);
+    background-color: rgba(245, 158, 11, 0.14);
+    color: #78350f;
+  }
+
+  .student-dashboard .student-status-neutral {
+    border-color: var(--sd-border);
+    background-color: var(--sd-soft);
+    color: hsl(var(--foreground) / 0.78);
+  }
+
+  .student-dashboard .student-status-icon-paid {
+    border-color: rgba(13, 79, 154, 0.24);
+    background-color: rgba(13, 79, 154, 0.1);
+    color: #0d4f9a;
+  }
+
+  .student-dashboard .student-status-icon-pending {
+    border-color: rgba(180, 83, 9, 0.26);
+    background-color: rgba(245, 158, 11, 0.14);
+    color: #92400e;
+  }
+
+  .dark .student-dashboard .text-white {
+    color: #fff;
+  }
+
+  .dark .student-dashboard .text-slate-200 {
+    color: rgb(226 232 240);
+  }
+
+  .dark .student-dashboard .text-slate-300 {
+    color: rgb(203 213 225);
+  }
+
+  .dark .student-dashboard .text-slate-400 {
+    color: rgb(148 163 184);
+  }
+
+  .dark .student-dashboard .text-slate-500 {
+    color: rgb(100 116 139);
+  }
+
+  .dark .student-dashboard .text-sky-200 {
+    color: rgb(186 230 253);
+  }
+
+  .dark .student-dashboard .text-sky-300 {
+    color: rgb(125 211 252);
+  }
+
+  .dark .student-dashboard .border-white\/10 {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .dark .student-dashboard .border-white\/15 {
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .dark .student-dashboard .bg-white\/\[0\.03\] {
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+
+  .dark .student-dashboard .bg-white\/\[0\.04\],
+  .dark .student-dashboard .bg-white\/5 {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .dark .student-dashboard .btn-inverse {
+    background-color: #fff;
+    color: hsl(var(--brand-ink));
+  }
+
+  .dark .student-dashboard .btn-inverse-secondary {
+    border-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #fff;
+  }
+
+  .dark .student-dashboard .student-status-paid {
+    border-color: rgba(52, 211, 153, 0.3);
+    background-color: rgba(52, 211, 153, 0.1);
+    color: rgb(167, 243, 208);
+  }
+
+  .dark .student-dashboard .student-status-pending {
+    border-color: rgba(251, 191, 36, 0.3);
+    background-color: rgba(251, 191, 36, 0.1);
+    color: rgb(253, 230, 138);
+  }
+
+  .dark .student-dashboard .student-status-neutral {
+    border-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgb(226, 232, 240);
+  }
+
+  .dark .student-dashboard .student-status-icon-paid {
+    border-color: rgba(52, 211, 153, 0.28);
+    background-color: rgba(52, 211, 153, 0.1);
+    color: rgb(52, 211, 153);
+  }
+
+  .dark .student-dashboard .student-status-icon-pending {
+    border-color: rgba(251, 191, 36, 0.28);
+    background-color: rgba(251, 191, 36, 0.1);
+    color: rgb(251, 191, 36);
+  }
+}

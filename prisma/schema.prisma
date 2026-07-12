@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model TochukwuBlogPost {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  pidBlog       String    @unique(map: "uniq_tochukwu_blog_pid") @map("pid_blog") @db.VarChar(64)
+  blogTitle     String    @map("blog_title") @db.VarChar(255)
+  blogContent   String?   @map("blog_content") @db.LongText
+  blogSlug      String    @unique(map: "uniq_tochukwu_blog_slug") @map("blog_slug") @db.VarChar(255)
+  blogPublished Boolean   @default(false) @map("blog_published")
+  blogFeatured  Boolean   @default(false) @map("blog_featured")
+  blogImage     String?   @map("blog_image") @db.VarChar(500)
+  blogBy        String?   @map("blog_by") @db.VarChar(120)
+  blogExt1      String?   @map("blog_ext1") @db.VarChar(700)
+  blogExt2      String?   @map("blog_ext2") @db.LongText
+  excerpt       String?   @db.Text
+  tagsJson      String?   @map("tags_json") @db.Text
+  seoJson       String?   @map("seo_json") @db.LongText
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+
+  leadMagnet TochukwuBlogLeadMagnet?
+  seoOpportunities TochukwuSeoOpportunity[]
+  seoChanges TochukwuSeoContentChangeLog[]
+
+  @@index([blogPublished, createdAt], map: "idx_tochukwu_blog_status_created")
+  @@index([blogFeatured, createdAt], map: "idx_tochukwu_blog_featured")
+  @@map("tochukwu_blog_posts")
+}
+
+model TochukwuAdminAccount {
+  id           BigInt    @id @default(autoincrement())
+  adminUuid    String    @unique(map: "uniq_tochukwu_admin_uuid") @map("admin_uuid") @db.VarChar(64)
+  fullName     String    @map("full_name") @db.VarChar(180)
+  email        String    @unique(map: "uniq_tochukwu_admin_email") @db.VarChar(220)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  passwordSalt String    @map("password_salt") @db.VarChar(255)
+  isOwner      Boolean   @default(false) @map("is_owner")
+  isActive     Boolean   @default(true) @map("is_active")
+  allowedPages String?   @map("allowed_pages") @db.Text
+  createdBy    String?   @map("created_by") @db.VarChar(120)
+  createdAt    DateTime  @map("created_at") @db.DateTime(0)
+  updatedAt    DateTime  @map("updated_at") @db.DateTime(0)
+  lastLoginAt  DateTime? @map("last_login_at") @db.DateTime(0)
+
+  @@index([isActive, email], map: "idx_tochukwu_admin_active")
+  @@map("tochukwu_admin_accounts")
+}
+
+model TochukwuBlogLeadMagnet {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  magnetUuid      String   @unique(map: "uniq_blog_lead_magnet_uuid") @map("magnet_uuid") @db.VarChar(80)
+  pidBlog         String   @unique(map: "uniq_blog_lead_magnet_pid") @map("pid_blog") @db.VarChar(64)
+  slug            String   @unique(map: "uniq_blog_lead_magnet_slug") @db.VarChar(255)
+  status          String   @default("inactive") @db.VarChar(32)
+  title           String   @db.VarChar(255)
+  offerHeadline   String?  @map("offer_headline") @db.VarChar(255)
+  description     String?  @db.Text
+  buttonText      String?  @map("button_text") @db.VarChar(120)
+  bulletsJson     String?  @map("bullets_json") @db.Text
+  pdfUrl          String?  @map("pdf_url") @db.Text
+  pdfPublicId     String?  @map("pdf_public_id") @db.VarChar(500)
+  pdfResourceType String?  @map("pdf_resource_type") @db.VarChar(40)
+  pdfFilename     String?  @map("pdf_filename") @db.VarChar(255)
+  brevoListId     BigInt?  @map("brevo_list_id")
+  emailSubject    String?  @map("email_subject") @db.VarChar(255)
+  deliveryMessage String?  @map("delivery_message") @db.Text
+  createdAt       DateTime @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime @map("updated_at") @db.DateTime(0)
+
+  blog TochukwuBlogPost @relation(fields: [pidBlog], references: [pidBlog])
+
+  @@index([status], map: "idx_blog_lead_magnet_status")
+  @@index([pidBlog, status], map: "idx_blog_lead_magnet_pid_status")
+  @@map("tochukwu_blog_lead_magnets")
+}
+
+model TochukwuSearchConsoleImportRun {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  runUuid      String    @unique(map: "uniq_tochukwu_sc_run_uuid") @map("run_uuid") @db.VarChar(80)
+  source       String    @default("manual") @db.VarChar(40)
+  status       String    @default("pending") @db.VarChar(32)
+  startedAt    DateTime  @default(now()) @map("started_at") @db.DateTime(0)
+  completedAt  DateTime? @map("completed_at") @db.DateTime(0)
+  sourceStartDate DateTime? @map("source_start_date") @db.Date
+  sourceEndDate   DateTime? @map("source_end_date") @db.Date
+  rowCount     Int       @default(0) @map("row_count")
+  errorMessage String?   @map("error_message") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+
+  queryStats TochukwuSearchConsoleQueryStat[]
+
+  @@index([status, completedAt], map: "idx_tochukwu_sc_run_status")
+  @@map("tochukwu_search_console_import_runs")
+}
+
+model TochukwuSearchConsoleQueryStat {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  statUuid     String   @unique(map: "uniq_tochukwu_sc_stat_uuid") @map("stat_uuid") @db.VarChar(80)
+  runUuid      String   @map("run_uuid") @db.VarChar(80)
+  pageUrl      String   @map("page_url") @db.Text
+  blogSlug     String?  @map("blog_slug") @db.VarChar(255)
+  query        String   @db.VarChar(500)
+  clicks       Int      @default(0)
+  impressions  Int      @default(0)
+  ctr          Decimal  @default(0) @db.Decimal(10, 6)
+  position     Decimal  @default(0) @db.Decimal(10, 4)
+  startDate    DateTime? @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  run TochukwuSearchConsoleImportRun @relation(fields: [runUuid], references: [runUuid])
+
+  @@index([blogSlug], map: "idx_tochukwu_sc_stat_blog_slug")
+  @@index([query], map: "idx_tochukwu_sc_stat_query")
+  @@index([impressions, position], map: "idx_tochukwu_sc_stat_perf")
+  @@map("tochukwu_search_console_query_stats")
+}
+
+model TochukwuSeoOpportunity {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  pidOpportunity String   @unique(map: "uniq_tochukwu_seo_opp_pid") @map("pid_opportunity") @db.VarChar(90)
+  pageUrl        String   @map("page_url") @db.Text
+  blogSlug       String?  @map("blog_slug") @db.VarChar(255)
+  pidBlog        String?  @map("pid_blog") @db.VarChar(64)
+  opportunityType String  @map("opportunity_type") @db.VarChar(40)
+  primaryQuery   String?  @map("primary_query") @db.VarChar(500)
+  clicks         Int      @default(0)
+  impressions    Int      @default(0)
+  ctr            Decimal  @default(0) @db.Decimal(10, 6)
+  position       Decimal  @default(0) @db.Decimal(10, 4)
+  confidence     Decimal  @default(0) @db.Decimal(10, 4)
+  status         String   @default("open") @db.VarChar(32)
+  recommendation String?  @db.Text
+  recommendedCta String?  @map("recommended_cta") @db.VarChar(80)
+  sourceStartDate DateTime? @map("source_start_date") @db.Date
+  sourceEndDate DateTime? @map("source_end_date") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+
+  blog TochukwuBlogPost? @relation(fields: [pidBlog], references: [pidBlog])
+  changes TochukwuSeoContentChangeLog[]
+
+  @@index([status, confidence], map: "idx_tochukwu_seo_opp_status")
+  @@index([blogSlug], map: "idx_tochukwu_seo_opp_blog_slug")
+  @@index([opportunityType], map: "idx_tochukwu_seo_opp_type")
+  @@map("tochukwu_seo_opportunities")
+}
+
+model TochukwuSeoContentChangeLog {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  pidChange      String    @unique(map: "uniq_tochukwu_seo_change_pid") @map("pid_change") @db.VarChar(90)
+  pidOpportunity String?   @map("pid_opportunity") @db.VarChar(90)
+  pidBlog        String?   @map("pid_blog") @db.VarChar(64)
+  changeType     String    @map("change_type") @db.VarChar(50)
+  status         String    @default("draft") @db.VarChar(32)
+  beforeJson     String?   @map("before_json") @db.LongText
+  afterJson      String?   @map("after_json") @db.LongText
+  validationJson String?   @map("validation_json") @db.LongText
+  publishedAt    DateTime? @map("published_at") @db.DateTime(0)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+
+  opportunity TochukwuSeoOpportunity? @relation(fields: [pidOpportunity], references: [pidOpportunity])
+  blog TochukwuBlogPost? @relation(fields: [pidBlog], references: [pidBlog])
+
+  @@index([pidOpportunity, createdAt], map: "idx_tochukwu_seo_change_opp")
+  @@index([pidBlog, createdAt], map: "idx_tochukwu_seo_change_blog")
+  @@index([status, createdAt], map: "idx_tochukwu_seo_change_status")
+  @@map("tochukwu_seo_content_change_logs")
+}
+
+model StudentAccount {
+  id                         BigInt    @id @default(autoincrement())
+  accountUuid                String    @unique(map: "uniq_student_account_uuid") @map("account_uuid") @db.VarChar(64)
+  fullName                   String    @map("full_name") @db.VarChar(180)
+  email                      String    @unique(map: "uniq_student_account_email") @db.VarChar(190)
+  passwordHash               String    @map("password_hash") @db.VarChar(255)
+  passwordSalt               String    @map("password_salt") @db.VarChar(255)
+  mustResetPassword          Boolean   @default(false) @map("must_reset_password")
+  domainsAutoRenewEnabled    Boolean   @default(true) @map("domains_auto_renew_enabled")
+  phoneE164                  String?   @map("phone_e164") @db.VarChar(20)
+  whatsappOptedIn            Boolean   @default(false) @map("whatsapp_opted_in")
+  whatsappOptedInAt          DateTime? @map("whatsapp_opted_in_at") @db.DateTime(0)
+  whatsappOptedOutAt         DateTime? @map("whatsapp_opted_out_at") @db.DateTime(0)
+  certificateNameConfirmedAt DateTime? @map("certificate_name_confirmed_at") @db.DateTime(0)
+  certificateNameUpdatedAt   DateTime? @map("certificate_name_updated_at") @db.DateTime(0)
+  resetTokenHash             String?   @map("reset_token_hash") @db.VarChar(128)
+  resetTokenExpiresAt        DateTime? @map("reset_token_expires_at") @db.DateTime(0)
+  resetRequestedAt           DateTime? @map("reset_requested_at") @db.DateTime(0)
+  createdAt                  DateTime  @map("created_at") @db.DateTime(0)
+  updatedAt                  DateTime  @map("updated_at") @db.DateTime(0)
+  lastLoginAt                DateTime? @map("last_login_at") @db.DateTime(0)
+
+  sessions StudentSession[]
+
+  @@map("student_accounts")
+}
+
+model StudentSession {
+  id           BigInt    @id @default(autoincrement())
+  sessionUuid  String    @unique(map: "uniq_student_session_uuid") @map("session_uuid") @db.VarChar(64)
+  accountId    BigInt    @map("account_id")
+  tokenHash    String    @unique(map: "uniq_student_session_token") @map("token_hash") @db.VarChar(128)
+  deviceHash   String?   @map("device_hash") @db.VarChar(128)
+  deviceIdHint String?   @map("device_id_hint") @db.VarChar(190)
+  ipHash       String?   @map("ip_hash") @db.VarChar(128)
+  userAgent    String?   @map("user_agent") @db.VarChar(255)
+  expiresAt    DateTime  @map("expires_at") @db.DateTime(0)
+  createdAt    DateTime  @map("created_at") @db.DateTime(0)
+  lastSeenAt   DateTime? @map("last_seen_at") @db.DateTime(0)
+
+  account StudentAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId], map: "idx_student_session_account")
+  @@index([expiresAt], map: "idx_student_session_expiry")
+  @@index([deviceHash], map: "idx_student_session_device")
+  @@map("student_sessions")
+}
+
+model CourseOrder {
+  id          BigInt    @id @default(autoincrement())
+  orderUuid   String?   @unique(map: "uniq_course_order_uuid") @map("order_uuid") @db.VarChar(64)
+  courseSlug  String?   @map("course_slug") @db.VarChar(120)
+  email       String?   @db.VarChar(190)
+  firstName   String?   @map("first_name") @db.VarChar(180)
+  amountMinor Int?      @map("amount_minor")
+  currency    String?   @db.VarChar(12)
+  status      String?   @db.VarChar(40)
+  batchKey    String?   @map("batch_key") @db.VarChar(64)
+  batchLabel  String?   @map("batch_label") @db.VarChar(120)
+  createdAt   DateTime? @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+
+  @@index([email], map: "idx_course_orders_email")
+  @@index([courseSlug], map: "idx_course_orders_course")
+  @@map("course_orders")
+}
+
+model CourseManualPayment {
+  id          BigInt    @id @default(autoincrement())
+  paymentUuid String    @unique(map: "uniq_manual_payment_uuid") @map("payment_uuid") @db.VarChar(64)
+  courseSlug  String    @map("course_slug") @db.VarChar(120)
+  firstName   String    @map("first_name") @db.VarChar(160)
+  email       String    @db.VarChar(190)
+  currency    String    @default("NGN") @db.VarChar(12)
+  amountMinor Int       @map("amount_minor")
+  status      String    @default("pending_verification") @db.VarChar(32)
+  batchKey    String?   @map("batch_key") @db.VarChar(64)
+  batchLabel  String?   @map("batch_label") @db.VarChar(120)
+  createdAt   DateTime  @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime  @map("updated_at") @db.DateTime(0)
+
+  @@index([status, createdAt], map: "idx_manual_payment_status_created")
+  @@index([email], map: "idx_manual_payment_email")
+  @@index([courseSlug], map: "idx_manual_payment_course")
+  @@map("course_manual_payments")
+}

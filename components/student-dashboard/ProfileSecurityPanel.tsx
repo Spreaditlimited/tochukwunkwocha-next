@@ -1,0 +1,440 @@
+"use client"
+
+import { useState, type FormEvent } from "react"
+import { useRouter } from "next/navigation"
+import { Laptop, LockKeyhole, ShieldAlert, Smartphone, Trash2, UserRound } from "lucide-react"
+
+import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+
+type Profile = {
+  fullName: string
+  email: string
+  phone: string
+  whatsappOptedIn: boolean
+  certificateNameConfirmedAt: Date | string | null
+  certificateNameUpdatedAt: Date | string | null
+  demographicCountry: string
+  demographicRegion: string
+  ageBand: string
+  gender: string
+  learnerCategory: string
+  demographicUpdatedAt: Date | string | null
+}
+
+type SecurityPayload = {
+  sessions: Array<{
+    sessionUuid: string
+    deviceIdHint: string | null
+    userAgent: string | null
+    createdAt: Date | string
+    lastSeenAt: Date | string | null
+    expiresAt: Date | string
+    isCurrent: boolean
+  }>
+  devices: Array<{
+    id: bigint | number
+    deviceIdHint: string | null
+    lastUserAgent: string | null
+    firstSeenAt: Date | string
+    lastSeenAt: Date | string
+  }>
+  alerts: Array<{
+    alertUuid: string
+    severity: string
+    title: string
+    status: string
+    occurrences: number
+    lastSeenAt: Date | string
+  }>
+}
+
+async function postJson<T>(url: string, body: Record<string, unknown>) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Request failed")
+  return payload as T
+}
+
+function formatDate(value: Date | string | null) {
+  if (!value) return "Not recorded"
+  return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+}
+
+export function ProfileSecurityPanel({ profile: initialProfile, security }: { profile: Profile; security: SecurityPayload }) {
+  const router = useRouter()
+  const [profile, setProfile] = useState(initialProfile)
+  
+  // State for messages
+  const [profileMessage, setProfileMessage] = useState("")
+  const [profileError, setProfileError] = useState("")
+  const [passwordMessage, setPasswordMessage] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+  const [securityError, setSecurityError] = useState("")
+
+  // Loading states
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSavingProfile(true)
+    setProfileError("")
+    setProfileMessage("")
+    try {
+      const result = await postJson<{ profile: Profile }>("/api/student/profile", profile)
+      setProfile(result.profile)
+      setProfileMessage("Profile updated successfully.")
+      showStudentToast({ type: "success", title: "Profile updated", message: "Your profile details have been saved." })
+      router.refresh()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Could not update profile"
+      setProfileError(errorMessage)
+      showStudentToast({ type: "error", title: "Profile update failed", message: errorMessage })
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsChangingPassword(true)
+    const form = new FormData(event.currentTarget)
+    const newPassword = String(form.get("newPassword") || "")
+    const confirmPassword = String(form.get("confirmPassword") || "")
+    setPasswordError("")
+    setPasswordMessage("")
+    try {
+      if (newPassword !== confirmPassword) throw new Error("Passwords do not match")
+      const result = await postJson<{ message: string }>("/api/student/password", {
+        currentPassword: String(form.get("currentPassword") || ""),
+        newPassword
+      })
+      event.currentTarget.reset()
+      setPasswordMessage(result.message)
+      showStudentToast({ type: "success", title: "Password changed", message: result.message })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Could not change password"
+      setPasswordError(errorMessage)
+      showStudentToast({ type: "error", title: "Password change failed", message: errorMessage })
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
+  async function revokeSession(sessionUuid?: string) {
+    setSecurityError("")
+    try {
+      await postJson("/api/student/security/session", sessionUuid ? { sessionUuid } : { action: "revoke_others" })
+      showStudentToast({ type: "success", title: "Session security updated", message: sessionUuid ? "The selected session has been revoked." : "Other active sessions have been revoked." })
+      router.refresh()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Could not update sessions"
+      setSecurityError(errorMessage)
+      showStudentToast({ type: "error", title: "Session update failed", message: errorMessage })
+    }
+  }
+
+  return (
+    <div className="grid gap-8 xl:grid-cols-[1fr_1fr] lg:items-start">
+      
+      {/* LEFT COLUMN: Profile */}
+      <div className="grid gap-8">
+        <section className="surface-raised bg-card p-0 overflow-hidden">
+          <div className="flex items-center gap-4 border-b border-border bg-muted/20 p-6 sm:p-8">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <UserRound className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="eyebrow text-primary">Account Profile</p>
+              <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Personal Details</h2>
+            </div>
+          </div>
+          
+          <div className="p-6 sm:p-8">
+            <form onSubmit={saveProfile} className="grid gap-6">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</span>
+                  <input
+                    className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    value={profile.fullName}
+                    onChange={(event) => setProfile((current) => ({ ...current, fullName: event.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email Address</span>
+                  <input
+                    className="w-full cursor-not-allowed rounded-md border border-input bg-muted/50 px-4 py-3 text-sm font-medium text-muted-foreground outline-none"
+                    value={profile.email}
+                    readOnly
+                  />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">WhatsApp / Phone</span>
+                  <input
+                    className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    value={profile.phone}
+                    onChange={(event) => setProfile((current) => ({ ...current, phone: event.target.value }))}
+                    placeholder="+234..."
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/20 p-5">
+                <div className="mb-5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Learning Demographics</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Optional information used for impact reporting and grant applications. Do not enter child-identifying personal details here.
+                  </p>
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Country</span>
+                    <input
+                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                      value={profile.demographicCountry}
+                      onChange={(event) => setProfile((current) => ({ ...current, demographicCountry: event.target.value }))}
+                      placeholder="Nigeria"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">State / Region</span>
+                    <input
+                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                      value={profile.demographicRegion}
+                      onChange={(event) => setProfile((current) => ({ ...current, demographicRegion: event.target.value }))}
+                      placeholder="Lagos"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Age Band</span>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                      value={profile.ageBand}
+                      onChange={(event) => setProfile((current) => ({ ...current, ageBand: event.target.value }))}
+                    >
+                      <option value="">Select age band</option>
+                      <option value="under-13">Under 13</option>
+                      <option value="13-17">13-17</option>
+                      <option value="18-24">18-24</option>
+                      <option value="25-34">25-34</option>
+                      <option value="35-44">35-44</option>
+                      <option value="45-plus">45+</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Gender</span>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                      value={profile.gender}
+                      onChange={(event) => setProfile((current) => ({ ...current, gender: event.target.value }))}
+                    >
+                      <option value="">Prefer not to say</option>
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                      <option value="non-binary">Non-binary</option>
+                    </select>
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Learner Category</span>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                      value={profile.learnerCategory}
+                      onChange={(event) => setProfile((current) => ({ ...current, learnerCategory: event.target.value }))}
+                    >
+                      <option value="">Select learner category</option>
+                      <option value="child-learner">Child learner</option>
+                      <option value="secondary-school-student">Secondary school student</option>
+                      <option value="higher-education-student">Higher education student</option>
+                      <option value="job-seeker">Job seeker</option>
+                      <option value="working-professional">Working professional</option>
+                      <option value="business-owner">Business owner</option>
+                      <option value="teacher-educator">Teacher / educator</option>
+                      <option value="parent-guardian">Parent / guardian</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              {/* WhatsApp Toggle */}
+              <label className="group relative flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-background p-5 transition-colors hover:border-primary/20 hover:shadow-sm">
+                <div>
+                  <span className="block text-sm font-bold text-foreground">WhatsApp Notifications</span>
+                  <span className="mt-1 block text-xs font-medium text-muted-foreground">Receive class reminders and updates</span>
+                </div>
+                <div className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={profile.whatsappOptedIn}
+                    onChange={(event) => setProfile((current) => ({ ...current, whatsappOptedIn: event.target.checked }))}
+                    className="peer sr-only"
+                  />
+                  <div className="h-6 w-11 rounded-full bg-muted-foreground/30 transition-colors peer-checked:bg-primary peer-focus:ring-2 peer-focus:ring-primary/30"></div>
+                  <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
+                </div>
+              </label>
+
+              {/* Certificate Identity Info */}
+              <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 p-5">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Certificate Identity</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    {profile.certificateNameConfirmedAt ? `Confirmed ${formatDate(profile.certificateNameConfirmedAt)}` : "Not confirmed"}
+                  </p>
+                </div>
+                <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${profile.certificateNameConfirmedAt ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
+                  {profile.certificateNameConfirmedAt ? "Verified" : "Pending"}
+                </span>
+              </div>
+
+              {/* Form Feedback */}
+              {profileError ? <p className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">{profileError}</p> : null}
+              {profileMessage ? <p className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">{profileMessage}</p> : null}
+              
+              <button className="btn-primary w-full shadow-sm sm:w-auto" type="submit" disabled={isSavingProfile}>
+                {isSavingProfile ? "Saving..." : "Save Profile"}
+              </button>
+            </form>
+          </div>
+        </section>
+      </div>
+
+      {/* RIGHT COLUMN: Security */}
+      <div className="grid gap-8">
+        
+        {/* Security Alerts (Only shows if active) */}
+        {security.alerts.length > 0 && (
+          <div className="flex items-start gap-4 rounded-xl border border-destructive/20 bg-destructive/10 p-6 shadow-sm">
+            <ShieldAlert className="mt-0.5 h-6 w-6 shrink-0 text-destructive" />
+            <div>
+              <h3 className="font-heading text-lg font-bold text-destructive">Security Alerts</h3>
+              <ul className="mt-2 list-inside list-disc space-y-1 text-sm font-medium text-destructive/80">
+                {security.alerts.map((alert) => (
+                  <li key={alert.alertUuid}>{alert.title} · {alert.occurrences} occurrence{alert.occurrences === 1 ? "" : "s"}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Change Password */}
+        <section className="surface-raised bg-card p-0 overflow-hidden">
+          <div className="flex items-center gap-4 border-b border-border bg-muted/20 p-6 sm:p-8">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+              <LockKeyhole className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="eyebrow text-primary">Authentication</p>
+              <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Change Password</h2>
+            </div>
+          </div>
+          <div className="p-6 sm:p-8">
+            <form onSubmit={changePassword} className="grid gap-5">
+              <input 
+                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+                name="currentPassword" 
+                type="password" 
+                placeholder="Current password" 
+                required 
+                autoComplete="current-password" 
+              />
+              <input 
+                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+                name="newPassword" 
+                type="password" 
+                minLength={8} 
+                placeholder="New password (min 8 characters)" 
+                required 
+                autoComplete="new-password" 
+              />
+              <input 
+                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+                name="confirmPassword" 
+                type="password" 
+                minLength={8} 
+                placeholder="Confirm new password" 
+                required 
+                autoComplete="new-password" 
+              />
+              
+              {passwordError ? <p className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">{passwordError}</p> : null}
+              {passwordMessage ? <p className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">{passwordMessage}</p> : null}
+              
+              <button className="btn-secondary w-full sm:w-auto" type="submit" disabled={isChangingPassword}>
+                {isChangingPassword ? "Updating..." : "Update Password"}
+              </button>
+            </form>
+          </div>
+        </section>
+
+        {/* Active Sessions */}
+        <section className="surface-raised bg-card p-0 overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+            <div>
+              <p className="eyebrow text-primary">Access Control</p>
+              <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Active Sessions</h2>
+            </div>
+            <button 
+              className="btn-secondary whitespace-nowrap text-xs" 
+              type="button" 
+              onClick={() => revokeSession()}
+            >
+              Sign out others
+            </button>
+          </div>
+          
+          <div className="p-6 sm:p-8">
+            {securityError ? <p className="mb-4 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">{securityError}</p> : null}
+            
+            <div className="grid gap-3">
+              {security.sessions.map((session) => {
+                const isMobile = session.userAgent?.toLowerCase().includes("mobile")
+                
+                return (
+                  <div key={session.sessionUuid} className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                        {isMobile ? <Smartphone className="h-5 w-5" /> : <Laptop className="h-5 w-5" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 font-heading text-sm font-bold text-foreground">
+                          {session.deviceIdHint || "Trusted Device"}
+                          {session.isCurrent && (
+                            <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">Current</span>
+                          )}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-medium text-muted-foreground max-w-[200px] sm:max-w-[250px]">
+                          {session.userAgent || "Browser details unavailable"}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Last seen {formatDate(session.lastSeenAt)}
+                        </p>
+                      </div>
+                    </div>
+                    {!session.isCurrent && (
+                      <button 
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive" 
+                        type="button" 
+                        onClick={() => revokeSession(session.sessionUuid)} 
+                        aria-label="Revoke session"
+                        title="Revoke session"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  )
+}
