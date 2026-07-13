@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import {
+  ArrowRight,
   Award,
   Calendar,
   CheckCircle2,
@@ -191,8 +192,8 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
   const studentWebsites = [
     {
       title: "Student website 1",
-      url: "https://moonlit-madeleine-c0b82e.netlify.app/",
-      displayUrl: "moonlit-madeleine-c0b82e.netlify.app"
+      url: "https://splendorous-marzipan-6befc0.netlify.app/",
+      displayUrl: "splendorous-marzipan-6befc0.netlify.app"
     },
     {
       title: "Student website 2",
@@ -528,88 +529,140 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-brand-ink py-20 text-white lg:py-28">
-        <div className={sectionContainer}>
+      <section className="relative overflow-hidden bg-brand-ink py-20 text-white lg:py-32">
+        <div className="pointer-events-none absolute left-1/2 top-[30%] z-0 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-600/10 blur-[120px]" />
+        <div className="pointer-events-none absolute bottom-0 right-0 z-0 h-[600px] w-[600px] rounded-full bg-primary/5 blur-[100px]" />
+
+        <div className={`${sectionContainer} relative z-10`}>
           <div className="mx-auto mb-16 max-w-3xl text-center">
-            <p className="eyebrow text-sky-400">Proof of Concept</p>
-            <h2 className="mt-3 font-heading text-3xl font-black tracking-tight sm:text-4xl">
-              Real students have already built real websites.
+            <p className="eyebrow inline-flex items-center gap-2 text-sky-400">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-500" />
+              </span>
+              Proof of Concept
+            </p>
+            <h2 className="mt-4 font-heading text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
+              Real students. <span className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Real websites.</span>
             </h2>
-            <p className="mt-5 text-lg leading-relaxed text-slate-400">
-              Previous students have used this exact method to build business websites, personal projects, and portfolio pieces. This course works because it is highly practical.
+            <p className="mt-6 text-lg leading-relaxed text-slate-300 sm:text-xl">
+              Previous students have used this exact method to build business platforms, personal projects, and portfolio pieces. This programme works because it is highly practical.
             </p>
           </div>
 
           <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
             {studentWebsites.map((site, index) => (
-              <div key={site.url} className={index % 2 === 1 ? "lg:mt-12" : ""}>
-                <div className="overflow-hidden rounded-xl border border-white/10 bg-[#0d1117] shadow-2xl">
-                  <div className="flex h-12 items-center gap-4 border-b border-white/5 bg-[#161b22] px-4">
-                    <div className="flex shrink-0 gap-2">
-                      <span className="h-3 w-3 rounded-full border border-[#e0443e] bg-[#ff5f56]" />
-                      <span className="h-3 w-3 rounded-full border border-[#dea123] bg-[#ffbd2e]" />
-                      <span className="h-3 w-3 rounded-full border border-[#1aab29] bg-[#27c93f]" />
+              <div key={site.url} className={`group ${index % 2 === 1 ? "lg:mt-16" : ""}`}>
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:border-white/20 hover:shadow-sky-500/10">
+                  <div className="flex h-14 items-center gap-4 border-b border-white/10 bg-[#161b22] px-5">
+                    <div className="flex shrink-0 gap-2.5">
+                      <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ff5f56]" />
+                      <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ffbd2e]" />
+                      <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#27c93f]" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="mx-auto flex max-w-[280px] items-center justify-center gap-2 truncate rounded-md border border-white/5 bg-[#0d1117] px-3 py-1.5 text-center font-mono text-xs text-slate-400">
-                        <Globe2 className="h-3 w-3 shrink-0" />
+                      <div className="mx-auto flex max-w-[320px] items-center justify-center gap-2 truncate rounded-lg border border-white/5 bg-[#0d1117] px-4 py-1.5 text-center font-mono text-xs tracking-wide text-slate-400 shadow-inner">
+                        <Globe2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
                         <span className="truncate">{site.displayUrl}</span>
                       </div>
                     </div>
-                    <div className="hidden w-10 shrink-0 sm:block" />
+                    <div className="hidden w-12 shrink-0 sm:block" />
                   </div>
-                  <iframe
-                    src={site.url}
-                    title={site.title}
-                    className="block h-[380px] w-full border-0 bg-white md:h-[450px]"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
-                  />
+                  <div className="relative h-[380px] w-full bg-white md:h-[450px]">
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
+                      <span className="animate-pulse text-xs font-bold uppercase tracking-widest text-slate-400">Loading Site...</span>
+                    </div>
+                    <iframe
+                      src={site.url}
+                      title={site.title}
+                      className="relative z-10 block h-full w-full border-0"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
+
+          <div className="mx-auto mt-20 max-w-5xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-md sm:p-12 lg:mt-32">
+            <div className="flex flex-col items-center gap-8 text-center md:flex-row md:text-left">
+              <div className="flex-1">
+                <p className="eyebrow text-sky-400">The Gallery</p>
+                <h3 className="mt-2 font-heading text-2xl font-black tracking-tight text-white sm:text-3xl">
+                  Browse the wider student project gallery.
+                </h3>
+                <p className="mt-4 text-base leading-relaxed text-slate-400">
+                  See more websites and web apps built by past learners, including certificate projects and additional work students continued to create after the programme.
+                </p>
+              </div>
+              <div className="shrink-0">
+                <Link href="/projects" className="btn-primary flex w-full items-center justify-center bg-white px-8 py-4 text-base text-brand-ink hover:bg-slate-100 sm:w-auto">
+                  View Project Gallery
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-24">
+        <div className="relative z-10 mt-24 lg:mt-32">
           <div className={`${sectionContainer} mb-12 text-center`}>
-            <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold uppercase tracking-widest text-sky-400">
-              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-              Student Success
+            <div className="mx-auto mb-6 inline-flex items-center justify-center gap-1 text-yellow-400">
+              {[...Array(5)].map((_, i) => (
+                <Star key={i} className="h-6 w-6 fill-yellow-400" />
+              ))}
             </div>
-            <h2 className="mt-6 font-heading text-3xl font-black tracking-tight sm:text-4xl">
+            <h2 className="font-heading text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
               What our builders are saying
             </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
+              Join hundreds of learners who have transformed their ideas into live platforms.
+            </p>
           </div>
 
           <div className="relative max-w-[100vw] overflow-hidden">
-            <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 hidden w-24 bg-gradient-to-r from-brand-ink to-transparent md:block" />
-            <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 hidden w-24 bg-gradient-to-l from-brand-ink to-transparent md:block" />
-            <div className="flex snap-x snap-mandatory gap-6 overflow-x-auto px-5 pb-4 [scrollbar-width:none] sm:px-6 lg:px-8 [&::-webkit-scrollbar]:hidden">
+            <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 hidden w-32 bg-gradient-to-r from-brand-ink to-transparent lg:block" />
+            <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 hidden w-32 bg-gradient-to-l from-brand-ink to-transparent lg:block" />
+
+            <div className="flex snap-x snap-mandatory gap-6 overflow-x-auto px-5 pb-8 pt-4 [scrollbar-width:none] sm:px-6 lg:px-8 [&::-webkit-scrollbar]:hidden">
               {testimonials.map((testimonial) => (
-                <article key={testimonial.name} className="flex w-[min(340px,calc(100vw-40px))] flex-none snap-start flex-col rounded-2xl border border-white/10 bg-[#0d1117] p-6 shadow-xl md:w-[400px] md:p-8">
-                  <div className="mb-6 text-sm tracking-[0.15em] text-yellow-400">★★★★★</div>
-                  <p className="flex-1 text-[15px] leading-relaxed text-slate-300 md:text-base">
-                    <TrademarkText text={testimonial.quote} />
-                  </p>
-                  <div className="mt-8 flex items-center gap-4 border-t border-white/5 pt-6">
-                    <Image
-                      src={testimonial.image}
-                      alt={testimonial.name}
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 rounded-full object-cover shadow-lg ring-2 ring-sky-400/30"
-                    />
+                <article
+                  key={testimonial.name}
+                  className="flex w-[min(340px,calc(100vw-40px))] flex-none snap-center flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.02] p-8 shadow-xl backdrop-blur-sm transition-colors hover:bg-white/[0.04] md:w-[420px]"
+                >
+                  <div>
+                    <div className="mb-6 flex gap-1 text-yellow-400">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} className="h-4 w-4 fill-current" />
+                      ))}
+                    </div>
+                    <p className="text-base leading-relaxed text-slate-300 sm:text-lg">
+                      "<TrademarkText text={testimonial.quote} />"
+                    </p>
+                  </div>
+
+                  <div className="mt-10 flex items-center gap-4 border-t border-white/10 pt-6">
+                    <div className="relative h-12 w-12 shrink-0">
+                      <Image
+                        src={testimonial.image}
+                        alt={testimonial.name}
+                        fill
+                        className="rounded-full object-cover shadow-lg ring-2 ring-white/20"
+                      />
+                    </div>
                     <div className="min-w-0">
                       {testimonial.href ? (
-                        <Link href={testimonial.href} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-white no-underline transition-colors hover:text-sky-300">
+                        <Link href={testimonial.href} target="_blank" rel="noopener noreferrer" className="block truncate text-sm font-bold text-white transition-colors hover:text-sky-400">
                           {testimonial.name}
                         </Link>
                       ) : (
-                        <h3 className="text-sm font-bold text-white">{testimonial.name}</h3>
+                        <h3 className="truncate text-sm font-bold text-white">{testimonial.name}</h3>
                       )}
-                      <p className="mt-1 font-mono text-xs tracking-wide text-sky-400"><TrademarkText text={testimonial.role} /></p>
+                      <p className="mt-1 truncate font-mono text-xs tracking-wide text-sky-400">
+                        <TrademarkText text={testimonial.role} />
+                      </p>
                     </div>
                   </div>
                 </article>
