@@ -145,7 +145,7 @@ export function BatchSwitchPanel({
             onChange={(event) => setTargetBatchKey(event.target.value)}
             options={enrollment.options.map((option) => ({
               value: option.batchKey,
-              label: `${option.batchLabel}${option.batchStartText ? ` - Starts ${option.batchStartText}` : ""}${option.remainingSeats === null ? "" : ` - ${option.remainingSeats} seats left`}`
+              label: `${option.batchLabel}${option.batchStartText ? ` - Starts ${option.batchStartText}` : ""}`
             }))}
           />
         </div>
