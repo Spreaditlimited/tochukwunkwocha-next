@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { 
   ArrowRight, 
   BookOpen, 
@@ -115,10 +116,13 @@ export default async function BlogPage({
                 <Link href={`/blog/${featuredPost.blogSlug}`} className="group surface-raised grid overflow-hidden bg-card transition-shadow hover:shadow-lg lg:grid-cols-2">
                   {getBlogImageSrc(featuredPost.blogImage) ? (
                     <div className="relative aspect-video w-full overflow-hidden lg:aspect-auto">
-                      <img
+                      <Image
                         src={getBlogImageSrc(featuredPost.blogImage) || ""}
                         alt={featuredPost.blogTitle}
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        fill
+                        sizes="(min-width: 1024px) 50vw, 100vw"
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        priority
                       />
                     </div>
                   ) : null}
@@ -143,12 +147,13 @@ export default async function BlogPage({
                   {gridPosts.map((post) => (
                     <Link key={post.pidBlog} href={`/blog/${post.blogSlug}`} className="group surface-raised flex flex-col overflow-hidden bg-card no-underline transition-all hover:border-primary/50 hover:shadow-md">
                       {getBlogImageSrc(post.blogImage) ? (
-                        <div className="aspect-[16/10] overflow-hidden">
-                          <img
+                        <div className="relative aspect-[16/10] overflow-hidden">
+                          <Image
                             src={getBlogImageSrc(post.blogImage) || ""}
                             alt={post.blogTitle}
-                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            loading="lazy"
+                            fill
+                            sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                            className="object-cover transition-transform duration-300 group-hover:scale-105"
                           />
                         </div>
                       ) : null}

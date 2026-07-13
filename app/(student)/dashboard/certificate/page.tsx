@@ -9,11 +9,13 @@ import {
   StudentDashboardShell
 } from "@/components/student-dashboard/StudentDashboardShell"
 import { CertificateActionsPanel } from "@/components/student-dashboard/CertificateActionsPanel"
+import { StudentProjectLinksPanel } from "@/components/student-dashboard/StudentProjectLinksPanel"
 import { PrintCertificateButton } from "@/components/schools/PrintCertificateButton"
 import { TrademarkText } from "@/components/TrademarkText"
 import { brand } from "@/lib/brand"
 import { certificateProjectNote } from "@/lib/certificate-verification"
 import { absoluteUrl } from "@/lib/site-seo"
+import { hasVerifiedStudentProjectProfile, listStudentProjectLinks } from "@/lib/student-project-links"
 import { courseName, getStudentCertificatePublic, listStudentCertificates, listStudentCourses, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
 import { formatDate } from "@/lib/utils"
@@ -149,6 +151,10 @@ export default async function StudentCertificatesPage({
   const session = await requireStudent()
   const certificates = await listStudentCertificates(session.account.id)
   const courses = await listStudentCourses(session.account.email)
+  const [projectLinks, canAddProjectLinks] = await Promise.all([
+    listStudentProjectLinks(session.account.id),
+    hasVerifiedStudentProjectProfile(session.account.id)
+  ])
   const activeCourses = Array.from(
     new Map(
       courses
@@ -156,6 +162,11 @@ export default async function StudentCertificatesPage({
         .map((course) => [course.courseSlug, { courseSlug: course.courseSlug, courseName: course.courseName }])
     ).values()
   )
+  const certificateOptions = certificates.map((certificate) => ({
+    certificateNo: certificate.certificateNo,
+    courseSlug: certificate.courseSlug,
+    label: `${courseName(certificate.courseSlug)} · ${certificate.certificateNo}`
+  }))
   const certificateContent = certificates.length ? (
     <div className="grid gap-5">
       {certificates.map((certificate) => (
@@ -253,6 +264,15 @@ export default async function StudentCertificatesPage({
           certificateNameConfirmedAt={session.account.certificateNameConfirmedAt?.toISOString() || null}
           courses={activeCourses}
           certificateContent={certificateContent}
+        />
+      </div>
+
+      <div className="mt-6">
+        <StudentProjectLinksPanel
+          initialLinks={projectLinks}
+          courses={activeCourses}
+          certificates={certificateOptions}
+          canAddLinks={canAddProjectLinks}
         />
       </div>
     </StudentDashboardShell>

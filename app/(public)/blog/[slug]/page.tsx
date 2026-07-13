@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, ArrowRight, Calendar, Download, FileText, User } from "lucide-react"
@@ -112,12 +113,14 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
       {/* 2. Featured Image */}
       {imageSrc && (
         <div className={`${sectionContainer} -mt-8 relative z-20 mb-16`}>
-          <div className="mx-auto max-w-5xl overflow-hidden rounded-xl border border-border bg-card shadow-lg">
-            <img 
+          <div className="relative mx-auto aspect-video max-w-5xl overflow-hidden rounded-xl border border-border bg-card shadow-lg sm:aspect-[21/9]">
+            <Image
               src={imageSrc} 
               alt={`Cover image for ${post.blogTitle}`} 
-              className="aspect-video w-full object-cover sm:aspect-[21/9]"
-              loading="eager"
+              fill
+              sizes="(min-width: 1280px) 1024px, 100vw"
+              className="object-cover"
+              priority
             />
           </div>
         </div>
@@ -215,12 +218,13 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                     className="group grid gap-4 rounded-lg border border-border bg-card p-4 no-underline transition-colors hover:border-primary/40 hover:bg-muted/30 sm:grid-cols-[160px_1fr]"
                   >
                     {relatedImageSrc ? (
-                      <div className="overflow-hidden rounded-md border border-border bg-muted">
-                        <img
+                      <div className="relative aspect-[16/10] overflow-hidden rounded-md border border-border bg-muted">
+                        <Image
                           src={relatedImageSrc}
                           alt={`Cover image for ${relatedPost.blogTitle}`}
-                          className="aspect-[16/10] h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                          loading="lazy"
+                          fill
+                          sizes="(min-width: 640px) 160px, 100vw"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       </div>
                     ) : null}

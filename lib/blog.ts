@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client"
+import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
 import { excerptFrom, safeJsonParse, slugify } from "@/lib/utils"
@@ -72,18 +73,28 @@ function tokenizeForRelatedPosts(value: string | null | undefined) {
   )
 }
 
-export async function getPublishedPosts(limit = 24) {
+export const getPublishedPosts = unstable_cache(async (limit = 24) => {
   return prisma.tochukwuBlogPost.findMany({
     where: {
       blogPublished: true,
       createdAt: { lte: new Date() }
     },
+    select: {
+      pidBlog: true,
+      blogSlug: true,
+      blogTitle: true,
+      blogImage: true,
+      excerpt: true,
+      createdAt: true,
+      updatedAt: true,
+      blogFeatured: true
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit
   })
-}
+}, ["published-blog-posts"], { revalidate: 300 })
 
-export async function getPublishedPostsPage(input: { page?: number; pageSize?: number }) {
+export const getPublishedPostsPage = unstable_cache(async (input: { page?: number; pageSize?: number }) => {
   const pageSize = Math.max(1, Math.min(48, Math.round(Number(input.pageSize || 12))))
   const requestedPage = Math.max(1, Math.round(Number(input.page || 1)))
   const where = {
@@ -95,6 +106,14 @@ export async function getPublishedPostsPage(input: { page?: number; pageSize?: n
   const page = Math.min(requestedPage, totalPages)
   const posts = await prisma.tochukwuBlogPost.findMany({
     where,
+    select: {
+      pidBlog: true,
+      blogSlug: true,
+      blogTitle: true,
+      blogImage: true,
+      excerpt: true,
+      createdAt: true
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
@@ -107,7 +126,7 @@ export async function getPublishedPostsPage(input: { page?: number; pageSize?: n
     pageSize,
     totalPages
   }
-}
+}, ["published-blog-posts-page"], { revalidate: 300 })
 
 export async function getContinueReadingPosts(
   currentPost: {

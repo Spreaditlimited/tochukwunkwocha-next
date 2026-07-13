@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
 import { createResourceDownloadToken } from "@/lib/resource-download-token"
@@ -133,6 +134,17 @@ export type ResourceBundleRow = {
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
+}
+
+async function withResourceTablesFallback<T>(read: () => Promise<T>) {
+  try {
+    return await read()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    if (!/doesn't exist|does not exist|unknown table|1146/i.test(message)) throw error
+    await ensureResourceTables()
+    return read()
+  }
 }
 
 function toMinor(value: unknown) {
@@ -498,15 +510,14 @@ export async function listAdminResources(search = "") {
   return rows.map(rowToResource)
 }
 
-export async function listPublishedResources(input: { type?: string; audience?: string; category?: string; search?: string; limit?: number } = {}) {
-  await ensureResourceTables()
+async function listPublishedResourcesUncached(input: { type?: string; audience?: string; category?: string; search?: string; limit?: number } = {}) {
   const type = clean(input.type, 40)
   const audience = clean(input.audience, 80)
   const category = clean(input.category, 80)
   const search = clean(input.search, 120)
   const q = `%${search}%`
   const limit = Math.min(300, Math.max(1, input.limit || 36))
-  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+  const rows = await withResourceTablesFallback(() => prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT id, resource_uuid AS resourceUuid, resource_type AS resourceType, audience_key AS audienceKey, category_key AS categoryKey,
       title, slug, summary, body_content AS bodyContent, prompt_text AS promptText, use_case_text AS useCaseText,
       customization_notes AS customizationNotes, video_url AS videoUrl, thumbnail_url AS thumbnailUrl, download_url AS downloadUrl,
@@ -522,13 +533,14 @@ export async function listPublishedResources(input: { type?: string; audience?: 
       AND (${search} = '' OR title LIKE ${q} OR summary LIKE ${q} OR body_content LIKE ${q} OR prompt_text LIKE ${q} OR use_case_text LIKE ${q} OR customization_notes LIKE ${q})
     ORDER BY featured DESC, published_at DESC, updated_at DESC
     LIMIT ${limit}
-  `
+  `)
   return rows.map(rowToResource)
 }
 
-export async function getResourceBySlug(slug: string, includeDraft = false) {
-  await ensureResourceTables()
-  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+export const listPublishedResources = unstable_cache(listPublishedResourcesUncached, ["published-resources"], { revalidate: 300 })
+
+async function getResourceBySlugUncached(slug: string, includeDraft = false) {
+  const rows = await withResourceTablesFallback(() => prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT id, resource_uuid AS resourceUuid, resource_type AS resourceType, audience_key AS audienceKey, category_key AS categoryKey,
       title, slug, summary, body_content AS bodyContent, prompt_text AS promptText, use_case_text AS useCaseText,
       customization_notes AS customizationNotes, video_url AS videoUrl, thumbnail_url AS thumbnailUrl, download_url AS downloadUrl,
@@ -539,9 +551,11 @@ export async function getResourceBySlug(slug: string, includeDraft = false) {
     WHERE slug = ${clean(slug, 255)}
       AND (${includeDraft ? 1 : 0} = 1 OR status = 'published')
     LIMIT 1
-  `
+  `)
   return rows[0] ? rowToResource(rows[0]) : null
 }
+
+export const getResourceBySlug = unstable_cache(getResourceBySlugUncached, ["published-resource-by-slug"], { revalidate: 300 })
 
 export async function listAdminBundles() {
   await ensureResourceTables()
@@ -559,11 +573,10 @@ export async function listAdminBundles() {
   return rows.map(rowToBundle)
 }
 
-export async function listPublishedBundles(input: { audience?: string; limit?: number } = {}) {
-  await ensureResourceTables()
+async function listPublishedBundlesUncached(input: { audience?: string; limit?: number } = {}) {
   const audience = clean(input.audience, 80)
   const limit = Math.min(50, Math.max(1, input.limit || 12))
-  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+  const rows = await withResourceTablesFallback(() => prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT b.id, b.bundle_uuid AS bundleUuid, b.title, b.slug, b.summary, b.description, b.audience_key AS audienceKey,
       b.price_ngn_minor AS priceNgnMinor, b.price_usd_minor AS priceUsdMinor, b.status, b.featured,
       b.created_at AS createdAt, b.updated_at AS updatedAt, b.published_at AS publishedAt,
@@ -575,9 +588,11 @@ export async function listPublishedBundles(input: { audience?: string; limit?: n
     GROUP BY b.id
     ORDER BY b.featured DESC, b.published_at DESC, b.updated_at DESC
     LIMIT ${limit}
-  `
+  `)
   return rows.map(rowToBundle)
 }
+
+export const listPublishedBundles = unstable_cache(listPublishedBundlesUncached, ["published-resource-bundles"], { revalidate: 300 })
 
 export async function upsertResourceFromForm(formData: FormData) {
   await ensureResourceTables()

@@ -148,6 +148,31 @@ export default async function StudentProjectsPage() {
                         {project.host}
                       </p>
                     </div>
+
+                    {project.links.length ? (
+                      <div className="mt-5 rounded-xl border border-border/60 bg-muted/20 p-3">
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">More links</p>
+                        <div className="grid gap-2">
+                          {project.links.slice(0, 4).map((link) => (
+                            <a
+                              key={`${project.id}-${link.kind}-${link.url}`}
+                              href={link.url}
+                              target={link.url.startsWith("/") ? undefined : "_blank"}
+                              rel={link.url.startsWith("/") ? undefined : "noreferrer"}
+                              className="group/link flex items-start justify-between gap-3 rounded-lg bg-background px-3 py-2 text-xs no-underline transition-colors hover:bg-primary/5"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate font-bold text-foreground">{link.label}</span>
+                                <span className="mt-0.5 block truncate text-muted-foreground">
+                                  {link.kind === "certificate_verification" ? "Verified by the academy" : "Student-declared project"}
+                                </span>
+                              </span>
+                              <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5 group-hover/link:text-primary" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-8 flex items-center justify-between gap-4 border-t border-border/50 pt-5">

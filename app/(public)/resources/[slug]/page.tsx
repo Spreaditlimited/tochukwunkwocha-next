@@ -1,3 +1,4 @@
+import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { 
@@ -113,12 +114,13 @@ export default async function ResourceDetailPage({ params }: PageProps) {
 
               {/* Cover Image / Thumbnail */}
               {resource.thumbnailUrl && (
-                <figure className="surface-raised mt-12 overflow-hidden bg-muted">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img 
+                <figure className="surface-raised relative mt-12 aspect-video overflow-hidden bg-muted">
+                  <Image
                     src={resource.thumbnailUrl} 
                     alt={resource.title} 
-                    className="w-full object-cover" 
+                    fill
+                    sizes="(min-width: 1024px) 768px, 100vw"
+                    className="object-cover"
                   />
                 </figure>
               )}

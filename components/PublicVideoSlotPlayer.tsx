@@ -20,6 +20,7 @@ export function PublicVideoSlotPlayer({
           className="h-full w-full"
           allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
           allowFullScreen
+          loading="lazy"
         />
       </div>
     )

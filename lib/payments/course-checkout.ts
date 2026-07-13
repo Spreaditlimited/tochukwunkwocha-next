@@ -149,6 +149,21 @@ function normalizeBatchKey(value: unknown) {
     .slice(0, 64)
 }
 
+function mysqlWallDateTime(value: Date | string | null) {
+  if (!value) return null
+  if (value instanceof Date) {
+    const pad = (part: number) => String(part).padStart(2, "0")
+    return [
+      value.getUTCFullYear(),
+      pad(value.getUTCMonth() + 1),
+      pad(value.getUTCDate())
+    ].join("-") + `T${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`
+  }
+  const raw = String(value || "").trim()
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?/)
+  return match ? `${match[1]}T${match[2]}:${match[3] || "00"}` : null
+}
+
 function normalizeBuyerType(value: unknown): "student" | "family" {
   return String(value || "").trim().toLowerCase() === "family" ? "family" : "student"
 }
@@ -254,7 +269,7 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
       seatLimit,
       enrolledCount,
       remainingSeats: seatLimit === null ? null : Math.max(0, seatLimit - enrolledCount),
-      batchStartAt: row.batch_start_at ? new Date(row.batch_start_at).toISOString() : null
+      batchStartAt: mysqlWallDateTime(row.batch_start_at)
     })
   }
   return batches

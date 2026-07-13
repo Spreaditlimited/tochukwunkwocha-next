@@ -18,8 +18,7 @@ export async function getPublicVideoSlot(slotKey: PublicVideoSlotKey): Promise<P
   const configuredSlot = PUBLIC_VIDEO_SLOTS.find((slot) => slot.key === slotKey)
   if (!configuredSlot) return null
 
-  await ensureVideoLibraryTables()
-  const rows = await prisma.$queryRaw<Array<{
+  const readSlot = () => prisma.$queryRaw<Array<{
     slotKey: PublicVideoSlotKey
     slotLabel: string
     pageLabel: string
@@ -40,6 +39,17 @@ export async function getPublicVideoSlot(slotKey: PublicVideoSlotKey): Promise<P
       AND COALESCE(TRIM(a.video_uid), '') <> ''
     LIMIT 1
   `
+
+  let rows: Awaited<ReturnType<typeof readSlot>>
+  try {
+    rows = await readSlot()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    if (!/doesn't exist|does not exist|unknown table|1146/i.test(message)) throw error
+    await ensureVideoLibraryTables()
+    rows = await readSlot()
+  }
+
   const row = rows[0]
   if (!row?.videoUid) return null
 

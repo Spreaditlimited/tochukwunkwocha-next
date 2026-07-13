@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { ArrowRight, Download, FileText, Lock, MessageSquare, Play } from "lucide-react"
 
 import {
@@ -26,9 +27,14 @@ export function ResourceCard({ resource }: { resource: ResourceRow }) {
   return (
     <Link href={`/resources/${resource.slug}`} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
       {resource.thumbnailUrl ? (
-        <div className="aspect-[16/10] overflow-hidden bg-muted">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={resource.thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div className="relative aspect-[16/10] overflow-hidden bg-muted">
+          <Image
+            src={resource.thumbnailUrl}
+            alt=""
+            fill
+            sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
+          />
         </div>
       ) : resource.resourceType === "video" ? (
         <ResourceVideoThumbnail title={resource.title} className="transition-transform duration-500 group-hover:scale-[1.02]" />

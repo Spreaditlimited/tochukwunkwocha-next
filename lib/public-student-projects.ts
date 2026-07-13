@@ -1,6 +1,16 @@
 import { Prisma } from "@prisma/client"
+import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
+import { listPublicSelfDeclaredProjectLinks, type StudentProjectLink } from "@/lib/student-project-links"
+
+export type PublicStudentProjectLink = {
+  label: string
+  url: string
+  host: string
+  kind: "certificate_verification" | "self_declared"
+  description: string
+}
 
 export type PublicStudentProject = {
   id: string
@@ -12,6 +22,7 @@ export type PublicStudentProject = {
   sourceType: "individual" | "school"
   schoolName: string
   publishedAt: Date | null
+  links: PublicStudentProjectLink[]
 }
 
 function clean(value: unknown, max = 500) {
@@ -47,17 +58,20 @@ function normalizePublicUrl(value: unknown) {
   }
 }
 
-export async function listPublicStudentProjects(limit = 60): Promise<PublicStudentProject[]> {
+async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStudentProject[]> {
   const safeLimit = Math.max(6, Math.min(120, Number.isFinite(Number(limit)) ? Math.round(Number(limit)) : 60))
   const individual = await prisma.$queryRaw<Array<{
     id: bigint
+    accountId: bigint
     projectUrl: string | null
     courseSlug: string | null
     studentName: string | null
+    certificateNo: string | null
     publishedAt: Date | null
   }>>(Prisma.sql`
-    SELECT a.id, a.submission_link AS projectUrl, a.course_slug AS courseSlug,
+    SELECT a.id, a.account_id AS accountId, a.submission_link AS projectUrl, a.course_slug AS courseSlug,
       COALESCE(NULLIF(a.student_name, ''), NULLIF(c.recipient_name, '')) AS studentName,
+      c.certificate_no AS certificateNo,
       COALESCE(a.reviewed_at, a.updated_at, a.created_at) AS publishedAt
     FROM tochukwu_learning_assignments a
     LEFT JOIN student_certificates c
@@ -70,6 +84,7 @@ export async function listPublicStudentProjects(limit = 60): Promise<PublicStude
     ORDER BY COALESCE(a.reviewed_at, a.updated_at, a.created_at) DESC, a.id DESC
     LIMIT ${safeLimit}
   `).catch(() => [])
+  const selfDeclaredLinksByAccount = await listPublicSelfDeclaredProjectLinks(individual.map((row) => row.accountId)).catch(() => new Map<string, StudentProjectLink[]>())
 
   const school = await prisma.$queryRaw<Array<{
     id: bigint
@@ -97,6 +112,8 @@ export async function listPublicStudentProjects(limit = 60): Promise<PublicStude
       const url = normalizePublicUrl(row.projectUrl)
       if (!url) return null
       const courseSlug = clean(row.courseSlug, 120)
+      const certificateNo = clean(row.certificateNo, 140)
+      const additionalLinks = selfDeclaredLinksByAccount.get(row.accountId.toString()) || []
       return {
         id: `individual-${row.id.toString()}`,
         ...url,
@@ -105,7 +122,25 @@ export async function listPublicStudentProjects(limit = 60): Promise<PublicStude
         learnerLabel: clean(row.studentName, 80) || "Student project",
         sourceType: "individual",
         schoolName: "",
-        publishedAt: row.publishedAt
+        publishedAt: row.publishedAt,
+        links: [
+          ...(certificateNo
+            ? [{
+                label: "Verify certificate",
+                url: `/certificates/verify/${encodeURIComponent(certificateNo)}`,
+                host: "Certificate verification",
+                kind: "certificate_verification" as const,
+                description: "Academy-issued certificate verification page."
+              }]
+            : []),
+          ...additionalLinks.map((link) => ({
+            label: link.title,
+            url: link.projectUrl,
+            host: link.host,
+            kind: "self_declared" as const,
+            description: link.description
+          }))
+        ]
       }
     }),
     ...school.map((row): PublicStudentProject | null => {
@@ -121,7 +156,8 @@ export async function listPublicStudentProjects(limit = 60): Promise<PublicStude
         learnerLabel: schoolName ? `${schoolName} student project` : "School student project",
         sourceType: "school",
         schoolName,
-        publishedAt: row.publishedAt
+        publishedAt: row.publishedAt,
+        links: []
       }
     })
   ].filter((item): item is PublicStudentProject => Boolean(item))
@@ -137,3 +173,8 @@ export async function listPublicStudentProjects(limit = 60): Promise<PublicStude
     })
     .slice(0, safeLimit)
 }
+
+export const listPublicStudentProjects = unstable_cache(listPublicStudentProjectsUncached, ["public-student-projects"], {
+  revalidate: 300,
+  tags: ["public-student-projects"]
+})

@@ -20,8 +20,6 @@ import { brand } from "@/lib/brand"
 import { buildMetadata } from "@/lib/site-seo"
 import { CoachingPricingCards } from "./CoachingPricingCards"
 
-export const dynamic = "force-dynamic"
-
 export const metadata = buildMetadata({
   title: "Private AI Build Coaching",
   description: "Personal AI build coaching for learners who want direct guidance while building practical digital tools.",

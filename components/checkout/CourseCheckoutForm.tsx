@@ -138,6 +138,25 @@ function formatMinor(minor: number, currency: string) {
   }).format(minor / 100)
 }
 
+function formatBatchStart(value: string | null) {
+  if (!value) return ""
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  const date = match
+    ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5])))
+    : new Date(value)
+  if (!Number.isFinite(date.getTime())) return ""
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: match ? "UTC" : "Africa/Lagos"
+  }).format(date) + " WAT"
+}
+
 function cookieValue(name: string) {
   if (typeof document === "undefined") return ""
   const parts = `; ${document.cookie}`.split(`; ${name}=`)
@@ -435,6 +454,8 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
     (pricing ? formatMinor(pricing.finalAmountMinor, pricing.currency) : provider === "manual_transfer" ? manualDetails?.amountLabel : course.price)
   const selectedSeatCount = buyerType === "family" ? Math.max(2, Math.min(500, seatCount)) : 1
   const hideBatchSeatBalance = checkoutCourseSlug === "prompt-to-profit-holiday"
+  const selectedBatch = useMemo(() => batches.find((batch) => batch.batchKey === batchKey) || null, [batchKey, batches])
+  const selectedBatchStart = selectedBatch ? formatBatchStart(selectedBatch.batchStartAt) : ""
 
   return (
     <main className="min-h-screen bg-muted/20 pb-24 pt-10 lg:pt-14">
@@ -514,6 +535,14 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                           label: `${batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
                         }))}
                       />
+                      {selectedBatchStart ? (
+                        <span className="mt-3 flex items-center gap-2 rounded-lg border border-primary/15 bg-primary/5 px-4 py-3 text-sm font-semibold text-foreground">
+                          <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+                          <span>
+                            Starts <span className="text-primary">{selectedBatchStart}</span>
+                          </span>
+                        </span>
+                      ) : null}
                     </label>
                   ) : null}
                   <label className="block">

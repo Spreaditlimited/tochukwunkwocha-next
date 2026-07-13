@@ -19,8 +19,6 @@ import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { brand } from "@/lib/brand"
 import { buildMetadata } from "@/lib/site-seo"
 
-export const dynamic = "force-dynamic"
-
 export const metadata = buildMetadata({
   title: "AI Courses and Programmes",
   description: "Explore practical AI programmes for beginners, advanced builders, schools, and business owners.",

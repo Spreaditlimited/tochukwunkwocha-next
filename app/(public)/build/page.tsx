@@ -18,8 +18,6 @@ import {
 import { brand } from "@/lib/brand"
 import { buildMetadata } from "@/lib/site-seo"
 
-export const dynamic = "force-dynamic"
-
 export const metadata = buildMetadata({
   title: "Build Service",
   description: "Founder-led custom web application builds for businesses that need practical dashboards, portals, workflows, and operational tools.",
