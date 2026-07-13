@@ -7,6 +7,8 @@ import { setInternalToast } from "@/lib/internal-toast"
 import {
   addExternalStudentPayment,
   deleteHolidayWaitlistContact,
+  resendBatchActivationEmails,
+  resendManualPaymentActivationEmail,
   sendManualPaymentMetaPurchase,
   sendWhatsAppCampaign,
   updateManualPaymentEmail
@@ -74,6 +76,34 @@ export async function sendManualPaymentMetaPurchaseAction(formData: FormData) {
     eventSourceUrl: String(formData.get("eventSourceUrl") || "")
   })
   await setInternalToast({ title: "Meta purchase event sent", message: "The manual payment conversion event has been submitted." })
+  revalidatePath("/internal/manual-payments")
+}
+
+export async function resendManualPaymentActivationEmailAction(formData: FormData) {
+  await requireAdmin()
+  await resendManualPaymentActivationEmail({
+    paymentUuid: String(formData.get("paymentUuid") || ""),
+    subject: String(formData.get("subject") || ""),
+    messageTemplate: String(formData.get("messageTemplate") || "")
+  })
+  await setInternalToast({ title: "Activation email sent", message: "The student reset/access email has been resent." })
+  revalidatePath("/internal/manual-payments")
+}
+
+export async function resendBatchActivationEmailsAction(formData: FormData) {
+  await requireAdmin()
+  const result = await resendBatchActivationEmails({
+    courseSlug: String(formData.get("courseSlug") || ""),
+    batchKey: String(formData.get("batchKey") || ""),
+    batchLabel: String(formData.get("batchLabel") || ""),
+    subject: String(formData.get("subject") || ""),
+    messageTemplate: String(formData.get("messageTemplate") || ""),
+    limit: Number(formData.get("limit") || 500)
+  })
+  await setInternalToast({
+    title: "Batch activation emails processed",
+    message: `${result.sent} sent, ${result.failed} failed${result.createdAccounts ? `, ${result.createdAccounts} account${result.createdAccounts === 1 ? "" : "s"} created` : ""}.`
+  })
   revalidatePath("/internal/manual-payments")
 }
 

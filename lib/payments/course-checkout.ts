@@ -31,6 +31,7 @@ export type CheckoutBatch = {
   batchLabel: string
   status: string
   isActive: boolean
+  brevoListId: string | null
   seatLimit: number | null
   enrolledCount: number
   remainingSeats: number | null
@@ -55,6 +56,7 @@ type CourseBatchRow = {
   batch_label: string
   status: string | null
   is_active: number | bigint | boolean | null
+  brevo_list_id: string | null
   seat_limit: number | bigint | null
   batch_start_at: Date | string | null
 }
@@ -230,7 +232,7 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
   const courseSlug = normalizeCourse(courseSlugInput)
   if (IMMEDIATE_ACCESS_COURSE_SLUGS.has(courseSlug)) return []
   const rows = await prisma.$queryRaw<CourseBatchRow[]>`
-    SELECT course_slug, batch_key, batch_label, status, is_active, seat_limit, batch_start_at
+    SELECT course_slug, batch_key, batch_label, status, is_active, brevo_list_id, seat_limit, batch_start_at
     FROM course_batches
     WHERE course_slug = ${courseSlug}
       AND (is_active = 1 OR (${courseSlug} = ${HOLIDAY_COURSE_SLUG} AND status = 'open'))
@@ -248,6 +250,7 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
       batchLabel: String(row.batch_label || key),
       status: String(row.status || "open"),
       isActive: Boolean(Number(row.is_active || 0)),
+      brevoListId: row.brevo_list_id ? String(row.brevo_list_id) : null,
       seatLimit,
       enrolledCount,
       remainingSeats: seatLimit === null ? null : Math.max(0, seatLimit - enrolledCount),

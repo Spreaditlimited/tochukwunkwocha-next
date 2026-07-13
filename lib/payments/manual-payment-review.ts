@@ -1,6 +1,6 @@
 import crypto from "crypto"
 
-import { sendEmail } from "@/lib/email"
+import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { prisma } from "@/lib/prisma"
 import {
@@ -8,8 +8,7 @@ import {
   findOrCreateStudentAccount,
   normalizeEmail,
   recordCouponRedemption,
-  resolveCheckoutBatch,
-  siteBaseUrl
+  resolveCheckoutBatch
 } from "@/lib/payments/course-checkout"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 
@@ -38,10 +37,6 @@ function clean(value: unknown, max = 500) {
 function toNumber(value: unknown, fallback = 0) {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? Math.round(numberValue) : fallback
-}
-
-function resetUrl(token: string) {
-  return `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(token)}`
 }
 
 async function findManualPayment(paymentUuid: string) {
@@ -82,34 +77,6 @@ async function updateManualPaymentReview(input: {
       LIMIT 1
     `
   }
-}
-
-async function notifyNewStudent(input: {
-  email: string
-  fullName: string
-  courseSlug: string
-  resetToken: string
-}) {
-  const subject = "Your Tochukwu Tech learning account is ready"
-  const setupUrl = resetUrl(input.resetToken)
-  await sendEmail({
-    to: input.email,
-    subject,
-    text: [
-      `Hello ${input.fullName || "there"},`,
-      "",
-      `Your payment for ${input.courseSlug} has been approved and your learning account is ready.`,
-      `Set your password here: ${setupUrl}`,
-      "",
-      "Tochukwu Tech and AI Academy"
-    ].join("\n"),
-    html: `
-      <p>Hello ${input.fullName || "there"},</p>
-      <p>Your payment for <strong>${input.courseSlug}</strong> has been approved and your learning account is ready.</p>
-      <p><a href="${setupUrl}">Set your password and open your dashboard</a></p>
-      <p>Tochukwu Tech and AI Academy</p>
-    `
-  }).catch(() => null)
 }
 
 async function createAffiliateCommissionForOrder(orderUuid: string) {
@@ -254,7 +221,7 @@ export async function reviewManualPayment(input: {
     const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
     resetToken = reset?.token || null
     if (resetToken) {
-      await notifyNewStudent({
+      await sendStudentAccountReadyEmail({
         email,
         fullName: account.fullName || clean(payment.first_name, 180) || "Student",
         courseSlug: clean(payment.course_slug, 120),
@@ -262,6 +229,15 @@ export async function reviewManualPayment(input: {
       })
     }
   }
+  await syncEnrollmentToBrevo({
+    fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+    email,
+    phone: account.phoneE164 || clean(payment.phone, 80),
+    courseSlug: clean(payment.course_slug, 120),
+    batchKey: clean(payment.batch_key, 64),
+    batchLabel: clean(payment.batch_label, 120),
+    source: "manual_payment_approved"
+  }).catch(() => null)
 
   await recordCouponRedemption({
     couponId: payment.coupon_id ? Number(payment.coupon_id) : null,

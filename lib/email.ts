@@ -1,3 +1,5 @@
+import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+
 type EmailInput = {
   to: string
   subject: string
@@ -78,6 +80,7 @@ function shouldDecorateHtml(html: string) {
 }
 
 export async function sendEmail(input: EmailInput) {
+  await applyAdminSettingsToProcessEnv().catch(() => null)
   const to = clean(input.to, 190)
   const subject = clean(input.subject, 255)
   const rawHtmlContent = clean(input.html, 200000)

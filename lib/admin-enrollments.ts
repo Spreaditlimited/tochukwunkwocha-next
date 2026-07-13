@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import {
   checkoutContext,
   createManualPayment,
+  findOrCreateStudentAccount,
   normalizeEmail,
   siteBaseUrl,
   upsertWhatsAppContact
@@ -94,6 +95,25 @@ export type WhatsAppCampaignRow = {
   n8nStatus: string | null
   n8nError: string | null
   createdBy: string | null
+  createdAt: Date | null
+}
+
+export type OnboardingEmailResult = {
+  total: number
+  sent: number
+  failed: number
+  createdAccounts: number
+  runId: string | null
+  failures: Array<{ email: string; message: string }>
+}
+
+export type OnboardingEmailFailureRow = {
+  runId: string
+  courseSlug: string | null
+  batchKey: string | null
+  batchLabel: string | null
+  email: string
+  message: string
   createdAt: Date | null
 }
 
@@ -231,6 +251,49 @@ async function ensureWhatsAppWaitlistTables() {
       PRIMARY KEY (id),
       KEY idx_tochukwu_wa_waitlist_queue_status_due (status, due_at),
       KEY idx_tochukwu_wa_waitlist_queue_phone (phone_e164)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+}
+
+async function ensureOnboardingEmailRunTables() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_onboarding_email_runs (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      run_uuid VARCHAR(64) NOT NULL,
+      mode VARCHAR(20) NOT NULL,
+      course_slug VARCHAR(120) NULL,
+      batch_key VARCHAR(80) NULL,
+      batch_label VARCHAR(120) NULL,
+      email_subject VARCHAR(220) NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'running',
+      total_targets INT NOT NULL DEFAULT 0,
+      processed_count INT NOT NULL DEFAULT 0,
+      sent_count INT NOT NULL DEFAULT 0,
+      failed_count INT NOT NULL DEFAULT 0,
+      created_accounts INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      completed_at DATETIME NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_onboarding_email_run_uuid (run_uuid),
+      KEY idx_onboarding_email_runs_scope (course_slug, batch_key, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_onboarding_email_run_items (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      run_uuid VARCHAR(64) NOT NULL,
+      email VARCHAR(220) NOT NULL,
+      full_name VARCHAR(180) NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      error_message VARCHAR(500) NULL,
+      created_account TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      processed_at DATETIME NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_onboarding_email_run_item (run_uuid, email),
+      KEY idx_onboarding_email_items_status (run_uuid, status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
 }
@@ -558,6 +621,192 @@ function normalizePhone(value: unknown) {
   return `+${raw}`
 }
 
+function escapeHtml(value: unknown) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function displayNameFallback(email: string) {
+  const local = String(email || "").split("@")[0] || "Student"
+  return (
+    local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ") || "Student"
+  )
+}
+
+function firstNameFromFullName(fullName: string, email: string) {
+  const first = clean(fullName, 180).split(/\s+/).filter(Boolean)[0]
+  return first || displayNameFallback(email).split(/\s+/).filter(Boolean)[0] || "Student"
+}
+
+function applyActivationTemplate(template: string, vars: Record<string, string>) {
+  return String(template || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_all, key) => {
+    const name = String(key || "").trim().toLowerCase()
+    return Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] || "" : ""
+  })
+}
+
+function activationEmailBody(input: {
+  messageTemplate?: string
+  fullName: string
+  email: string
+  resetLink: string
+  vars: Record<string, string>
+  createdAccount: boolean
+}) {
+  const messageTemplate = clean(input.messageTemplate, 8000)
+  if (messageTemplate) {
+    const text = applyActivationTemplate(messageTemplate, input.vars)
+    return {
+      text,
+      html: `<div>${escapeHtml(text).replace(/\n/g, "<br/>")}</div>`
+    }
+  }
+  if (input.createdAccount) {
+    return {
+      text: [
+        `Hello ${input.fullName || "there"},`,
+        "",
+        "Your dashboard account has been created.",
+        `Email: ${input.email}`,
+        "",
+        "Please set your password using the secure link below before signing in:",
+        input.resetLink
+      ].join("\n"),
+      html: [
+        `<p>Hello ${escapeHtml(input.fullName || "there")},</p>`,
+        "<p>Your dashboard account has been created.</p>",
+        `<p><strong>Email:</strong> ${escapeHtml(input.email)}</p>`,
+        "<p>Please set your password using the secure link below before signing in:</p>",
+        `<p><a href="${escapeHtml(input.resetLink)}">${escapeHtml(input.resetLink)}</a></p>`
+      ].join("\n")
+    }
+  }
+  return {
+    text: [
+      `Hello ${input.fullName || "there"},`,
+      "",
+      "Here is your dashboard password reset link:",
+      input.resetLink,
+      "",
+      "If you can no longer access your email, contact support."
+    ].join("\n"),
+    html: [
+      `<p>Hello ${escapeHtml(input.fullName || "there")},</p>`,
+      "<p>Here is your dashboard password reset link:</p>",
+      `<p><a href="${escapeHtml(input.resetLink)}">${escapeHtml(input.resetLink)}</a></p>`,
+      "<p>If you can no longer access your email, contact support.</p>"
+    ].join("\n")
+  }
+}
+
+async function createOnboardingRun(input: { courseSlug: string; batchKey: string; batchLabel: string; subject: string }) {
+  await ensureOnboardingEmailRunTables()
+  const now = new Date()
+  const runId = `ors_${crypto.randomUUID().replace(/-/g, "")}`
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_onboarding_email_runs
+      (run_uuid, mode, course_slug, batch_key, batch_label, email_subject, status, created_at, updated_at)
+    VALUES (${runId}, 'batch', ${input.courseSlug || null}, ${input.batchKey || null}, ${input.batchLabel || null}, ${input.subject || null}, 'running', ${now}, ${now})
+  `
+  return runId
+}
+
+async function logOnboardingRunItem(input: {
+  runId: string
+  email: string
+  fullName: string
+  status: "sent" | "failed"
+  errorMessage?: string
+  createdAccount?: boolean
+}) {
+  const now = new Date()
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_onboarding_email_run_items
+      (run_uuid, email, full_name, status, error_message, created_account, created_at, updated_at, processed_at)
+    VALUES (${input.runId}, ${input.email}, ${input.fullName || null}, ${input.status}, ${clean(input.errorMessage, 500) || null}, ${input.createdAccount ? 1 : 0}, ${now}, ${now}, ${now})
+    ON DUPLICATE KEY UPDATE
+      full_name = VALUES(full_name),
+      status = VALUES(status),
+      error_message = VALUES(error_message),
+      created_account = VALUES(created_account),
+      updated_at = VALUES(updated_at),
+      processed_at = VALUES(processed_at)
+  `
+}
+
+async function completeOnboardingRun(runId: string, result: OnboardingEmailResult) {
+  const now = new Date()
+  await prisma.$executeRaw`
+    UPDATE tochukwu_onboarding_email_runs
+    SET status = 'completed',
+        total_targets = ${result.total},
+        processed_count = ${result.sent + result.failed},
+        sent_count = ${result.sent},
+        failed_count = ${result.failed},
+        created_accounts = ${result.createdAccounts},
+        updated_at = ${now},
+        completed_at = ${now}
+    WHERE run_uuid = ${runId}
+    LIMIT 1
+  `
+}
+
+async function sendActivationEmailToStudent(input: {
+  email: string
+  fullName?: string | null
+  courseSlug?: string | null
+  batchKey?: string | null
+  batchLabel?: string | null
+  subject?: string
+  messageTemplate?: string
+  mode?: "single" | "batch"
+}) {
+  const email = normalizeEmail(input.email)
+  if (!email) throw new Error("A valid student email is required.")
+  const providedName = clean(input.fullName, 180)
+  const existingAccount = await prisma.studentAccount.findUnique({ where: { email } }).catch(() => null)
+  const fullName = providedName || clean(existingAccount?.fullName, 180) || displayNameFallback(email)
+  await findOrCreateStudentAccount({ fullName, email })
+  const createdAccount = !existingAccount
+  const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
+  if (!reset?.token) throw new Error("Could not generate password reset token.")
+  const resetLink = `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+  const batchLabel = clean(input.batchLabel, 120) || "Batch"
+  const vars = {
+    first_name: firstNameFromFullName(fullName, email),
+    full_name: fullName,
+    email,
+    reset_link: resetLink,
+    course_slug: clean(input.courseSlug, 120),
+    batch_key: clean(input.batchKey, 80),
+    batch_label: batchLabel,
+    temp_password: ""
+  }
+  const subject = clean(input.subject, 220) || (
+    input.mode === "batch"
+      ? `Important: New Password Reset Link for ${batchLabel}`
+      : createdAccount ? "Your Dashboard Access (Password Reset Required)" : "Your Dashboard Password Reset Link"
+  )
+  const body = activationEmailBody({
+    messageTemplate: input.messageTemplate,
+    fullName,
+    email,
+    resetLink,
+    vars,
+    createdAccount
+  })
+  await sendEmail({ to: email, subject, html: body.html, text: body.text })
+  return { email, fullName, createdAccount }
+}
+
 export async function addExternalStudentPayment(input: {
   courseSlug: string
   batchKey?: string
@@ -589,7 +838,8 @@ export async function addExternalStudentPayment(input: {
     couponCode: clean(input.couponCode, 80),
     buyerType,
     seatCount,
-    batchKey: input.batchKey
+    batchKey: input.batchKey,
+    manualTransfer: true
   })
   const paymentUuid = await createManualPayment({
     courseSlug,
@@ -659,6 +909,182 @@ export async function updateManualPaymentEmail(input: { paymentUuid: string; new
     }
   }
   return { paymentUuid, previousEmail: oldEmail, email: newEmail }
+}
+
+export async function resendManualPaymentActivationEmail(input: {
+  paymentUuid: string
+  subject?: string
+  messageTemplate?: string
+}) {
+  const paymentUuid = clean(input.paymentUuid, 80)
+  if (!paymentUuid) throw new Error("Payment UUID is required.")
+  const rows = await prisma.$queryRaw<Array<{
+    email: string | null
+    fullName: string | null
+    courseSlug: string | null
+    batchKey: string | null
+    batchLabel: string | null
+    status: string | null
+  }>>`
+    SELECT
+      email,
+      first_name AS fullName,
+      course_slug AS courseSlug,
+      batch_key AS batchKey,
+      batch_label AS batchLabel,
+      status
+    FROM course_manual_payments
+    WHERE payment_uuid = ${paymentUuid}
+    LIMIT 1
+  `
+  const payment = rows[0]
+  if (!payment) throw new Error("Manual payment not found.")
+  if (clean(payment.status, 40).toLowerCase() !== "approved") {
+    throw new Error("Only approved manual payments can receive activation emails.")
+  }
+  return sendActivationEmailToStudent({
+    email: normalizeEmail(payment.email),
+    fullName: payment.fullName,
+    courseSlug: payment.courseSlug,
+    batchKey: payment.batchKey,
+    batchLabel: payment.batchLabel,
+    subject: input.subject,
+    messageTemplate: input.messageTemplate,
+    mode: "single"
+  })
+}
+
+export async function resendBatchActivationEmails(input: {
+  courseSlug: string
+  batchKey: string
+  batchLabel?: string
+  subject?: string
+  messageTemplate?: string
+  limit?: number
+}): Promise<OnboardingEmailResult> {
+  const courseSlug = normalizeCourse(input.courseSlug)
+  const batchKey = clean(input.batchKey, 80)
+  if (!courseSlug || !batchKey) throw new Error("Course and batch are required.")
+  const batchLabel = clean(input.batchLabel, 120) || batchKey
+  const subject = clean(input.subject, 220) || `Important: New Password Reset Link for ${batchLabel}`
+  const limit = Math.max(1, Math.min(toInt(input.limit, 500), 1000))
+  const manualRows = await prisma.$queryRaw<Array<{ email: string | null; fullName: string | null }>>`
+    SELECT LOWER(email) AS email, MAX(COALESCE(first_name, '')) AS fullName
+    FROM course_manual_payments
+    WHERE course_slug = ${courseSlug}
+      AND batch_key = ${batchKey}
+      AND status = 'approved'
+      AND reviewed_by = 'admin'
+    GROUP BY LOWER(email)
+    ORDER BY email ASC
+    LIMIT ${limit}
+  `
+  const orderRows = await prisma.$queryRaw<Array<{ email: string | null; fullName: string | null }>>`
+    SELECT LOWER(email) AS email, MAX(COALESCE(first_name, '')) AS fullName
+    FROM course_orders
+    WHERE course_slug = ${courseSlug}
+      AND batch_key = ${batchKey}
+      AND status = 'paid'
+      AND (provider IS NULL OR provider NOT IN ('wallet_installment', 'wallet'))
+    GROUP BY LOWER(email)
+    ORDER BY email ASC
+    LIMIT ${limit}
+  `
+  const byEmail = new Map<string, { email: string; fullName: string }>()
+  for (const row of [...manualRows, ...orderRows]) {
+    const email = normalizeEmail(row.email)
+    if (!email || byEmail.has(email)) continue
+    byEmail.set(email, { email, fullName: clean(row.fullName, 180) })
+  }
+  const targets = Array.from(byEmail.values()).slice(0, limit)
+  const runId = await createOnboardingRun({ courseSlug, batchKey, batchLabel, subject })
+  const result: OnboardingEmailResult = {
+    total: targets.length,
+    sent: 0,
+    failed: 0,
+    createdAccounts: 0,
+    runId,
+    failures: []
+  }
+  for (const target of targets) {
+    try {
+      const sent = await sendActivationEmailToStudent({
+        email: target.email,
+        fullName: target.fullName,
+        courseSlug,
+        batchKey,
+        batchLabel,
+        subject,
+        messageTemplate: input.messageTemplate,
+        mode: "batch"
+      })
+      result.sent += 1
+      if (sent.createdAccount) result.createdAccounts += 1
+      await logOnboardingRunItem({
+        runId,
+        email: target.email,
+        fullName: sent.fullName,
+        status: "sent",
+        createdAccount: sent.createdAccount
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      result.failed += 1
+      result.failures.push({ email: target.email, message })
+      await logOnboardingRunItem({
+        runId,
+        email: target.email,
+        fullName: target.fullName,
+        status: "failed",
+        errorMessage: message
+      })
+    }
+  }
+  await completeOnboardingRun(runId, result)
+  return result
+}
+
+export async function listLatestOnboardingEmailFailures(input: {
+  courseSlug?: string
+  batchKey?: string
+  limit?: number
+}): Promise<OnboardingEmailFailureRow[]> {
+  await ensureOnboardingEmailRunTables()
+  const courseSlug = normalizeCourse(input.courseSlug) || "all"
+  const batchKey = clean(input.batchKey, 80) || "all"
+  const limit = Math.max(1, Math.min(toInt(input.limit, 20), 100))
+  const runRows = await prisma.$queryRaw<Array<{
+    runId: string
+    courseSlug: string | null
+    batchKey: string | null
+    batchLabel: string | null
+  }>>`
+    SELECT run_uuid AS runId, course_slug AS courseSlug, batch_key AS batchKey, batch_label AS batchLabel
+    FROM tochukwu_onboarding_email_runs
+    WHERE (${courseSlug} = 'all' OR course_slug = ${courseSlug})
+      AND (${batchKey} = 'all' OR batch_key = ${batchKey})
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  const run = runRows[0]
+  if (!run?.runId) return []
+  const rows = await prisma.$queryRaw<Array<{ email: string | null; message: string | null; createdAt: Date | null }>>`
+    SELECT email, error_message AS message, processed_at AS createdAt
+    FROM tochukwu_onboarding_email_run_items
+    WHERE run_uuid = ${run.runId}
+      AND status = 'failed'
+    ORDER BY email ASC
+    LIMIT ${limit}
+  `
+  return rows.map((row) => ({
+    runId: run.runId,
+    courseSlug: clean(run.courseSlug, 120) || null,
+    batchKey: clean(run.batchKey, 80) || null,
+    batchLabel: clean(run.batchLabel, 120) || null,
+    email: normalizeEmail(row.email),
+    message: clean(row.message, 500) || "Unknown error",
+    createdAt: row.createdAt
+  })).filter((row) => row.email)
 }
 
 function sha256(value: string) {

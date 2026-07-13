@@ -5,6 +5,7 @@ import {
   ExternalLink, 
   Filter, 
   ListChecks, 
+  Mail, 
   MessageCircle, 
   MonitorPlay, 
   RefreshCw, 
@@ -21,6 +22,7 @@ import { TrademarkText } from "@/components/TrademarkText"
 import {
   enrollmentDashboardSummary,
   enrollmentSummary,
+  listLatestOnboardingEmailFailures,
   listEnrollmentBatches,
   listEnrollmentCourses,
   listEnrollmentPayments,
@@ -33,6 +35,8 @@ import { formatDate } from "@/lib/utils"
 import {
   addExternalStudentPaymentAction,
   deleteHolidayWaitlistContactAction,
+  resendBatchActivationEmailsAction,
+  resendManualPaymentActivationEmailAction,
   reviewManualPaymentAction,
   sendManualPaymentMetaPurchaseAction,
   sendWhatsAppCampaignAction,
@@ -82,7 +86,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   const summaryCourseSlug = param(params, "summaryCourse", courseSlug || "all")
   const summaryBatchKey = summaryCourseSlug === "all" ? "all" : param(params, "summaryBatch", batchKey || "all")
 
-  const [courses, allBatches, summaryBatches, payments, summary, dashboardSummary, waitlist, whatsAppContacts, whatsAppCampaigns] = await Promise.all([
+  const [courses, allBatches, summaryBatches, payments, summary, dashboardSummary, waitlist, whatsAppContacts, whatsAppCampaigns, onboardingFailures] = await Promise.all([
     listEnrollmentCourses(),
     listEnrollmentBatches(courseSlug === "all" ? undefined : courseSlug),
     summaryCourseSlug === "all" ? Promise.resolve([]) : listEnrollmentBatches(summaryCourseSlug),
@@ -91,7 +95,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     enrollmentDashboardSummary(summaryCourseSlug, summaryBatchKey),
     listHolidayWaitlistContacts(160),
     listWhatsAppMarketingContacts({ courseSlug: waCourse, opted: "in", search: waSearch, limit: 160 }),
-    listWhatsAppCampaigns(12)
+    listWhatsAppCampaigns(12),
+    listLatestOnboardingEmailFailures({ courseSlug, batchKey, limit: 20 }).catch(() => [])
   ])
   
   const selectedCourse = courses.find((course) => course.slug === courseSlug)
@@ -131,6 +136,27 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       label: batch.batchLabel
     }))
   ]
+  const activationBatchOptions = batchesForSelected
+    .filter((batch) => batch.batchKey)
+    .map((batch) => ({
+      key: `activation-${batch.courseSlug}-${batch.batchKey}`,
+      value: batch.batchKey,
+      label: batch.batchLabel
+    }))
+  const activationDefaultBatch = batchKey !== "all" ? batchKey : activationBatchOptions[0]?.value || ""
+  const activationDefaultSubject = activationDefaultBatch
+    ? `Important: New Password Reset Link for ${activationBatchOptions.find((batch) => batch.value === activationDefaultBatch)?.label || activationDefaultBatch}`
+    : "Important: New Password Reset Link"
+  const activationDefaultMessage = [
+    "Hello {{first_name}},",
+    "",
+    "Here is your secure dashboard access link:",
+    "{{reset_link}}",
+    "",
+    "Use this link to set or reset your password and access your learning dashboard.",
+    "",
+    "Tochukwu Tech and AI Academy"
+  ].join("\n")
 
   return (
     <main className="space-y-8 pb-12">
@@ -344,6 +370,80 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             </div>
           </div>
         </form>
+      </section>
+
+      {/* Activation Email Resend */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-heading text-xl font-black text-foreground">Activation Email Resend</h2>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Resend dashboard access and password reset links to an approved batch. Tags match the legacy static workflow.
+              </p>
+            </div>
+          </div>
+        </div>
+        <form action={resendBatchActivationEmailsAction} className="p-6 sm:p-8">
+          <div className="grid gap-5 lg:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span>
+              <PremiumPicker name="courseSlug" defaultValue={courseSlug === "all" ? courseOptions[0]?.value || "" : courseSlug} options={courseOptions} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch</span>
+              <PremiumPicker name="batchKey" defaultValue={activationDefaultBatch} options={activationBatchOptions.length ? activationBatchOptions : [{ value: "", label: "Select a batch" }]} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email Subject</span>
+              <input name="subject" defaultValue={activationDefaultSubject} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Send Limit</span>
+              <input name="limit" type="number" min="1" max="1000" defaultValue="500" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
+            <label className="block lg:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Message</span>
+              <textarea name="messageTemplate" rows={8} defaultValue={activationDefaultMessage} className="w-full rounded-xl border border-input bg-background/50 px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+              <span className="mt-2 block text-xs font-medium text-muted-foreground">
+                Tags: {"{{first_name}}"}, {"{{full_name}}"}, {"{{email}}"}, {"{{reset_link}}"}, {"{{batch_label}}"}, {"{{course_slug}}"}, {"{{temp_password}}"}
+              </span>
+            </label>
+            <div className="flex justify-end lg:col-span-2">
+              <button className="btn-primary w-full justify-center shadow-sm sm:w-auto" type="submit">
+                <Mail className="mr-2 h-4 w-4" /> Send To Batch
+              </button>
+            </div>
+          </div>
+        </form>
+        {onboardingFailures.length ? (
+          <div className="border-t border-border bg-background p-6 sm:p-8">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-destructive">Latest Failed Recipients</p>
+            <div className="mt-3 max-h-48 overflow-auto rounded-xl border border-border">
+              <table className="w-full min-w-[36rem] text-left text-xs">
+                <thead className="sticky top-0 bg-muted text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Email</th>
+                    <th className="px-4 py-3">Batch</th>
+                    <th className="px-4 py-3">Error</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {onboardingFailures.map((failure) => (
+                    <tr key={`${failure.runId}-${failure.email}`}>
+                      <td className="px-4 py-3 font-semibold text-foreground">{failure.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{failure.batchLabel || failure.batchKey || "-"}</td>
+                      <td className="px-4 py-3 text-destructive">{failure.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {/* Communications Grid */}
@@ -740,19 +840,29 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     )}
                   </td>
                   <td className="px-6 py-5">
-                    <form action={updateManualPaymentEmailAction} className="grid w-[240px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
-                      <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
-                      <input 
-                        name="newEmail" 
-                        type="email" 
-                        defaultValue={payment.email || ""} 
-                        placeholder="Correct email address"
-                        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
-                      />
-                      <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
-                        Apply Correction
-                      </button>
-                    </form>
+                    <div className="grid w-[240px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
+                      <form action={updateManualPaymentEmailAction} className="grid gap-2.5">
+                        <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                        <input 
+                          name="newEmail" 
+                          type="email" 
+                          defaultValue={payment.email || ""} 
+                          placeholder="Correct email address"
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
+                        />
+                        <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
+                          Apply Correction
+                        </button>
+                      </form>
+                      {payment.status === "approved" && (
+                        <form action={resendManualPaymentActivationEmailAction}>
+                          <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                          <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
+                            <Mail className="mr-1.5 h-3.5 w-3.5" /> Resend Activation
+                          </button>
+                        </form>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-5">
                     <form action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { sendInstallmentStartedEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import {
   checkoutContext,
   createInstallmentPlan,
@@ -72,6 +73,21 @@ export async function POST(request: Request) {
       source: "installment_enrollment",
       optedIn: body.whatsappOptIn === true
     })
+    await syncEnrollmentToBrevo({
+      fullName: firstName,
+      email,
+      phone,
+      courseSlug,
+      batchKey: context.batch.batchKey,
+      batchLabel: context.batch.batchLabel,
+      listId: context.batch.brevoListId,
+      source: "installment_started"
+    }).catch(() => null)
+    await sendInstallmentStartedEmail({
+      email,
+      fullName: firstName,
+      courseSlug
+    }).catch(() => null)
 
     return NextResponse.json({
       ok: true,

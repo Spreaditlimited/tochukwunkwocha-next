@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { createStudentPasswordResetToken, createStudentSessionForAccount } from "@/lib/student-auth"
 import { findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
@@ -30,6 +31,23 @@ export async function provisionStudentForPaidOrder(order: PaidOrderRow | null | 
 
   const reset = existing ? null : await createStudentPasswordResetToken(email, { neverExpires: true })
   const session = await createStudentSessionForAccount(account)
+  await syncEnrollmentToBrevo({
+    fullName: account.fullName,
+    email: account.email,
+    phone: account.phoneE164 || String(order?.phone || ""),
+    courseSlug: order?.course_slug || "",
+    batchKey: order?.batch_key || "",
+    batchLabel: order?.batch_label || "",
+    source: "paid_course_enrollment"
+  }).catch(() => null)
+  if (reset?.token) {
+    await sendStudentAccountReadyEmail({
+      email: account.email,
+      fullName: account.fullName,
+      courseSlug: order?.course_slug || "",
+      resetToken: reset.token
+    }).catch(() => null)
+  }
 
   if (String(order?.buyer_type || "").toLowerCase() === "family" && order?.order_uuid && order?.course_slug) {
     await provisionFamilyOrder({
