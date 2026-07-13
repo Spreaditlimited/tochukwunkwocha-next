@@ -14,6 +14,7 @@ import {
   enforceSignedCloudflareVideos,
   importVideoLibraryCsv,
   saveCourseBatch,
+  savePublicVideoSlot,
   saveVideoLibraryCourse,
   saveVideoLibraryLesson,
   saveVideoLibraryLessons,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/admin-video-library"
 
 const PATH = "/internal/video-library"
+const PUBLIC_VIDEO_PATHS = ["/", "/about", "/courses/prompt-to-profit", "/courses/prompt-to-production"]
 
 function moduleToast(input: { intent: string; isActive: boolean }) {
   if (input.intent === "move") {
@@ -64,6 +66,20 @@ export async function saveVideoLibraryCourseAction(formData: FormData) {
   await setInternalToast({ title: "Course saved", message: "Your course details, prices, payment options, and release settings are saved." })
   revalidatePath(PATH)
   revalidatePath("/internal/learning")
+}
+
+export async function savePublicVideoSlotAction(formData: FormData) {
+  await requireAdmin()
+  await savePublicVideoSlot({
+    slotKey: String(formData.get("slotKey") || ""),
+    videoAssetId: String(formData.get("videoAssetId") || ""),
+    headline: String(formData.get("headline") || ""),
+    description: String(formData.get("description") || ""),
+    isActive: formData.get("isActive") === "on"
+  })
+  await setInternalToast({ title: "Public video slot saved", message: "The selected public page video is now linked to the Cloudflare video library." })
+  revalidatePath(PATH)
+  for (const publicPath of PUBLIC_VIDEO_PATHS) revalidatePath(publicPath)
 }
 
 export async function saveVideoLibraryModuleAction(formData: FormData) {

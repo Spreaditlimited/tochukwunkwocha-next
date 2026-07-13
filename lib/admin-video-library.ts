@@ -4,6 +4,15 @@ import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { sanitizeRichNotes } from "@/lib/rich-notes"
 
+export const PUBLIC_VIDEO_SLOTS = [
+  { key: "home-introduction", label: "Home introduction", page: "Home" },
+  { key: "prompt-to-profit-basic-intro", label: "Prompt to Profit Basic intro", page: "Prompt to Profit Basic" },
+  { key: "prompt-to-profit-advanced-intro", label: "Prompt to Profit Advanced intro", page: "Prompt to Profit Advanced" },
+  { key: "about-academy-story", label: "About academy story", page: "About Us" }
+] as const
+
+export type PublicVideoSlotKey = typeof PUBLIC_VIDEO_SLOTS[number]["key"]
+
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
 }
@@ -217,6 +226,21 @@ export async function ensureVideoLibraryTables() {
       KEY idx_tochukwu_learning_lesson_asset (video_asset_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_public_video_slots (
+      slot_key VARCHAR(120) NOT NULL,
+      slot_label VARCHAR(180) NOT NULL,
+      page_label VARCHAR(120) NOT NULL,
+      video_asset_id BIGINT NULL,
+      headline VARCHAR(220) NULL,
+      description TEXT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (slot_key),
+      KEY idx_tochukwu_public_video_asset (video_asset_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
   await addColumnIfMissing("tochukwu_learning_courses", "price_usd_minor", "INT NULL")
   await addColumnIfMissing("tochukwu_learning_courses", "price_eur_minor", "INT NULL")
   await addColumnIfMissing("tochukwu_learning_courses", "school_advanced_discount_ngn_minor", "INT NULL")
@@ -269,11 +293,27 @@ export async function ensureVideoLibraryTables() {
   await addColumnIfMissing("tochukwu_learning_lessons", "audio_description_text", "LONGTEXT NULL")
   await addColumnIfMissing("tochukwu_learning_lessons", "sign_language_video_url", "TEXT NULL")
   await addColumnIfMissing("tochukwu_learning_lessons", "accessibility_status", "VARCHAR(32) NOT NULL DEFAULT 'draft'")
+  await addColumnIfMissing("tochukwu_public_video_slots", "page_label", "VARCHAR(120) NOT NULL DEFAULT ''")
+  await addColumnIfMissing("tochukwu_public_video_slots", "headline", "VARCHAR(220) NULL")
+  await addColumnIfMissing("tochukwu_public_video_slots", "description", "TEXT NULL")
+
+  for (const slot of PUBLIC_VIDEO_SLOTS) {
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO tochukwu_public_video_slots (slot_key, slot_label, page_label, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE slot_label = VALUES(slot_label), page_label = VALUES(page_label), updated_at = updated_at
+      `,
+      slot.key,
+      slot.label,
+      slot.page
+    )
+  }
 }
 
 export async function listVideoLibrary() {
   await ensureVideoLibraryTables()
-  const [courses, modules, lessons, videos, batches, moduleDripSchedules] = await Promise.all([
+  const [courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots] = await Promise.all([
     prisma.$queryRaw<Array<{
       id: bigint
       courseSlug: string
@@ -434,8 +474,71 @@ export async function listVideoLibrary() {
       FROM tochukwu_learning_module_batch_drips
       ORDER BY module_id ASC, batch_key ASC
     `.catch(() => [])
+    ,
+    prisma.$queryRaw<Array<{
+      slotKey: string
+      slotLabel: string
+      pageLabel: string
+      videoAssetId: bigint | null
+      headline: string | null
+      description: string | null
+      isActive: number | bigint | boolean
+      videoUid: string | null
+      filename: string | null
+      readyToStream: number | bigint | boolean | null
+      sourceDeletedAt: Date | null
+    }>>`
+      SELECT s.slot_key AS slotKey, s.slot_label AS slotLabel, s.page_label AS pageLabel,
+        s.video_asset_id AS videoAssetId, s.headline, s.description, s.is_active AS isActive,
+        a.video_uid AS videoUid, a.filename, a.ready_to_stream AS readyToStream, a.source_deleted_at AS sourceDeletedAt
+      FROM tochukwu_public_video_slots s
+      LEFT JOIN tochukwu_learning_video_assets a ON a.id = s.video_asset_id
+      ORDER BY CASE s.slot_key
+        WHEN 'home-introduction' THEN 1
+        WHEN 'prompt-to-profit-basic-intro' THEN 2
+        WHEN 'prompt-to-profit-advanced-intro' THEN 3
+        WHEN 'about-academy-story' THEN 4
+        ELSE 99
+      END, s.slot_label ASC
+    `.catch(() => [])
   ])
-  return { courses, modules, lessons, videos, batches, moduleDripSchedules }
+  return { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots }
+}
+
+export async function savePublicVideoSlot(input: {
+  slotKey: string
+  videoAssetId?: string
+  headline?: string
+  description?: string
+  isActive?: boolean
+}) {
+  await ensureVideoLibraryTables()
+  const slot = PUBLIC_VIDEO_SLOTS.find((item) => item.key === input.slotKey)
+  if (!slot) throw new Error("Unknown public video slot.")
+
+  const videoAssetId = toBigIntId(input.videoAssetId)
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO tochukwu_public_video_slots
+        (slot_key, slot_label, page_label, video_asset_id, headline, description, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+      ON DUPLICATE KEY UPDATE
+        slot_label = VALUES(slot_label),
+        page_label = VALUES(page_label),
+        video_asset_id = VALUES(video_asset_id),
+        headline = VALUES(headline),
+        description = VALUES(description),
+        is_active = VALUES(is_active),
+        updated_at = NOW()
+    `,
+    slot.key,
+    slot.label,
+    slot.page,
+    videoAssetId > BigInt(0) ? videoAssetId : null,
+    clean(input.headline, 220) || null,
+    clean(input.description, 1200) || null,
+    input.isActive === false ? 0 : 1
+  )
 }
 
 export async function saveVideoLibraryCourse(input: {

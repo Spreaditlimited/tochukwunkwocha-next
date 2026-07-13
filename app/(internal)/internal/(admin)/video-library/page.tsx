@@ -22,6 +22,7 @@ import {
   detachVideoLibraryModuleAction,
   importVideoLibraryCsvAction,
   saveCourseBatchAction,
+  savePublicVideoSlotAction,
   saveVideoLibraryCourseAction,
   saveVideoLibraryModuleAction
 } from "./actions"
@@ -154,7 +155,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
   const selectedModuleCourseSlug = param(params, "moduleCourse") || ""
   const selectedModuleTableCourseSlug = param(params, "moduleTableCourse") || ""
   const selectedModuleTableBatchKey = param(params, "moduleTableBatch") || ""
-  const { courses, modules, lessons, videos, batches, moduleDripSchedules } = await listVideoLibrary()
+  const { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots } = await listVideoLibrary()
 
   const selectedModule = selectedModuleId > BigInt(0)
     ? modules.find((module) => module.id === selectedModuleId && (!selectedModuleCourseSlug || module.courseSlug === selectedModuleCourseSlug)) || modules.find((module) => module.id === selectedModuleId) || null
@@ -206,6 +207,10 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
   const immediateCourse = activeCourse?.enrollmentMode === "immediate"
   const courseOptions = courses.map((course) => ({ value: course.courseSlug, label: course.courseTitle }))
   const courseOptionsWithAll = [{ value: "", label: "All courses" }, ...courseOptions]
+  const publicVideoOptions = [
+    { value: "", label: "No video selected" },
+    ...videos.map((video) => ({ value: String(video.id), label: videoLabel(video) }))
+  ]
   const moduleTableBatchOptions = [
     { value: "", label: "All batches" },
     ...filterBatches.map((batch) => ({
@@ -320,6 +325,62 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
       </section>
 
       <CloudflareProgressPanel />
+
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border bg-muted/20 p-6">
+          <div>
+            <p className="eyebrow text-primary">Public Pages</p>
+            <h2 className="mt-1 font-heading text-xl font-black text-foreground">Public Video Slots</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Assign synced Cloudflare videos to the public page video sections. Resource videos remain managed in Resources with YouTube Shorts URLs.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 p-6 lg:grid-cols-2">
+          {publicVideoSlots.map((slot) => {
+            const isReady = slot.videoUid && Number(slot.readyToStream || 0) === 1 && !slot.sourceDeletedAt
+            return (
+              <form key={slot.slotKey} action={savePublicVideoSlotAction} className="rounded-xl border border-border bg-background p-4">
+                <input type="hidden" name="slotKey" value={slot.slotKey} />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{slot.pageLabel}</p>
+                    <h3 className="mt-1 font-heading text-lg font-black text-foreground">{slot.slotLabel}</h3>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                      {slot.videoUid ? `${slot.filename || slot.videoUid} · ${isReady ? "ready" : slot.sourceDeletedAt ? "deleted" : "processing"}` : "No video assigned"}
+                    </p>
+                  </div>
+                  {activePill(slot.isActive, "Active", "Hidden")}
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cloudflare Video</span>
+                    <PremiumPicker name="videoAssetId" defaultValue={slot.videoAssetId ? String(slot.videoAssetId) : ""} options={publicVideoOptions} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Player Title</span>
+                    <input name="headline" defaultValue={slot.headline || ""} placeholder={slot.slotLabel} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Internal Note</span>
+                    <textarea name="description" rows={2} defaultValue={slot.description || ""} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                  </label>
+                  <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="flex items-center gap-2 text-sm font-bold">
+                      <input name="isActive" type="checkbox" defaultChecked={Number(slot.isActive || 0) === 1} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                      Show on public page
+                    </label>
+                    <button className="btn-primary justify-center" type="submit" data-toast="Saving public video slot">
+                      <Save className="h-4 w-4" />
+                      Save Slot
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )
+          })}
+        </div>
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-b border-border bg-muted/20 p-6">

@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { Prisma } from "@prisma/client"
 
 import { requireAdmin } from "@/lib/auth"
+import { ensureCertificateVerificationColumns, getLatestApprovedStudentProject } from "@/lib/certificate-verification"
 import { sendEmail } from "@/lib/email"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
@@ -307,6 +308,7 @@ export async function saveCourseFeatures(input: {
 }
 
 async function issueCertificateIfEligible(assignmentId: bigint) {
+  await ensureCertificateVerificationColumns()
   const rows = await prisma.$queryRaw<Array<{
     accountId: bigint
     courseSlug: string
@@ -346,13 +348,17 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
   if (totalLessons <= 0 || completedLessons < totalLessons) return ""
   const now = new Date()
   const certNo = certificateNo()
+  const project = await getLatestApprovedStudentProject({ accountId: item.accountId, courseSlug: item.courseSlug })
   await prisma.$executeRaw`
     INSERT INTO student_certificates
-      (account_id, course_slug, certificate_no, recipient_name, status, issued_at, created_at, updated_at)
+      (account_id, course_slug, certificate_no, recipient_name, status, issued_at, project_url, project_verified_at, project_status_at_issue, created_at, updated_at)
     VALUES
-      (${item.accountId}, ${item.courseSlug}, ${certNo}, ${clean(item.fullName, 180)}, 'issued', ${now}, ${now}, ${now})
+      (${item.accountId}, ${item.courseSlug}, ${certNo}, ${clean(item.fullName, 180)}, 'issued', ${now}, ${project.projectUrl || null}, ${project.projectVerifiedAt || now}, ${project.projectUrl ? "live_at_issue" : null}, ${now}, ${now})
     ON DUPLICATE KEY UPDATE
       status = 'issued',
+      project_url = COALESCE(project_url, VALUES(project_url)),
+      project_verified_at = COALESCE(project_verified_at, VALUES(project_verified_at)),
+      project_status_at_issue = COALESCE(project_status_at_issue, VALUES(project_status_at_issue)),
       updated_at = VALUES(updated_at)
   `.catch(() => null)
   return `${siteBaseUrl()}/dashboard/certificate?certificate_no=${encodeURIComponent(certNo)}`

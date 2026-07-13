@@ -120,6 +120,11 @@ export function Footer() {
                     Terms of Service
                   </Link>
                 </li>
+                <li>
+                  <Link href="/certificates/verify" className="text-sm text-slate-400 no-underline transition-colors hover:text-white">
+                    Verify Certificate
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>

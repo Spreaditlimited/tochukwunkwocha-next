@@ -20,8 +20,10 @@ import {
   Video
 } from "lucide-react"
 
+import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
 
@@ -49,35 +51,8 @@ function formatCoursePrice(settings: PublicCourseSettings | null) {
   )
 }
 
-function PlaceholderImage({
-  note,
-  className,
-  isVideo = false
-}: {
-  note: string
-  className?: string
-  isVideo?: boolean
-}) {
-  return (
-    <div className={`relative flex items-center justify-center overflow-hidden border border-border bg-muted/40 p-6 text-center ${className}`}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-muted/50 to-transparent opacity-50" />
-      <div className="relative z-10 flex flex-col items-center gap-4">
-        {isVideo ? (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110">
-            <Play className="ml-1 h-6 w-6" />
-          </div>
-        ) : (
-          <div className="rounded-md bg-background px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm">
-            Asset Required
-          </div>
-        )}
-        <p className="max-w-[300px] text-sm font-medium text-foreground/80">{note}</p>
-      </div>
-    </div>
-  )
-}
-
-export function PromptToProfitCoursePage({ course, courseSettings }: { course: Course; courseSettings: PublicCourseSettings | null }) {
+export async function PromptToProfitCoursePage({ course, courseSettings }: { course: Course; courseSettings: PublicCourseSettings | null }) {
+  const introductionVideo = await getPublicVideoSlot("prompt-to-profit-basic-intro")
   const openBatches = courseSettings?.openBatches || []
   const displayedPrice = formatCoursePrice(courseSettings)
   const enrollmentStatus = courseSettings
@@ -424,10 +399,10 @@ export function PromptToProfitCoursePage({ course, courseSettings }: { course: C
             </p>
 
             <div className="mt-10">
-              <PlaceholderImage
+              <PublicVideoSlotPlayer
+                slot={introductionVideo}
                 className="aspect-video w-full cursor-pointer rounded-2xl bg-brand-ink text-white shadow-xl"
-                note="Embedded Cloudflare Video container here. Professional thumbnail of Tochukwu introducing the course."
-                isVideo
+                emptyMessage="Configure the Prompt to Profit Basic introduction video from the internal Video Library."
               />
             </div>
           </div>

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { ArrowRight, ChevronDown, GraduationCap, Menu, School, User, X } from "lucide-react"
+import { ArrowRight, ChevronDown, GraduationCap, Menu, School, ShieldCheck, User, X } from "lucide-react"
 
 import { BrandMark } from "@/components/BrandMark"
 import { ThemeToggle } from "@/components/ThemeToggle"
@@ -25,7 +25,8 @@ const mobileNav = [
 
 const portalLinks = [
   { name: "Students", href: "/dashboard/login", icon: GraduationCap },
-  { name: "Schools", href: "/schools/login", icon: School }
+  { name: "Schools", href: "/schools/login", icon: School },
+  { name: "Verify Certificate", href: "/certificates/verify", icon: ShieldCheck }
 ]
 
 export function SiteHeader() {

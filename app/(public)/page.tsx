@@ -11,16 +11,17 @@ import {
   Globe2, 
   GraduationCap, 
   Layout, 
-  Play,
   School,
   Target,
   Terminal,
   Users
 } from "lucide-react"
 
+import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark } from "@/components/TrademarkText"
 import { brand } from "@/lib/brand"
 import { getBlogImageSrc, getPublishedPosts } from "@/lib/blog"
+import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import { buildMetadata } from "@/lib/site-seo"
 import { formatDate } from "@/lib/utils"
 
@@ -34,29 +35,11 @@ export const metadata = buildMetadata({
 
 const sectionContainer = "site-container"
 
-// Helper component for descriptive placeholders
-function PlaceholderImage({ note, className, isVideo = false }: { note: string; className?: string; isVideo?: boolean }) {
-  return (
-    <div className={`relative flex items-center justify-center overflow-hidden bg-muted/40 border border-border p-6 text-center ${className}`}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-muted/50 to-transparent opacity-50"></div>
-      <div className="relative z-10 flex flex-col items-center gap-4">
-        {isVideo ? (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg">
-            <Play className="h-6 w-6 ml-1" />
-          </div>
-        ) : (
-          <div className="rounded-md bg-background px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm">
-            Asset Required
-          </div>
-        )}
-        <p className="max-w-[300px] text-sm font-medium text-foreground/80">{note}</p>
-      </div>
-    </div>
-  )
-}
-
 export default async function HomePage() {
-  const posts = await getPublishedPosts(3)
+  const [posts, introductionVideo] = await Promise.all([
+    getPublishedPosts(3),
+    getPublicVideoSlot("home-introduction")
+  ])
 
   const buildProjects = [
     "Business websites", "Personal portfolio websites", "Inventory management systems",
@@ -139,10 +122,10 @@ export default async function HomePage() {
             </div>
             <div className="relative">
               <div className="absolute -inset-4 rounded-2xl bg-muted/50 -z-10 transform rotate-2"></div>
-              <PlaceholderImage 
+              <PublicVideoSlotPlayer
+                slot={introductionVideo}
                 className="aspect-video w-full rounded-2xl bg-brand-ink text-white shadow-xl hover:scale-[1.02] transition-transform cursor-pointer" 
-                note="High-quality thumbnail of the Lead Instructor. Clicking this should open the Introduction Video modal."
-                isVideo={true}
+                emptyMessage="Configure the home introduction video from the internal Video Library."
               />
             </div>
           </div>

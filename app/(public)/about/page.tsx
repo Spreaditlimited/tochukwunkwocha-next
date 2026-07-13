@@ -15,7 +15,6 @@ import {
   GraduationCap, 
   Layers, 
   LayoutDashboard, 
-  Play, 
   Rocket, 
   School,
   ShieldCheck, 
@@ -24,7 +23,9 @@ import {
   Users 
 } from "lucide-react"
 
+import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { brand } from "@/lib/brand"
+import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import { buildMetadata } from "@/lib/site-seo"
 
 export const dynamic = "force-dynamic"
@@ -37,28 +38,8 @@ export const metadata = buildMetadata({
 
 const sectionContainer = "mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8"
 
-// Helper component for descriptive placeholders
-function PlaceholderImage({ note, className, isVideo = false }: { note: string; className?: string; isVideo?: boolean }) {
-  return (
-    <div className={`relative flex items-center justify-center overflow-hidden bg-muted/40 border border-border p-6 text-center ${className}`}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-muted/50 to-transparent opacity-50"></div>
-      <div className="relative z-10 flex flex-col items-center gap-4">
-        {isVideo ? (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110">
-            <Play className="h-6 w-6 ml-1" />
-          </div>
-        ) : (
-          <div className="rounded-md bg-background px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm">
-            Asset Required
-          </div>
-        )}
-        <p className="max-w-[300px] text-sm font-medium text-foreground/80">{note}</p>
-      </div>
-    </div>
-  )
-}
-
-export default function AboutPage() {
+export default async function AboutPage() {
+  const academyStoryVideo = await getPublicVideoSlot("about-academy-story")
   const audiences = [
     "Complete beginners", "Children and teenagers", "Parents", 
     "University students", "Professionals", "Entrepreneurs", 
@@ -133,10 +114,10 @@ export default function AboutPage() {
             
             <div className="relative">
               <div className="absolute -inset-4 rounded-xl bg-muted/50 -z-10 transform rotate-1"></div>
-              <PlaceholderImage 
+              <PublicVideoSlotPlayer
+                slot={academyStoryVideo}
                 className="aspect-video w-full rounded-lg bg-brand-ink text-white shadow-xl cursor-pointer border border-border" 
-                note="Embedded Cloudflare Video: The Academy Story. High-quality thumbnail of the founder speaking."
-                isVideo={true}
+                emptyMessage="Configure the academy story video from the internal Video Library."
               />
             </div>
           </div>

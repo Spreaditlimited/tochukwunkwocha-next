@@ -3,6 +3,7 @@ import { randomUUID } from "crypto"
 
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
+import { addColumnIfMissing } from "@/lib/schema-guards"
 
 function cleanText(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -224,6 +225,9 @@ export interface StudentCertificatePublic {
   courseName: string
   studentName: string
   studentEmail: string
+  projectUrl: string
+  projectVerifiedAt: string | null
+  projectStatusAtIssue: string
 }
 
 export interface StudentAffiliateSummary {
@@ -794,7 +798,15 @@ export async function listStudentCertificates(accountId: bigint): Promise<Studen
     .sort((a, b) => new Date(b.issuedAt || 0).getTime() - new Date(a.issuedAt || 0).getTime())
 }
 
+async function ensureStudentCertificateVerificationColumns() {
+  await addColumnIfMissing("student_certificates", "project_url", "TEXT NULL").catch(() => null)
+  await addColumnIfMissing("student_certificates", "project_verified_at", "DATETIME NULL").catch(() => null)
+  await addColumnIfMissing("student_certificates", "project_status_at_issue", "VARCHAR(80) NULL").catch(() => null)
+  await addColumnIfMissing("student_certificates", "share_image_url", "TEXT NULL").catch(() => null)
+}
+
 export async function getStudentCertificatePublic(certificateNo: string): Promise<StudentCertificatePublic | null> {
+  await ensureStudentCertificateVerificationColumns()
   const certNo = cleanText(certificateNo, 140).toUpperCase()
   if (!certNo) return null
   const rows = await prisma.$queryRaw<
@@ -805,6 +817,9 @@ export async function getStudentCertificatePublic(certificateNo: string): Promis
       courseSlug: string | null
       studentName: string | null
       studentEmail: string | null
+      projectUrl: string | null
+      projectVerifiedAt: Date | null
+      projectStatusAtIssue: string | null
     }>
   >(Prisma.sql`
     SELECT
@@ -812,6 +827,9 @@ export async function getStudentCertificatePublic(certificateNo: string): Promis
       c.recipient_name AS recipientName,
       c.issued_at AS issuedAt,
       c.course_slug AS courseSlug,
+      c.project_url AS projectUrl,
+      c.project_verified_at AS projectVerifiedAt,
+      c.project_status_at_issue AS projectStatusAtIssue,
       a.full_name AS studentName,
       a.email AS studentEmail
     FROM student_certificates c
@@ -829,7 +847,10 @@ export async function getStudentCertificatePublic(certificateNo: string): Promis
     courseSlug,
     courseName: courseName(courseSlug),
     studentName: cleanText(row.recipientName || row.studentName, 180),
-    studentEmail: cleanText(row.studentEmail, 220)
+    studentEmail: cleanText(row.studentEmail, 220),
+    projectUrl: cleanText(row.projectUrl, 1200),
+    projectVerifiedAt: row.projectVerifiedAt ? row.projectVerifiedAt.toISOString() : null,
+    projectStatusAtIssue: cleanText(row.projectStatusAtIssue, 80)
   }
 }
 

@@ -2,6 +2,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowLeft, BadgeCheck, ExternalLink, FileBadge } from "lucide-react"
 
+import { CertificateShareActions } from "@/components/certificates/CertificateShareActions"
 import {
   EmptyStudentState,
   StudentDashboardCard,
@@ -11,6 +12,8 @@ import { CertificateActionsPanel } from "@/components/student-dashboard/Certific
 import { PrintCertificateButton } from "@/components/schools/PrintCertificateButton"
 import { TrademarkText } from "@/components/TrademarkText"
 import { brand } from "@/lib/brand"
+import { certificateProjectNote } from "@/lib/certificate-verification"
+import { absoluteUrl } from "@/lib/site-seo"
 import { courseName, getStudentCertificatePublic, listStudentCertificates, listStudentCourses, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
 import { formatDate } from "@/lib/utils"
@@ -31,6 +34,9 @@ function CertificateDocumentView({
   certificateNo: string
   certificate: Awaited<ReturnType<typeof getStudentCertificatePublic>>
 }) {
+  const verificationPath = certificate ? `/certificates/verify/${encodeURIComponent(certificate.certificateNo)}` : ""
+  const shareImagePath = certificate ? `/api/certificates/${encodeURIComponent(certificate.certificateNo)}/image` : ""
+  const verificationUrl = verificationPath ? absoluteUrl(verificationPath) : ""
   return (
     <main className="min-h-screen bg-[#071426] px-5 py-8 text-slate-900">
       <style
@@ -52,7 +58,16 @@ function CertificateDocumentView({
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to My Courses
           </Link>
-          {certificate ? <PrintCertificateButton /> : null}
+          {certificate ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <PrintCertificateButton />
+              <CertificateShareActions
+                verificationUrl={verificationPath}
+                shareImageUrl={shareImagePath}
+                certificateNo={certificate.certificateNo}
+              />
+            </div>
+          ) : null}
         </div>
 
         <p className={`no-print mb-3 text-sm ${certificate ? "text-slate-200" : "text-red-200"}`}>
@@ -94,12 +109,23 @@ function CertificateDocumentView({
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Certificate No</p>
                   <p className="mt-2 font-mono text-lg font-black text-[#06162d]">{certificate.certificateNo}</p>
+                  <p className="mt-2 text-xs text-slate-500">Verify: {verificationUrl}</p>
                 </div>
                 <div className="sm:text-right">
                   <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Date Issued</p>
                   <p className="mt-2 text-lg font-black text-[#06162d]">{formatIssuedDate(certificate.issuedAt)}</p>
                 </div>
               </div>
+              {certificate.projectUrl ? (
+                <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Verified Project</p>
+                  <a href={certificate.projectUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex max-w-full items-center break-all text-sm font-bold text-[#0d4f9a]">
+                    {certificate.projectUrl}
+                    <ExternalLink className="ml-2 h-4 w-4 shrink-0" />
+                  </a>
+                  <p className="mt-3 text-xs leading-6 text-slate-500">{certificateProjectNote()}</p>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -176,14 +202,16 @@ export default async function StudentCertificatesPage({
           </div>
 
           <div className="border-t border-border bg-muted/10 p-6 sm:p-8">
-            <Link
-              href={certificate.certificateUrl}
-              target="_blank"
-              className="btn-secondary w-full sm:w-auto"
-            >
-              View & Download Certificate
-              <ExternalLink className="ml-2 h-4 w-4 text-muted-foreground" />
-            </Link>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Link
+                href={certificate.certificateUrl}
+                target="_blank"
+                className="btn-secondary w-full sm:w-auto"
+              >
+                View & Download Certificate
+                <ExternalLink className="ml-2 h-4 w-4 text-muted-foreground" />
+              </Link>
+            </div>
           </div>
         </StudentDashboardCard>
       ))}

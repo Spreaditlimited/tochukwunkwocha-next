@@ -21,43 +21,18 @@ import {
   Video
 } from "lucide-react"
 
+import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { getCourse } from "@/lib/public-offers"
 
 type Course = NonNullable<ReturnType<typeof getCourse>>
 
 const sectionContainer = "site-container"
 
-function PlaceholderImage({
-  note,
-  className,
-  isVideo = false
-}: {
-  note: string
-  className?: string
-  isVideo?: boolean
-}) {
-  return (
-    <div className={`relative flex items-center justify-center overflow-hidden border border-border bg-muted/40 p-6 text-center ${className}`}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-muted/50 to-transparent opacity-50" />
-      <div className="relative z-10 flex flex-col items-center gap-4">
-        {isVideo ? (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg transition-transform hover:scale-110">
-            <Play className="ml-1 h-6 w-6" />
-          </div>
-        ) : (
-          <div className="rounded-md bg-background px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm">
-            Asset Required
-          </div>
-        )}
-        <p className="max-w-[300px] text-sm font-medium text-foreground/80">{note}</p>
-      </div>
-    </div>
-  )
-}
-
-export function PromptToProfitAdvancedCoursePage({ course }: { course: Course }) {
+export async function PromptToProfitAdvancedCoursePage({ course }: { course: Course }) {
+  const introductionVideo = await getPublicVideoSlot("prompt-to-profit-advanced-intro")
   const tools = [
     { name: "Visual Studio Code", icon: Terminal },
     { name: "Git", icon: GitBranch },
@@ -205,10 +180,10 @@ export function PromptToProfitAdvancedCoursePage({ course }: { course: Course })
 
             <div className="relative">
               <div className="absolute -inset-4 -z-10 rotate-2 rounded-2xl bg-brand-ink/5" />
-              <PlaceholderImage
+              <PublicVideoSlotPlayer
+                slot={introductionVideo}
                 className="aspect-video w-full cursor-pointer rounded-2xl bg-brand-ink text-white shadow-xl"
-                note="Embedded Cloudflare Video container. High-quality thumbnail of the Advanced intro."
-                isVideo
+                emptyMessage="Configure the Prompt to Profit Advanced introduction video from the internal Video Library."
               />
             </div>
           </div>

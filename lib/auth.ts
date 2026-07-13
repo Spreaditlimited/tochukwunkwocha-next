@@ -3,6 +3,7 @@ import fs from "node:fs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
+import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { prisma } from "@/lib/prisma"
 
 export interface AdminSession {
@@ -16,7 +17,7 @@ export interface AdminSession {
 const COOKIE_NAME = "tochukwu_admin_session"
 
 function authSecret() {
-  return process.env.AUTH_SECRET || "dev-only-change-this-secret"
+  return process.env.ADMIN_SESSION_SECRET || process.env.AUTH_SECRET || "dev-only-change-this-secret"
 }
 
 function normalizeEmail(value: FormDataEntryValue | string | null | undefined) {
@@ -115,6 +116,7 @@ function decodeSession(token: string | undefined): AdminSession | null {
 }
 
 export async function loginAdmin(emailInput: string, passwordInput: string) {
+  await applyAdminSettingsToProcessEnv().catch(() => null)
   const email = normalizeEmail(emailInput)
   const password = String(passwordInput || "").trim()
   if (!password) return null
@@ -158,6 +160,7 @@ export async function loginAdmin(emailInput: string, passwordInput: string) {
 }
 
 export async function setAdminSession(session: AdminSession) {
+  await applyAdminSettingsToProcessEnv().catch(() => null)
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_NAME, encodeSession(session), {
     httpOnly: true,
@@ -174,6 +177,7 @@ export async function clearAdminSession() {
 }
 
 export async function getAdminSession() {
+  await applyAdminSettingsToProcessEnv().catch(() => null)
   const cookieStore = await cookies()
   return decodeSession(cookieStore.get(COOKIE_NAME)?.value)
 }

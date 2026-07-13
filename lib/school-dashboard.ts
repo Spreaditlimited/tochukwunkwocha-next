@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
+import { ensureCertificateVerificationColumns } from "@/lib/certificate-verification"
 
 const STUDENT_CODE_LENGTH = 10
 const STUDENT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -181,6 +182,7 @@ async function ensureSchoolTables() {
   await addColumnIfMissing("school_students", "website_url", "VARCHAR(1000) NULL")
   await addColumnIfMissing("school_students", "website_submitted_at", "DATETIME NULL")
   await addColumnIfMissing("school_certificates", "recipient_name", "VARCHAR(180) NOT NULL DEFAULT ''")
+  await ensureCertificateVerificationColumns()
 }
 
 async function assignStudentCode(schoolId: number, studentId: number) {
@@ -308,6 +310,10 @@ export async function getSchoolCertificatePublic(certificateNo: string) {
       c.issued_at,
       c.course_slug,
       c.status,
+      c.project_url,
+      c.project_verified_at,
+      c.project_status_at_issue,
+      s.website_url,
       s.full_name AS student_name,
       s.email AS student_email,
       sc.school_name
@@ -328,7 +334,10 @@ export async function getSchoolCertificatePublic(certificateNo: string) {
     courseName: humanSchoolCourseName(courseSlug),
     studentName: clean(row.recipient_name, 180) || clean(row.student_name, 180),
     studentEmail: clean(row.student_email, 220),
-    schoolName: clean(row.school_name, 220)
+    schoolName: clean(row.school_name, 220),
+    projectUrl: clean(row.project_url, 1200) || clean(row.website_url, 1200),
+    projectVerifiedAt: iso(row.project_verified_at || row.issued_at),
+    projectStatusAtIssue: clean(row.project_status_at_issue, 80)
   }
 }
 
@@ -579,15 +588,19 @@ export async function issueSchoolCertificate(input: { schoolId: number; studentI
 
   const certNo = `TN-SCH-${crypto.randomUUID().replace(/-/g, "").slice(0, 14).toUpperCase()}`
   const recipientName = clean(student.account_full_name, 180)
+  const projectUrl = clean(student.website_url, 1000)
   await prisma.$executeRaw`
     INSERT INTO school_certificates
-      (school_id, student_id, course_slug, certificate_no, recipient_name, status, issued_by_admin_id, issued_at, created_at, updated_at)
+      (school_id, student_id, course_slug, certificate_no, recipient_name, status, issued_by_admin_id, issued_at, project_url, project_verified_at, project_status_at_issue, created_at, updated_at)
     VALUES
-      (${input.schoolId}, ${input.studentId}, ${courseSlug}, ${certNo}, ${recipientName}, 'issued', ${input.adminId}, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())
+      (${input.schoolId}, ${input.studentId}, ${courseSlug}, ${certNo}, ${recipientName}, 'issued', ${input.adminId}, UTC_TIMESTAMP(), ${projectUrl}, UTC_TIMESTAMP(), 'live_at_issue', UTC_TIMESTAMP(), UTC_TIMESTAMP())
     ON DUPLICATE KEY UPDATE
       status = 'issued',
       issued_by_admin_id = VALUES(issued_by_admin_id),
       issued_at = VALUES(issued_at),
+      project_url = COALESCE(project_url, VALUES(project_url)),
+      project_verified_at = COALESCE(project_verified_at, VALUES(project_verified_at)),
+      project_status_at_issue = COALESCE(project_status_at_issue, VALUES(project_status_at_issue)),
       updated_at = VALUES(updated_at)
   `
   const certRows = await prisma.$queryRaw<Array<{ certificateNo: string }>>`

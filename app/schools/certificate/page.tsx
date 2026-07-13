@@ -1,12 +1,14 @@
 import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft, BadgeCheck } from "lucide-react"
+import { ArrowLeft, BadgeCheck, ExternalLink } from "lucide-react"
 
+import { CertificateShareActions } from "@/components/certificates/CertificateShareActions"
 import { PrintCertificateButton } from "@/components/schools/PrintCertificateButton"
 import { brand } from "@/lib/brand"
+import { certificateProjectNote } from "@/lib/certificate-verification"
 import { getSchoolCertificatePublic } from "@/lib/school-dashboard"
-import { buildMetadata } from "@/lib/site-seo"
+import { absoluteUrl, buildMetadata } from "@/lib/site-seo"
 
 export const metadata: Metadata = buildMetadata({
   title: "School Certificate | Tochukwu Tech and AI Academy",
@@ -30,6 +32,9 @@ export default async function SchoolCertificatePage({
   const params = searchParams ? await searchParams : {}
   const certificateNo = params.certificate_no || params.certificateNo || ""
   const certificate = certificateNo ? await getSchoolCertificatePublic(certificateNo) : null
+  const verificationPath = certificate ? `/certificates/verify/${encodeURIComponent(certificate.certificateNo)}` : ""
+  const shareImagePath = certificate ? `/api/certificates/${encodeURIComponent(certificate.certificateNo)}/image` : ""
+  const verificationUrl = verificationPath ? absoluteUrl(verificationPath) : ""
 
   return (
     <main className="min-h-screen bg-[#071426] px-5 py-8 text-slate-900">
@@ -52,7 +57,16 @@ export default async function SchoolCertificatePage({
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to School Dashboard
           </Link>
-          {certificate ? <PrintCertificateButton /> : null}
+          {certificate ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <PrintCertificateButton />
+              <CertificateShareActions
+                verificationUrl={verificationPath}
+                shareImageUrl={shareImagePath}
+                certificateNo={certificate.certificateNo}
+              />
+            </div>
+          ) : null}
         </div>
 
         <p className={`no-print mb-3 text-sm ${certificate ? "text-slate-200" : "text-red-200"}`}>
@@ -96,12 +110,23 @@ export default async function SchoolCertificatePage({
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Certificate No</p>
                   <p className="mt-2 font-mono text-lg font-black text-[#06162d]">{certificate.certificateNo}</p>
+                  <p className="mt-2 text-xs text-slate-500">Verify: {verificationUrl}</p>
                 </div>
                 <div className="sm:text-right">
                   <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Date Issued</p>
                   <p className="mt-2 text-lg font-black text-[#06162d]">{formatIssuedDate(certificate.issuedAt)}</p>
                 </div>
               </div>
+              {certificate.projectUrl ? (
+                <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Verified Project</p>
+                  <a href={certificate.projectUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex max-w-full items-center break-all text-sm font-bold text-[#0d4f9a]">
+                    {certificate.projectUrl}
+                    <ExternalLink className="ml-2 h-4 w-4 shrink-0" />
+                  </a>
+                  <p className="mt-3 text-xs leading-6 text-slate-500">{certificateProjectNote()}</p>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}
