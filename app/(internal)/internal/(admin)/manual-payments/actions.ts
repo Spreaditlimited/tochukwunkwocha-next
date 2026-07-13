@@ -34,23 +34,32 @@ export async function reviewManualPaymentAction(formData: FormData) {
 
 export async function addExternalStudentPaymentAction(formData: FormData) {
   const admin = await requireAdmin()
-  await addExternalStudentPayment({
-    courseSlug: String(formData.get("courseSlug") || ""),
-    batchKey: String(formData.get("batchKey") || ""),
-    firstName: String(formData.get("firstName") || ""),
-    email: String(formData.get("email") || ""),
-    phone: String(formData.get("phone") || ""),
-    country: String(formData.get("country") || "Nigeria"),
-    proofUrl: String(formData.get("proofUrl") || ""),
-    proofPublicId: String(formData.get("proofPublicId") || ""),
-    transferReference: String(formData.get("transferReference") || ""),
-    adminNote: String(formData.get("adminNote") || ""),
-    couponCode: String(formData.get("couponCode") || ""),
-    buyerType: String(formData.get("buyerType") || "student"),
-    seatCount: Number(formData.get("seatCount") || 1),
-    reviewedBy: admin.email || admin.adminUuid || "admin"
-  })
-  await setInternalToast({ title: "External payment added", message: "The student payment record has been created and provisioned." })
+  try {
+    await addExternalStudentPayment({
+      courseSlug: String(formData.get("courseSlug") || ""),
+      batchKey: String(formData.get("batchKey") || ""),
+      firstName: String(formData.get("firstName") || ""),
+      email: String(formData.get("email") || ""),
+      phone: String(formData.get("phone") || ""),
+      country: String(formData.get("country") || "Nigeria"),
+      proofUrl: String(formData.get("proofUrl") || ""),
+      proofPublicId: String(formData.get("proofPublicId") || ""),
+      transferReference: String(formData.get("transferReference") || ""),
+      adminNote: String(formData.get("adminNote") || ""),
+      couponCode: String(formData.get("couponCode") || ""),
+      buyerType: String(formData.get("buyerType") || "student"),
+      seatCount: Number(formData.get("seatCount") || 1),
+      reviewedBy: admin.email || admin.adminUuid || "admin"
+    })
+    await setInternalToast({ title: "External payment added", message: "The student payment record has been created and provisioned." })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not provision this student."
+    await setInternalToast({
+      type: "error",
+      title: "Could not provision access",
+      message
+    })
+  }
   revalidatePath("/internal/manual-payments")
   revalidatePath("/dashboard")
 }

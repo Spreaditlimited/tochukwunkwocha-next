@@ -364,7 +364,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               <textarea name="adminNote" rows={2} placeholder="Optional internal notes" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
             </label>
             <div className="flex items-end justify-end">
-              <button className="btn-primary w-full shadow-sm xl:w-auto" type="submit">
+              <button className="btn-primary w-full shadow-sm xl:w-auto" type="submit" data-toast="Provisioning access">
                 <UserPlus className="mr-2 h-4 w-4" /> Provision Access
               </button>
             </div>
