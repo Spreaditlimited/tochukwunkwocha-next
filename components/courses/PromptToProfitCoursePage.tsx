@@ -338,6 +338,25 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
                   <Play className="mr-2 h-4 w-4" /> Learn More
                 </Link>
               </div>
+
+              <div className="mt-7 flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="flex -space-x-3">
+                  {testimonials.slice(0, 5).map((testimonial) => (
+                    <Image
+                      key={testimonial.name}
+                      src={testimonial.image}
+                      alt={testimonial.name}
+                      width={44}
+                      height={44}
+                      className="h-11 w-11 rounded-full border-2 border-brand-ink object-cover shadow-lg ring-1 ring-white/20"
+                    />
+                  ))}
+                </div>
+                <div>
+                  <p className="text-sm font-black uppercase tracking-[0.18em] text-white">Join 350+ builders</p>
+                  <p className="mt-1 text-sm font-medium text-slate-400">Learning to build practical websites and digital tools with AI.</p>
+                </div>
+              </div>
             </div>
 
             <div className="relative">
@@ -550,18 +569,18 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
             </p>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
+          <div className="grid min-w-0 gap-8 lg:grid-cols-2 lg:gap-12">
             {studentWebsites.map((site, index) => (
-              <div key={site.url} className={`group ${index % 2 === 1 ? "lg:mt-16" : ""}`}>
-                <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:border-white/20 hover:shadow-sky-500/10">
-                  <div className="flex h-14 items-center gap-4 border-b border-white/10 bg-[#161b22] px-5">
-                    <div className="flex shrink-0 gap-2.5">
+              <div key={site.url} className={`group min-w-0 max-w-full ${index % 2 === 1 ? "lg:mt-16" : ""}`}>
+                <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:border-white/20 hover:shadow-sky-500/10">
+                  <div className="flex h-14 min-w-0 items-center gap-3 border-b border-white/10 bg-[#161b22] px-3 sm:gap-4 sm:px-5">
+                    <div className="flex shrink-0 gap-2 sm:gap-2.5">
                       <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ff5f56]" />
                       <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ffbd2e]" />
                       <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#27c93f]" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="mx-auto flex max-w-[320px] items-center justify-center gap-2 truncate rounded-lg border border-white/5 bg-[#0d1117] px-4 py-1.5 text-center font-mono text-xs tracking-wide text-slate-400 shadow-inner">
+                      <div className="mx-auto flex min-w-0 max-w-full items-center justify-center gap-2 truncate rounded-lg border border-white/5 bg-[#0d1117] px-3 py-1.5 text-center font-mono text-xs tracking-wide text-slate-400 shadow-inner sm:max-w-[320px] sm:px-4">
                         <Globe2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
                         <span className="truncate">{site.displayUrl}</span>
                       </div>
@@ -626,11 +645,11 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
             <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 hidden w-32 bg-gradient-to-r from-brand-ink to-transparent lg:block" />
             <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 hidden w-32 bg-gradient-to-l from-brand-ink to-transparent lg:block" />
 
-            <div className="flex snap-x snap-mandatory gap-6 overflow-x-auto px-5 pb-8 pt-4 [scrollbar-width:none] sm:px-6 lg:px-8 [&::-webkit-scrollbar]:hidden">
+            <div className="grid gap-6 px-5 pb-8 pt-4 sm:px-6 md:flex md:snap-x md:snap-mandatory md:overflow-x-auto lg:px-8 md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden">
               {testimonials.map((testimonial) => (
                 <article
                   key={testimonial.name}
-                  className="flex w-[min(340px,calc(100vw-40px))] flex-none snap-center flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.02] p-8 shadow-xl backdrop-blur-sm transition-colors hover:bg-white/[0.04] md:w-[420px]"
+                  className="flex w-full min-w-0 flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.02] p-8 shadow-xl backdrop-blur-sm transition-colors hover:bg-white/[0.04] md:w-[420px] md:flex-none md:snap-center"
                 >
                   <div>
                     <div className="mb-6 flex gap-1 text-yellow-400">
@@ -687,7 +706,7 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
 
             <div className="surface-raised bg-card p-8 sm:p-12">
               <CreditCard className="mb-6 h-10 w-10 text-primary" />
-              <h3 className="font-heading text-2xl font-black tracking-tight lg:text-3xl">Learn Now. Pay Over Time.</h3>
+              <h3 className="font-heading text-2xl font-black tracking-tight lg:text-3xl">Pay In Installments</h3>
               <div className="mt-6 space-y-4 leading-relaxed text-muted-foreground">
                 <p>Investing in your education should not always require paying everything at once.</p>
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Once your payment has been completed, your enrolment is automatically activated and you will receive full access.</p>

@@ -430,7 +430,7 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
 
             <div className="surface-raised bg-muted/30 p-8 sm:p-12">
               <CreditCard className="mb-6 h-10 w-10 text-sky-500" />
-              <h3 className="font-heading text-2xl font-black tracking-tight lg:text-3xl">Learn Now. Pay Over Time.</h3>
+              <h3 className="font-heading text-2xl font-black tracking-tight lg:text-3xl">Pay In Installments</h3>
               <div className="mt-6 space-y-4 leading-relaxed text-muted-foreground">
                 <p>Investing in advanced digital skills should not require paying everything upfront.</p>
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Your place is reserved while you complete your payments.</p>
