@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { ensureDomainRequestTables } from "@/lib/student-domain-actions"
 import { formatDate } from "@/lib/utils"
@@ -149,6 +150,14 @@ export default async function InternalDomainsPage() {
   const [domains, orders] = await Promise.all([listDomains(), listOrders()])
   const registered = domains.filter((domain) => String(domain.status || "").toLowerCase() === "registered").length
   const renewalsDue = domains.filter((domain) => domain.renewalDueAt && new Date(domain.renewalDueAt).getTime() <= Date.now() + 30 * 24 * 60 * 60 * 1000).length
+  const netlifyStatusOptions = [
+    { value: "submitted", label: "Submitted" },
+    { value: "in_review", label: "In Review" },
+    { value: "connected", label: "Connected" },
+    { value: "needs_action", label: "Needs Action" },
+    { value: "rejected", label: "Rejected" }
+  ]
+  const dnsTypeOptions = ["A", "CNAME", "TXT", "MX"].map((type) => ({ value: type, label: type }))
 
   return (
     <main className="space-y-8 pb-12">
@@ -295,13 +304,7 @@ export default async function InternalDomainsPage() {
                         <input type="hidden" name="domainName" value={domain.domainName} />
                         <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Integration Status</p>
                         <div className="flex gap-2">
-                          <select name="status" defaultValue={domain.netlifyStatus || "submitted"} className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs font-semibold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                            <option value="submitted">Submitted</option>
-                            <option value="in_review">In Review</option>
-                            <option value="connected">Connected</option>
-                            <option value="needs_action">Needs Action</option>
-                            <option value="rejected">Rejected</option>
-                          </select>
+                          <PremiumPicker name="status" defaultValue={domain.netlifyStatus || "submitted"} options={netlifyStatusOptions} className="min-w-0 flex-1 [&>select]:h-10 [&>select]:text-xs" />
                           <button className="btn-secondary px-4 text-xs shadow-sm" type="submit">Save</button>
                         </div>
                       </form>
@@ -320,12 +323,7 @@ export default async function InternalDomainsPage() {
                     <div className="grid flex-1 gap-4 sm:grid-cols-[100px_1fr_2fr_100px]">
                       <label className="block">
                         <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</span>
-                        <select name="type" className="w-full rounded-lg border border-input bg-background/50 px-3 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                          <option>A</option>
-                          <option>CNAME</option>
-                          <option>TXT</option>
-                          <option>MX</option>
-                        </select>
+                        <PremiumPicker name="type" options={dnsTypeOptions} />
                       </label>
                       <label className="block">
                         <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Host</span>

@@ -9,16 +9,27 @@ import { generateResourceDraftFromForm, upsertBundleFromForm, upsertResourceFrom
 
 export async function saveResourceAction(formData: FormData) {
   await requireAdmin()
-  const resource = await upsertResourceFromForm(formData)
-  revalidatePath("/resources")
-  revalidatePath("/resources/videos")
-  revalidatePath("/resources/prompts")
-  revalidatePath("/internal/resources")
-  await setInternalToast({
-    title: "Resource saved",
-    message: "The public resource library and internal CMS have been refreshed."
-  })
-  redirect(`/internal/resources?saved=${resource.slug}`)
+  let target = "/internal/resources"
+  try {
+    const resource = await upsertResourceFromForm(formData)
+    revalidatePath("/resources")
+    revalidatePath("/resources/videos")
+    revalidatePath("/resources/prompts")
+    revalidatePath("/internal/resources")
+    await setInternalToast({
+      title: "Resource saved",
+      message: "The public resource library and internal CMS have been refreshed."
+    })
+    target = `/internal/resources?saved=${resource.slug}`
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Resource not saved",
+      message: error instanceof Error ? error.message : "Check the fields and try again."
+    })
+    target = "/internal/resources?error=resource"
+  }
+  redirect(target)
 }
 
 export async function saveResourceBundleAction(formData: FormData) {
@@ -35,11 +46,22 @@ export async function saveResourceBundleAction(formData: FormData) {
 
 export async function generateResourceDraftAction(formData: FormData) {
   await requireAdmin()
-  const resource = await generateResourceDraftFromForm(formData)
-  revalidatePath("/internal/resources")
-  await setInternalToast({
-    title: "Resource draft generated",
-    message: "Review the draft, add prompt text or video media, then publish when ready."
-  })
-  redirect(`/internal/resources?generated=${resource.slug}`)
+  let target = "/internal/resources"
+  try {
+    const resource = await generateResourceDraftFromForm(formData)
+    revalidatePath("/internal/resources")
+    await setInternalToast({
+      title: "Resource draft generated",
+      message: "Review the draft, add prompt text, then publish when ready."
+    })
+    target = `/internal/resources?generated=${resource.slug}`
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Resource draft not generated",
+      message: error instanceof Error ? error.message : "Check the fields and try again."
+    })
+    target = "/internal/resources?error=generation"
+  }
+  redirect(target)
 }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 
 import { listAvailableCallSlots, listBuildScorecardLeads, type BuildScorecardLead } from "@/lib/admin-build-service"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatDate } from "@/lib/utils"
 import {
   bookBuildScorecardCallAction,
@@ -152,6 +153,22 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
   const q = param(params, "q", "")
   
   const [leads, slots] = await Promise.all([listBuildScorecardLeads(200), listAvailableCallSlots()])
+  const segmentOptions = [
+    { value: "all", label: "View All Submissions" },
+    { value: "no_call", label: "No Call Booked Yet" },
+    { value: "booked", label: "Call Booked" },
+    { value: "followup_due", label: "Follow-Up Action Due" },
+    { value: "high_score", label: "High Score Qualified" }
+  ]
+  const outcomeOptions = ["pending", "follow_up", "completed", "won", "lost", "no_show"].map((item) => ({
+    value: item,
+    label: item.replace(/_/g, " ").toUpperCase()
+  }))
+  const slotOptions = slots.map((slot) => ({ value: slot.startIso, label: slot.label }))
+  const paymentProviderOptions = [
+    { value: "paystack", label: "Paystack" },
+    { value: "stripe", label: "Stripe" }
+  ]
   
   const visible = leads.filter((lead) => matchesFilter(lead, filter, q))
   const paid = leads.filter((lead) => lead.discoveryPayment.status === "paid").length
@@ -208,13 +225,7 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 <Target className="h-3.5 w-3.5 text-primary" /> Segment Queue
               </span>
-              <select name="filter" defaultValue={filter} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                <option value="all">View All Submissions</option>
-                <option value="no_call">No Call Booked Yet</option>
-                <option value="booked">Call Booked</option>
-                <option value="followup_due">Follow-Up Action Due</option>
-                <option value="high_score">High Score Qualified</option>
-              </select>
+              <PremiumPicker name="filter" defaultValue={filter} options={segmentOptions} />
             </label>
             <label className="block">
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -326,11 +337,7 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
                         
                         <label className="block">
                           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Call Outcome</span>
-                          <select name="outcomeStatus" defaultValue={lead.call.outcomeStatus || "pending"} className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                            {["pending", "follow_up", "completed", "won", "lost", "no_show"].map((item) => (
-                              <option key={item} value={item}>{item.replace(/_/g, " ").toUpperCase()}</option>
-                            ))}
-                          </select>
+                          <PremiumPicker name="outcomeStatus" defaultValue={lead.call.outcomeStatus || "pending"} options={outcomeOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                         </label>
                         
                         <div className="grid grid-cols-2 gap-3">
@@ -392,9 +399,7 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
                           <p className="mb-3 flex items-center gap-2 font-heading text-sm font-bold text-emerald-700 dark:text-emerald-300">
                             <CalendarPlus className="h-4 w-4" /> Schedule Call (Paid)
                           </p>
-                          <select name="slotStartIso" className="w-full rounded-md border border-emerald-500/30 bg-background px-3 py-2 text-xs font-bold outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-sm">
-                            {slots.map((slot) => <option key={slot.startIso} value={slot.startIso}>{slot.label}</option>)}
-                          </select>
+                          <PremiumPicker name="slotStartIso" options={slotOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                           <button className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700" type="submit">
                             Book Discovery Call
                           </button>
@@ -410,10 +415,7 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
                           </p>
                           <div className="grid gap-2 sm:grid-cols-2">
                             <input name="country" defaultValue="Nigeria" className="w-full rounded-md border border-amber-500/30 bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm" />
-                            <select name="provider" defaultValue="paystack" className="w-full rounded-md border border-amber-500/30 bg-background px-3 py-2 text-xs font-bold outline-none transition-colors focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm">
-                              <option value="paystack">Paystack</option>
-                              <option value="stripe">Stripe</option>
-                            </select>
+                            <PremiumPicker name="provider" defaultValue="paystack" options={paymentProviderOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                           </div>
                           <button className="mt-3 w-full rounded-md bg-amber-500 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-600" type="submit">
                             {lead.discoveryPayment.status === "initiated" ? "Resend Payment Link" : "Dispatch Payment Link"}

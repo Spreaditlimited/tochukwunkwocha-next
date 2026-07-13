@@ -14,6 +14,7 @@ import {
   Video 
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { prisma } from "@/lib/prisma"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
@@ -220,6 +221,13 @@ export default async function InternalPrivateCoachingPage({ searchParams }: Page
   const q = param(params, "q", "")
   
   const leads = await listCoachingLeads()
+  const filterOptions = [
+    { value: "all", label: "View All Applications" },
+    { value: "paid", label: "Payment Successful" },
+    { value: "pending_payment", label: "Payment Pending" },
+    { value: "booked", label: "Discovery Call Booked" },
+    { value: "no_booking", label: "No Call Booked" }
+  ]
   const visible = leads.filter((lead) => matches(lead, filter, q))
   const paid = leads.filter((lead) => String(lead.paymentStatus || "").toLowerCase() === "paid").length
   const booked = leads.filter((lead) => lead.bookingUuid).length
@@ -270,13 +278,7 @@ export default async function InternalPrivateCoachingPage({ searchParams }: Page
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 <Target className="h-3.5 w-3.5 text-primary" /> Funnel Status
               </span>
-              <select name="filter" defaultValue={filter} className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                <option value="all">View All Applications</option>
-                <option value="paid">Payment Successful</option>
-                <option value="pending_payment">Payment Pending</option>
-                <option value="booked">Discovery Call Booked</option>
-                <option value="no_booking">No Call Booked</option>
-              </select>
+              <PremiumPicker name="filter" defaultValue={filter} options={filterOptions} />
             </label>
             <label className="block">
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">

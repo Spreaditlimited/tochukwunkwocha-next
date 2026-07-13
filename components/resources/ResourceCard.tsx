@@ -9,6 +9,7 @@ import {
   resourceTypeLabel,
   type ResourceRow
 } from "@/lib/resources"
+import { ResourceVideoThumbnail } from "@/components/resources/ResourceVideoThumbnail"
 
 function typeIcon(type: string) {
   if (type === "video") return Play
@@ -20,6 +21,7 @@ function typeIcon(type: string) {
 export function ResourceCard({ resource }: { resource: ResourceRow }) {
   const Icon = typeIcon(resource.resourceType)
   const price = formatResourcePrice(resource)
+  const generatedVideoThumbnail = resource.resourceType === "video" && !resource.thumbnailUrl
 
   return (
     <Link href={`/resources/${resource.slug}`} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
@@ -28,6 +30,8 @@ export function ResourceCard({ resource }: { resource: ResourceRow }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={resource.thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         </div>
+      ) : resource.resourceType === "video" ? (
+        <ResourceVideoThumbnail title={resource.title} className="transition-transform duration-500 group-hover:scale-[1.02]" />
       ) : (
         <div className="flex aspect-[16/10] items-center justify-center bg-muted/30 text-primary">
           <Icon className="h-10 w-10" />
@@ -45,10 +49,12 @@ export function ResourceCard({ resource }: { resource: ResourceRow }) {
             </span>
           ) : null}
         </div>
-        <h3 className="mt-4 font-heading text-xl font-black leading-tight text-foreground group-hover:text-primary">
-          {resource.title}
-        </h3>
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+        {!generatedVideoThumbnail ? (
+          <h3 className="mt-4 font-heading text-xl font-black leading-tight text-foreground group-hover:text-primary">
+            {resource.title}
+          </h3>
+        ) : null}
+        <p className={generatedVideoThumbnail ? "mt-4 line-clamp-3 text-sm leading-relaxed text-muted-foreground" : "mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground"}>
           {resource.summary}
         </p>
         <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-bold text-muted-foreground">

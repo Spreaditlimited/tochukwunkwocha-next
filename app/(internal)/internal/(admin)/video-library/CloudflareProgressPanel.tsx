@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Cloud, Key, LockKeyhole, UploadCloud } from "lucide-react"
 
 type JobStatus = "idle" | "running" | "success" | "error"
@@ -36,7 +36,7 @@ export function CloudflareProgressPanel() {
   const [maxPages, setMaxPages] = useState(20)
   const [signingScope, setSigningScope] = useState<"all" | "recent">("recent")
   const [batchSize, setBatchSize] = useState(10)
-  const [recentSince, setRecentSince] = useState<string>(defaultRecentSince)
+  const [recentSince, setRecentSince] = useState("")
   const [syncProgress, setSyncProgress] = useState<ProgressState>({
     status: "idle",
     message: "Ready to sync Cloudflare Stream assets.",
@@ -51,21 +51,32 @@ export function CloudflareProgressPanel() {
   })
   const [failures, setFailures] = useState<Array<{ videoUid: string; error: string }>>([])
 
+  useEffect(() => {
+    setRecentSince((current) => current || defaultRecentSince())
+  }, [])
+
   const busy = syncProgress.status === "running" || signProgress.status === "running"
   const recentLabel = useMemo(() => {
+    if (!recentSince) return "the last 24 hours"
     const date = new Date(recentSince)
-    return Number.isNaN(date.getTime()) ? "last 24 hours" : date.toLocaleString()
+    return Number.isNaN(date.getTime()) ? "the last 24 hours" : new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Europe/London"
+    }).format(date)
   }, [recentSince])
 
   async function runSync() {
     if (busy) return
     const startedAt = new Date().toISOString()
+    const syncRunId = `cf_sync_${Date.now()}`
     setRecentSince(startedAt)
     setFailures([])
     setSyncProgress({ status: "running", message: "Starting Cloudflare sync...", current: 0, total: 0 })
     let page = 1
     let fetched = 0
     let upserted = 0
+    let purged = 0
     let scannedPages = 0
     try {
       for (;;) {
@@ -75,11 +86,16 @@ export function CloudflareProgressPanel() {
           maxPages: number
           fetched: number
           upserted: number
+          purged: number
+          syncRunId: string
+          syncStartedAt: string
+          fullSyncComplete: boolean
           nextPage: number | null
           done: boolean
-        }>("/api/internal/video-library/cloudflare-sync-step", { page, maxPages })
+        }>("/api/internal/video-library/cloudflare-sync-step", { page, maxPages, syncRunId, syncStartedAt: startedAt })
         fetched += Number(result.fetched || 0)
         upserted += Number(result.upserted || 0)
+        purged += Number(result.purged || 0)
         scannedPages = Number(result.page || page)
         const total = Math.min(Number(result.totalPages || 1), Number(result.maxPages || maxPages))
         setSyncProgress({
@@ -93,7 +109,7 @@ export function CloudflareProgressPanel() {
       }
       setSyncProgress({
         status: "success",
-        message: `Sync complete. Checked ${scannedPages} page${scannedPages === 1 ? "" : "s"}, found ${fetched} video${fetched === 1 ? "" : "s"}, and refreshed ${upserted} library record${upserted === 1 ? "" : "s"}.`,
+        message: `Sync complete. Checked ${scannedPages} page${scannedPages === 1 ? "" : "s"}, found ${fetched} video${fetched === 1 ? "" : "s"}, refreshed ${upserted} library record${upserted === 1 ? "" : "s"}, and removed ${purged} deleted Cloudflare video${purged === 1 ? "" : "s"} from selection.`,
         current: scannedPages,
         total: Math.max(scannedPages, 1)
       })

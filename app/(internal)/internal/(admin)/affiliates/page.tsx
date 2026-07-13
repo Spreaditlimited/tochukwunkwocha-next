@@ -4,7 +4,6 @@ import {
   Banknote, 
   CheckCircle2, 
   Coins,
-  Filter,
   Network, 
   ReceiptText, 
   ShieldCheck, 
@@ -52,6 +51,17 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
   const payoutRaw = param(params, "payout", "")
   const data = await listAffiliateAdminData(sort)
   const courseOptions = data.courses.map((course) => ({ value: course.slug, label: course.label || course.slug }))
+  const periodModeOptions = [
+    { value: "month_end", label: "Month End (Processes Previous Month)" },
+    { value: "custom", label: "Custom Period Window" }
+  ]
+  const sortOptions = [
+    { value: "latest_desc", label: "Latest commission first" },
+    { value: "latest_asc", label: "Oldest commission first" },
+    { value: "earned_desc", label: "Highest earned first" },
+    { value: "approved_desc", label: "Highest approved first" },
+    { value: "paid_desc", label: "Highest paid first" }
+  ]
   
   let payoutResult: Record<string, unknown> | null = null
   try {
@@ -220,10 +230,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
             <div className="grid gap-5 md:grid-cols-2">
               <label className="block md:col-span-2">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Period Mode</span>
-                <select name="periodMode" defaultValue="month_end" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="month_end">Month End (Processes Previous Month)</option>
-                  <option value="custom">Custom Period Window</option>
-                </select>
+                <PremiumPicker name="periodMode" defaultValue="month_end" options={periodModeOptions} />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Start Date (Custom)</span>
@@ -276,16 +283,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
               </div>
             </div>
             <form className="shrink-0 w-full sm:w-auto">
-              <div className="relative">
-                <select name="sort" defaultValue={sort} className="w-full appearance-none rounded-lg border border-input bg-background py-2.5 pl-4 pr-10 text-sm font-bold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary sm:w-64">
-                  <option value="latest_desc">Latest commission first</option>
-                  <option value="latest_asc">Oldest commission first</option>
-                  <option value="earned_desc">Highest earned first</option>
-                  <option value="approved_desc">Highest approved first</option>
-                  <option value="paid_desc">Highest paid first</option>
-                </select>
-                <Filter className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              </div>
+              <PremiumPicker name="sort" defaultValue={sort} options={sortOptions} className="sm:w-64" />
               <button className="mt-2 w-full rounded-lg border border-border bg-card px-4 py-2 text-xs font-black uppercase tracking-widest text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary sm:w-auto" type="submit">
                 Apply sort
               </button>

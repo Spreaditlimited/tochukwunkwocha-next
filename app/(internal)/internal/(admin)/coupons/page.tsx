@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 import { saveCouponAction, toggleCouponAction } from "./actions"
@@ -111,6 +112,10 @@ function describeDiscount(coupon: CouponRow) {
 
 export default async function InternalCouponsPage() {
   const coupons = await listCoupons()
+  const discountTypeOptions = [
+    { value: "percent", label: "Percentage Off" },
+    { value: "fixed", label: "Fixed Amount" }
+  ]
 
   return (
     <main className="space-y-8 pb-12">
@@ -161,10 +166,7 @@ export default async function InternalCouponsPage() {
             
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Discount Type</span>
-              <select name="discountType" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="percent">Percentage Off</option>
-                <option value="fixed">Fixed Amount</option>
-              </select>
+              <PremiumPicker name="discountType" options={discountTypeOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Percentage Off</span>

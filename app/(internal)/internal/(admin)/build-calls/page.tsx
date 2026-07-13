@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 
 import { listAvailableCallSlots, listBuildCalls } from "@/lib/admin-build-service"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatDate } from "@/lib/utils"
 import {
   cancelBuildCallAction,
@@ -107,6 +108,11 @@ export default async function InternalBuildCallsPage({ searchParams }: PageProps
   
   const [calls, slots] = await Promise.all([listBuildCalls(), listAvailableCallSlots()])
   const now = Date.now()
+  const outcomeOptions = ["pending", "follow_up", "completed", "won", "lost", "no_show"].map((item) => ({
+    value: item,
+    label: item.replace(/_/g, " ").toUpperCase()
+  }))
+  const slotOptions = slots.map((slot) => ({ value: slot.startIso, label: slot.label }))
   
   const visible = calls
     .filter((call) => {
@@ -279,11 +285,7 @@ export default async function InternalBuildCallsPage({ searchParams }: PageProps
                       </p>
                       
                       <div className="grid gap-3">
-                        <select name="outcomeStatus" defaultValue={call.callOutcomeStatus || "pending"} className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                          {["pending", "follow_up", "completed", "won", "lost", "no_show"].map((item) => (
-                            <option key={item} value={item}>{item.replace(/_/g, " ").toUpperCase()}</option>
-                          ))}
-                        </select>
+                        <PremiumPicker name="outcomeStatus" defaultValue={call.callOutcomeStatus || "pending"} options={outcomeOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                         
                         <div className="grid grid-cols-2 gap-2">
                           <input name="assignedOwner" defaultValue={call.assignedOwner} placeholder="Admin Owner" className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm" />
@@ -334,9 +336,7 @@ export default async function InternalBuildCallsPage({ searchParams }: PageProps
                         <div className="border-t border-amber-500/20 p-3">
                           <form action={rescheduleBuildCallAction} className="grid gap-2">
                             <input type="hidden" name="bookingUuid" value={call.bookingUuid} />
-                            <select name="slotStartIso" className="w-full rounded-md border border-input bg-background px-2 py-2 text-[10px] font-bold outline-none shadow-sm">
-                              {slots.map((slot) => <option key={slot.startIso} value={slot.startIso}>{slot.label}</option>)}
-                            </select>
+                            <PremiumPicker name="slotStartIso" options={slotOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                             <input name="note" defaultValue="Rescheduled by admin" className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-[10px] font-medium outline-none shadow-sm" />
                             <button className="inline-flex w-full items-center justify-center rounded bg-amber-500 px-3 py-1.5 text-[10px] font-bold text-white shadow-sm transition-colors hover:bg-amber-600" type="submit">
                               Confirm

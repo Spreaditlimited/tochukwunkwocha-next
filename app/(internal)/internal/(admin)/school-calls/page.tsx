@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { listAvailableCallSlots, listSchoolCalls } from "@/lib/admin-school-calls"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatDate } from "@/lib/utils"
 import {
   cancelSchoolCallAction,
@@ -83,6 +84,16 @@ export default async function InternalSchoolCallsPage({ searchParams }: PageProp
   
   const [calls, slots] = await Promise.all([listSchoolCalls(), listAvailableCallSlots()])
   const now = Date.now()
+  const lookbackOptions = [
+    { value: "24", label: "Last 24 hours" },
+    { value: "72", label: "Last 72 hours" },
+    { value: "168", label: "Last 7 days" }
+  ]
+  const outcomeOptions = ["pending", "completed", "no_show", "won", "lost", "follow_up"].map((item) => ({
+    value: item,
+    label: item.replace(/_/g, " ").toUpperCase()
+  }))
+  const slotOptions = slots.map((slot) => ({ value: slot.startIso, label: slot.label }))
   
   const visible = calls
     .filter((call) => {
@@ -113,13 +124,7 @@ export default async function InternalSchoolCallsPage({ searchParams }: PageProp
         {/* Quick Links & Utilities */}
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
           <form action={resendSchoolCallNotificationsAction} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-center shadow-sm">
-            <div className="relative">
-              <select name="lookbackHours" defaultValue="72" className="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary sm:w-auto">
-                <option value="24">Last 24 hours</option>
-                <option value="72">Last 72 hours</option>
-                <option value="168">Last 7 days</option>
-              </select>
-            </div>
+            <PremiumPicker name="lookbackHours" defaultValue="72" options={lookbackOptions} className="sm:w-44 [&>select]:h-9 [&>select]:text-xs" />
             <button className="btn-secondary h-9 justify-center px-4 py-0 text-xs shadow-sm" type="submit">
               <Mail className="mr-2 h-3.5 w-3.5" /> Force Resend Emails
             </button>
@@ -282,11 +287,7 @@ export default async function InternalSchoolCallsPage({ searchParams }: PageProp
                         </p>
                         
                         <div className="grid gap-3">
-                          <select name="outcomeStatus" defaultValue={call.callOutcomeStatus || "pending"} className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm">
-                            {["pending", "completed", "no_show", "won", "lost", "follow_up"].map((item) => (
-                              <option key={item} value={item}>{item.replace(/_/g, " ").toUpperCase()}</option>
-                            ))}
-                          </select>
+                          <PremiumPicker name="outcomeStatus" defaultValue={call.callOutcomeStatus || "pending"} options={outcomeOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                           
                           <div className="grid grid-cols-2 gap-2">
                             <input name="assignedOwner" defaultValue={call.assignedOwner} placeholder="Admin Owner" className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm" />
@@ -310,9 +311,7 @@ export default async function InternalSchoolCallsPage({ searchParams }: PageProp
                           <div className="border-t border-amber-500/20 p-3">
                             <form action={rescheduleSchoolCallAction} className="grid gap-2">
                               <input type="hidden" name="bookingUuid" value={call.bookingUuid} />
-                              <select name="slotStartIso" className="w-full rounded-md border border-input bg-background px-2 py-2 text-[10px] font-bold outline-none shadow-sm">
-                                {slots.map((slot) => <option key={slot.startIso} value={slot.startIso}>{slot.label}</option>)}
-                              </select>
+                              <PremiumPicker name="slotStartIso" options={slotOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                               <input name="note" defaultValue="Rescheduled by admin" className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-[10px] font-medium outline-none shadow-sm" />
                               <button className="inline-flex w-full items-center justify-center rounded bg-amber-500 px-3 py-1.5 text-[10px] font-bold text-white shadow-sm transition-colors hover:bg-amber-600" type="submit">
                                 Confirm

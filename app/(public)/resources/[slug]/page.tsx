@@ -4,7 +4,6 @@ import {
   ArrowLeft, 
   BookOpen, 
   Download, 
-  ExternalLink, 
   Info, 
   Layers, 
   Lock, 
@@ -22,7 +21,8 @@ import {
   categoryLabel,
   formatResourcePrice,
   getResourceBySlug,
-  resourceTypeLabel
+  resourceTypeLabel,
+  youtubeEmbedInfo
 } from "@/lib/resources"
 import { buildMetadata } from "@/lib/site-seo"
 
@@ -65,6 +65,8 @@ export default async function ResourceDetailPage({ params }: PageProps) {
   const canAccessDirectly = resource.accessType === "free" && isDownloadableResource
   const pdfDownloadUrl = `/api/resources/${resource.slug}/download`
   const shouldProtectInlineContent = isDownloadableResource || resource.accessType === "gated"
+  const videoEmbed = youtubeEmbedInfo(resource.videoUrl)
+  if (resource.resourceType === "video" && !videoEmbed) notFound()
 
   return (
     <main className="relative bg-background">
@@ -131,14 +133,20 @@ export default async function ResourceDetailPage({ params }: PageProps) {
                   <h2 className="mb-6 font-heading text-2xl font-black tracking-tight sm:text-3xl">
                     Watch the tutorial or breakdown.
                   </h2>
-                  <a 
-                    href={resource.videoUrl} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="btn-inverse inline-flex px-8 py-3.5 text-base"
-                  >
-                    Open Video Player <ExternalLink className="ml-2 h-4 w-4" />
-                  </a>
+                  {videoEmbed ? (
+                    <div className={videoEmbed.isShort
+                      ? "mx-auto mb-2 w-full max-w-[24rem] overflow-hidden rounded-lg border border-white/10 bg-black shadow-2xl"
+                      : "mb-2 overflow-hidden rounded-lg border border-white/10 bg-black shadow-2xl"
+                    }>
+                      <iframe
+                        src={videoEmbed.embedUrl}
+                        title={resource.title}
+                        className={videoEmbed.isShort ? "aspect-[9/16] w-full" : "aspect-video w-full"}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : null}
                 </div>
               )}
 

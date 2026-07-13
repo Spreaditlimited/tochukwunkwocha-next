@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 import { updateSchoolAccountAction } from "./actions"
@@ -101,6 +102,11 @@ export default async function InternalSchoolsPage() {
   const seatsPurchased = schools.reduce((sum, school) => sum + Number(school.seatsPurchased || 0), 0)
   const seatsUsed = schools.reduce((sum, school) => sum + Number(school.seatsUsed || 0), 0)
   const activeSchools = schools.filter((school) => String(school.status || "active").toLowerCase() === "active").length
+  const statusOptions = [
+    { value: "active", label: "Active" },
+    { value: "disabled", label: "Disabled" },
+    { value: "expired", label: "Expired" }
+  ]
 
   return (
     <main className="space-y-8 pb-12">
@@ -287,15 +293,7 @@ export default async function InternalSchoolsPage() {
                         <div className="grid grid-cols-2 gap-3">
                           <label className="block">
                             <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Account Status</span>
-                            <select 
-                              name="status" 
-                              defaultValue={school.status || "active"} 
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-bold outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                            >
-                              <option value="active">Active</option>
-                              <option value="disabled">Disabled</option>
-                              <option value="expired">Expired</option>
-                            </select>
+                            <PremiumPicker name="status" defaultValue={school.status || "active"} options={statusOptions} className="[&>select]:h-10 [&>select]:text-xs" />
                           </label>
                           <label className="block">
                             <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Expiration Date</span>

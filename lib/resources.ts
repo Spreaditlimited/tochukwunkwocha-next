@@ -145,6 +145,35 @@ function toInt(value: unknown) {
   return Number.isFinite(numberValue) ? Math.round(numberValue) : 0
 }
 
+export function youtubeEmbedInfo(input: unknown) {
+  const value = clean(input, 2000)
+  if (!value) return null
+  try {
+    const url = new URL(value)
+    const host = url.hostname.replace(/^www\./, "").toLowerCase()
+    let id = ""
+    let isShort = false
+    if (host === "youtu.be") {
+      id = url.pathname.split("/").filter(Boolean)[0] || ""
+    } else if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+      if (url.pathname === "/watch") id = url.searchParams.get("v") || ""
+      else if (url.pathname.startsWith("/shorts/")) {
+        id = url.pathname.split("/").filter(Boolean)[1] || ""
+        isShort = true
+      }
+      else if (url.pathname.startsWith("/embed/")) id = url.pathname.split("/").filter(Boolean)[1] || ""
+    }
+    const cleanId = id.match(/^[a-zA-Z0-9_-]{6,}$/)?.[0] || ""
+    return cleanId ? { id: cleanId, embedUrl: `https://www.youtube.com/embed/${cleanId}`, isShort } : null
+  } catch {
+    return null
+  }
+}
+
+export function youtubeEmbedUrl(input: unknown) {
+  return youtubeEmbedInfo(input)?.embedUrl || ""
+}
+
 function rowToResource(row: Record<string, unknown>): ResourceRow {
   return {
     id: Number(row.id || 0),
@@ -556,6 +585,11 @@ export async function upsertResourceFromForm(formData: FormData) {
   const resourceUuid = clean(formData.get("resourceUuid"), 80) || crypto.randomUUID()
   const title = clean(formData.get("title"), 220)
   if (!title) throw new Error("Resource title is required.")
+  const resourceType = clean(formData.get("resourceType"), 40) || "prompt"
+  const videoUrl = clean(formData.get("videoUrl"), 2000)
+  if (resourceType === "video" && !youtubeEmbedUrl(videoUrl)) {
+    throw new Error("Enter a valid YouTube video URL.")
+  }
   const status = clean(formData.get("status"), 32) === "published" ? "published" : "draft"
   const slug = await makeUniqueResourceSlug(clean(formData.get("slug"), 255) || title, resourceUuid)
   const publishedAt = status === "published" ? now : null
@@ -567,11 +601,11 @@ export async function upsertResourceFromForm(formData: FormData) {
        price_ngn_minor, price_usd_minor, brevo_list_id, related_course_slug, seo_title, seo_description, og_image,
        status, featured, created_at, updated_at, published_at)
     VALUES
-      (${resourceUuid}, ${clean(formData.get("resourceType"), 40) || "guide"}, ${clean(formData.get("audienceKey"), 80) || "building-real-projects"},
+      (${resourceUuid}, ${resourceType}, ${clean(formData.get("audienceKey"), 80) || "building-real-projects"},
        ${clean(formData.get("categoryKey"), 80) || "project-building"}, ${title}, ${slug}, ${clean(formData.get("summary"), 1000) || null},
        ${clean(formData.get("bodyContent"), 20000) || null}, ${clean(formData.get("promptText"), 20000) || null},
        ${clean(formData.get("useCaseText"), 4000) || null}, ${clean(formData.get("customizationNotes"), 8000) || null},
-       ${clean(formData.get("videoUrl"), 2000) || null}, ${clean(formData.get("thumbnailUrl"), 2000) || null},
+       ${videoUrl || null}, ${clean(formData.get("thumbnailUrl"), 2000) || null},
        ${clean(formData.get("downloadUrl"), 2000) || null}, ${clean(formData.get("filePublicId"), 500) || null},
        ${clean(formData.get("accessType"), 40) || "free"}, ${toMinor(formData.get("priceNgn"))}, ${toMinor(formData.get("priceUsd"))},
        ${toInt(formData.get("brevoListId")) || null}, ${clean(formData.get("relatedCourseSlug"), 160) || null},
@@ -750,7 +784,8 @@ export async function generateResourceDraftFromForm(formData: FormData) {
   await ensureResourceTables()
   const topic = clean(formData.get("topic"), 220)
   if (!topic) throw new Error("Topic is required.")
-  const resourceType = clean(formData.get("resourceType"), 40) || "guide"
+  const resourceType = clean(formData.get("resourceType"), 40) || "prompt"
+  if (resourceType === "video") throw new Error("Videos are saved directly with a YouTube URL. Use the Add YouTube Video form.")
   const audienceKey = clean(formData.get("audienceKey"), 80) || "building-real-projects"
   const categoryKey = clean(formData.get("categoryKey"), 80) || "project-building"
   const accessType = clean(formData.get("accessType"), 40) || "free"

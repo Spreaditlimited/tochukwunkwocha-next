@@ -29,6 +29,7 @@ import {
   reviewTranscriptAccessAction,
   saveCourseFeaturesAction
 } from "./actions"
+import { PremiumPicker } from "@/components/PremiumPicker"
 
 export const dynamic = "force-dynamic"
 
@@ -67,6 +68,30 @@ function StatusPill({ status }: { status: string | null }) {
 
 export default async function InternalLearningSupportPage() {
   const { courses, features, assignments, attachments, transcriptRequests, students } = await listLearningSupportData()
+  const transcriptStatusOptions = [
+    { value: "pending", label: "Mark as Pending" },
+    { value: "approved", label: "Approve Access" },
+    { value: "denied", label: "Deny Request" }
+  ]
+  const alumniParticipationOptions = [
+    { value: "none", label: "None (Hidden)" },
+    { value: "read_only", label: "Read Only" },
+    { value: "full", label: "Full Participation" }
+  ]
+  const enabledOptions = [
+    { value: "0", label: "Disabled" },
+    { value: "1", label: "Enabled" }
+  ]
+  const proofTypeOptions = [
+    { value: "website_link", label: "Website Link" }
+  ]
+  const assignmentStatusOptions = [
+    { value: "submitted", label: "Mark as Submitted (Unread)" },
+    { value: "in_review", label: "In Review (WIP)" },
+    { value: "needs_revision", label: "Needs Revision (Changes Required)" },
+    { value: "approved", label: "Approved (Pass)" },
+    { value: "rejected", label: "Rejected (Fail)" }
+  ]
   
   const attachmentMap = new Map<string, typeof attachments>()
   for (const attachment of attachments) {
@@ -183,11 +208,7 @@ export default async function InternalLearningSupportPage() {
                     </div>
                     
                     <div className="w-full shrink-0 space-y-3 lg:w-[260px]">
-                      <select name="status" defaultValue={request.status || "pending"} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                        <option value="pending">Mark as Pending</option>
-                        <option value="approved">Approve Access</option>
-                        <option value="denied">Deny Request</option>
-                      </select>
+                      <PremiumPicker name="status" defaultValue={request.status || "pending"} options={transcriptStatusOptions} />
                       <input name="expiresAt" type="datetime-local" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" title="Expiration Date" />
                       <input name="notes" defaultValue={request.notes || ""} placeholder="Internal admin notes..." className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       <button className="btn-primary w-full justify-center shadow-sm" type="submit">
@@ -317,25 +338,16 @@ export default async function InternalLearningSupportPage() {
                     
                     <label className="block sm:col-span-2">
                       <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Alumni Participation Status</span>
-                      <select name="alumniParticipationMode" defaultValue={feature?.alumniParticipationMode || "none"} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                        <option value="none">None (Hidden)</option>
-                        <option value="read_only">Read Only</option>
-                        <option value="full">Full Participation</option>
-                      </select>
+                      <PremiumPicker name="alumniParticipationMode" defaultValue={feature?.alumniParticipationMode || "none"} options={alumniParticipationOptions} />
                     </label>
                     
                     <label className="block">
                       <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tutor Q&A</span>
-                      <select name="tutorQuestionsEnabled" defaultValue={isOn(feature?.tutorQuestionsEnabled) ? "1" : "0"} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                        <option value="0">Disabled</option>
-                        <option value="1">Enabled</option>
-                      </select>
+                      <PremiumPicker name="tutorQuestionsEnabled" defaultValue={isOn(feature?.tutorQuestionsEnabled) ? "1" : "0"} options={enabledOptions} />
                     </label>
                     <label className="block">
                       <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Proof Type</span>
-                      <select name="certificateProofType" defaultValue={feature?.certificateProofType || "website_link"} disabled className="w-full rounded-md border border-input bg-muted/50 px-4 py-2.5 text-sm font-medium text-muted-foreground outline-none cursor-not-allowed">
-                        <option value="website_link">Website Link</option>
-                      </select>
+                      <PremiumPicker name="certificateProofType" defaultValue={feature?.certificateProofType || "website_link"} disabled options={proofTypeOptions} />
                     </label>
                   </div>
                 </form>
@@ -470,13 +482,7 @@ export default async function InternalLearningSupportPage() {
                         <div className="grid gap-5">
                           <label className="block">
                             <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Evaluation Status</span>
-                            <select name="status" defaultValue={assignment.status} className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                              <option value="submitted">Mark as Submitted (Unread)</option>
-                              <option value="in_review">In Review (WIP)</option>
-                              <option value="needs_revision">Needs Revision (Changes Required)</option>
-                              <option value="approved">Approved (Pass)</option>
-                              <option value="rejected">Rejected (Fail)</option>
-                            </select>
+                            <PremiumPicker name="status" defaultValue={assignment.status} options={assignmentStatusOptions} />
                           </label>
                           
                           <label className="block flex-1">

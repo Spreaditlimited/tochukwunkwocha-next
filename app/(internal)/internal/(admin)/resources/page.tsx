@@ -12,7 +12,8 @@ import {
   Plus,
   Save,
   Search,
-  Sparkles
+  Sparkles,
+  Youtube
 } from "lucide-react"
 
 import {
@@ -28,6 +29,7 @@ import {
   resourceTypeLabel,
   resourceTypes
 } from "@/lib/resources"
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatDate } from "@/lib/utils"
 import { generateResourceDraftAction, saveResourceAction, saveResourceBundleAction } from "./actions"
 
@@ -60,6 +62,18 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
   const publishedCount = resources.filter((resource) => resource.status === "published").length
   const paidCount = resources.filter((resource) => resource.accessType === "paid" || resource.accessType === "bundle_only").length
   const gatedCount = resources.filter((resource) => resource.accessType === "gated").length
+  const resourceTypeOptions = resourceTypes.map((type) => ({ value: type.key, label: type.label }))
+  const generatedResourceTypeOptions = resourceTypes
+    .filter((type) => type.key === "prompt")
+    .map((type) => ({ value: type.key, label: type.label }))
+  const resourceAudienceOptions = resourceAudiences.map((audience) => ({ value: audience.key, label: audience.label }))
+  const resourceAudienceOptionsWithGeneral = [{ value: "", label: "General" }, ...resourceAudienceOptions]
+  const resourceCategoryOptions = resourceCategories.map((category) => ({ value: category.key, label: category.label }))
+  const resourceAccessOptions = resourceAccessTypes.map((type) => ({ value: type.key, label: type.label }))
+  const statusOptions = [
+    { value: "draft", label: "Draft" },
+    { value: "published", label: "Published" }
+  ]
 
   return (
     <main className="space-y-8 pb-12">
@@ -100,52 +114,93 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
         ))}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="border-b border-border bg-muted/20 p-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Sparkles className="h-5 w-5" />
-            </span>
-            <div>
-              <h2 className="font-heading text-xl font-black text-foreground">Generate Resource Draft</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Create a reviewable AI draft for a specific audience, topic, and resource type.</p>
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border bg-muted/20 p-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-heading text-xl font-black text-foreground">Generate Prompt Draft</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Use AI to create a reviewable prompt resource. Videos are added separately with a YouTube link.</p>
+              </div>
             </div>
           </div>
-        </div>
-        <form action={generateResourceDraftAction} className="grid gap-4 p-6 lg:grid-cols-[1.3fr_0.8fr_0.8fr_0.8fr_0.8fr_auto] lg:items-end">
-          <label className="block">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Topic</span>
-            <input name="topic" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="AI for school owners: parent communication" required />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</span>
-            <select name="resourceType" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-              {resourceTypes.map((type) => <option key={type.key} value={type.key}>{type.label}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audience</span>
-            <select name="audienceKey" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-              {resourceAudiences.map((audience) => <option key={audience.key} value={audience.key}>{audience.label}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</span>
-            <select name="categoryKey" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-              {resourceCategories.map((category) => <option key={category.key} value={category.key}>{category.label}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Access</span>
-            <select name="accessType" defaultValue="free" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-              {resourceAccessTypes.map((type) => <option key={type.key} value={type.key}>{type.label}</option>)}
-            </select>
-          </label>
-          <button className="btn-primary h-12 justify-center whitespace-nowrap" type="submit">
-            <Sparkles className="h-4 w-4" />
-            Generate Draft
-          </button>
-        </form>
+          <form action={generateResourceDraftAction} className="grid gap-4 p-6 lg:grid-cols-2">
+            <input type="hidden" name="accessType" value="free" />
+            <label className="block lg:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prompt Topic</span>
+              <input name="topic" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="AI for school owners: parent communication" required />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</span>
+              <PremiumPicker name="resourceType" options={generatedResourceTypeOptions} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audience</span>
+              <PremiumPicker name="audienceKey" options={resourceAudienceOptions} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</span>
+              <PremiumPicker name="categoryKey" options={resourceCategoryOptions} />
+            </label>
+            <button className="btn-primary h-12 justify-center whitespace-nowrap self-end" type="submit">
+              <Sparkles className="h-4 w-4" />
+              Generate Prompt
+            </button>
+          </form>
+        </article>
+
+        <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border bg-muted/20 p-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                <Youtube className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-heading text-xl font-black text-foreground">Add YouTube Video</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Add a public video resource with a YouTube or Shorts URL.</p>
+              </div>
+            </div>
+          </div>
+          <form action={saveResourceAction} className="grid gap-4 p-6 sm:grid-cols-2">
+            <input type="hidden" name="resourceType" value="video" />
+            <input type="hidden" name="accessType" value="free" />
+            <label className="block sm:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Video Title</span>
+              <input name="title" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="How to use AI to revise WAEC Biology" required />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">YouTube URL</span>
+              <input name="videoUrl" type="url" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="https://www.youtube.com/watch?v=..." required />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audience</span>
+              <PremiumPicker name="audienceKey" options={resourceAudienceOptions} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</span>
+              <PremiumPicker name="categoryKey" options={resourceCategoryOptions} />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Short Summary</span>
+              <textarea name="summary" rows={3} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Briefly explain what the viewer will learn." />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Thumbnail URL</span>
+              <input name="thumbnailUrl" type="url" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</span>
+              <PremiumPicker name="status" options={statusOptions} />
+            </label>
+            <button className="btn-primary h-12 justify-center sm:col-span-2" type="submit">
+              <Save className="h-4 w-4" />
+              Save Video
+            </button>
+          </form>
+        </article>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
@@ -168,27 +223,19 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</span>
-              <select name="resourceType" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                {resourceTypes.map((type) => <option key={type.key} value={type.key}>{type.label}</option>)}
-              </select>
+              <PremiumPicker name="resourceType" options={resourceTypeOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Access</span>
-              <select name="accessType" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                {resourceAccessTypes.map((type) => <option key={type.key} value={type.key}>{type.label}</option>)}
-              </select>
+              <PremiumPicker name="accessType" options={resourceAccessOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audience</span>
-              <select name="audienceKey" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                {resourceAudiences.map((audience) => <option key={audience.key} value={audience.key}>{audience.label}</option>)}
-              </select>
+              <PremiumPicker name="audienceKey" options={resourceAudienceOptions} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</span>
-              <select name="categoryKey" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                {resourceCategories.map((category) => <option key={category.key} value={category.key}>{category.label}</option>)}
-              </select>
+              <PremiumPicker name="categoryKey" options={resourceCategoryOptions} />
             </label>
             <label className="block md:col-span-2">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Summary</span>
@@ -240,10 +287,7 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</span>
-              <select name="status" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-              </select>
+              <PremiumPicker name="status" options={statusOptions} />
             </label>
             <div className="flex items-end justify-between gap-4 md:col-span-2">
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
@@ -277,10 +321,7 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audience</span>
-              <select name="audienceKey" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="">General</option>
-                {resourceAudiences.map((audience) => <option key={audience.key} value={audience.key}>{audience.label}</option>)}
-              </select>
+              <PremiumPicker name="audienceKey" options={resourceAudienceOptionsWithGeneral} />
             </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Summary</span>
@@ -319,10 +360,7 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</span>
-                <select name="status" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="draft">Draft</option>
-                  <option value="published">Published</option>
-                </select>
+                <PremiumPicker name="status" options={statusOptions} />
               </label>
               <label className="flex cursor-pointer items-center gap-3 self-end rounded-xl border border-border bg-muted/20 px-4 py-3">
                 <input name="featured" type="checkbox" className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />

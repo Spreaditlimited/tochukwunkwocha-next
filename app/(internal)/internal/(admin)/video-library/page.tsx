@@ -16,7 +16,6 @@ import { listVideoLibrary } from "@/lib/admin-video-library"
 import { formatDate } from "@/lib/utils"
 import {
   activateCourseBatchAction,
-  autofillModuleAccessibilityAction,
   cloneVideoLibraryModuleAction,
   deleteCourseBatchAction,
   detachVideoLibraryModuleAction,
@@ -26,6 +25,7 @@ import {
   saveVideoLibraryCourseAction,
   saveVideoLibraryModuleAction
 } from "./actions"
+import { AccessibilityGenerateButton } from "./AccessibilityGenerateButton"
 import { CloudflareProgressPanel } from "./CloudflareProgressPanel"
 import { LessonMapperClient } from "./LessonMapperClient"
 import { ModuleBatchRulesClient } from "./ModuleBatchRulesClient"
@@ -109,13 +109,14 @@ function batchRuleRows(
       label: `${batch.batchLabel || batch.batchKey}${batch.batchStartAt ? ` · ${formatDate(batch.batchStartAt)}` : ""}${batch.status ? ` · ${batch.status}` : ""}`
     }))
   ]
+  const accessModeOptions = [
+    { value: "immediate", label: "Immediate access" },
+    { value: "drip", label: "Drip by date" }
+  ]
   return rows.map((schedule, index) => (
     <div key={`${schedule.batchKey || "new"}-${index}`} className="grid min-w-[46rem] gap-3 rounded-xl border border-border bg-background p-3 md:grid-cols-[1.4fr_1fr_1.3fr]">
       <PremiumPicker name="dripBatchKey" defaultValue={schedule.batchKey || ""} options={batchOptions} />
-      <select name="dripAccessMode" defaultValue={schedule.accessMode || "immediate"} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-        <option value="immediate">Immediate access</option>
-        <option value="drip">Drip by date</option>
-      </select>
+      <PremiumPicker name="dripAccessMode" defaultValue={schedule.accessMode || "immediate"} options={accessModeOptions} />
       <input name="dripAt" type="datetime-local" defaultValue={dateInput(schedule.dripAt || null)} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
     </div>
   ))
@@ -207,9 +208,25 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
   const immediateCourse = activeCourse?.enrollmentMode === "immediate"
   const courseOptions = courses.map((course) => ({ value: course.courseSlug, label: course.courseTitle }))
   const courseOptionsWithAll = [{ value: "", label: "All courses" }, ...courseOptions]
+  const batchStatusOptions = [
+    { value: "open", label: "Open" },
+    { value: "closed", label: "Closed" }
+  ]
+  const enrollmentModeOptions = [
+    { value: "batch", label: "Batch based" },
+    { value: "immediate", label: "Immediate access" }
+  ]
   const publicVideoOptions = [
     { value: "", label: "No video selected" },
     ...videos.map((video) => ({ value: String(video.id), label: videoLabel(video) }))
+  ]
+  const sourceModuleOptions = [
+    { value: "", label: "Select source module" },
+    ...modules.map((module) => ({
+      key: `${module.courseSlug}-${String(module.id)}`,
+      value: String(module.id),
+      label: `[${module.courseSlug}] ${module.moduleTitle}`
+    }))
   ]
   const moduleTableBatchOptions = [
     { value: "", label: "All batches" },
@@ -241,10 +258,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                     <input type="hidden" name="originalBatchKey" value={batch.batchKey} />
                     <input name="batchLabel" defaultValue={batch.batchLabel || ""} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="batchKey" defaultValue={batch.batchKey} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                    <select name="status" defaultValue={batch.status || "closed"} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                      <option value="open">Open</option>
-                      <option value="closed">Closed</option>
-                    </select>
+                    <PremiumPicker name="status" defaultValue={batch.status || "closed"} options={batchStatusOptions} />
                     <input name="batchStartAt" type="datetime-local" defaultValue={dateInput(batch.batchStartAt)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="paystackReferencePrefix" defaultValue={batch.paystackReferencePrefix || ""} placeholder="Paystack prefix" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="paystackAmountMinor" defaultValue={minorInput(batch.paystackAmountMinor)} placeholder="Paystack minor" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
@@ -411,10 +425,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Enrollment Mode</span>
-                <select name="enrollmentMode" defaultValue={activeCourse.enrollmentMode || "batch"} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                  <option value="batch">Batch based</option>
-                  <option value="immediate">Immediate access</option>
-                </select>
+                <PremiumPicker name="enrollmentMode" defaultValue={activeCourse.enrollmentMode || "batch"} options={enrollmentModeOptions} />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Release Date</span>
@@ -547,13 +558,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                               <PremiumPicker name="courseSlug" defaultValue={module.courseSlug} options={courseOptions} className="w-[13rem] shrink-0" />
                               <button className="btn-secondary h-10 shrink-0 px-4 text-xs" type="submit" data-toast="Moving module">Move</button>
                             </form>
-                            <form action={autofillModuleAccessibilityAction}>
-                              <input type="hidden" name="moduleId" value={String(module.id)} />
-                              <button className="btn-secondary h-10 shrink-0 px-4 text-xs" type="submit" data-toast="Generating accessibility fields">
-                                <CheckCircle2 className="h-4 w-4" />
-                                Generate A11y
-                              </button>
-                            </form>
+                            <AccessibilityGenerateButton moduleId={String(module.id)} moduleTitle={module.moduleTitle} />
                             <Link href={videoLibraryHref({
                               course: selectedCourseSlug,
                               moduleTableCourse: selectedModuleTableCourseSlug,
@@ -634,14 +639,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                 <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
                   <label className="block min-w-0 flex-1">
                     <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Reuse Existing Module</span>
-                    <select name="sourceModuleId" form="clone-module-form" defaultValue="" className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                      <option value="">Select source module</option>
-                      {modules.map((module) => (
-                        <option key={`${module.courseSlug}-${String(module.id)}`} value={String(module.id)}>
-                          [{module.courseSlug}] {module.moduleTitle}
-                        </option>
-                      ))}
-                    </select>
+                    <PremiumPicker name="sourceModuleId" form="clone-module-form" defaultValue="" options={sourceModuleOptions} />
                   </label>
                   <label className="block min-w-0 flex-1">
                     <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Target Course</span>

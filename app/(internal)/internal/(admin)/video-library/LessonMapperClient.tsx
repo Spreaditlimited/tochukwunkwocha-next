@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { FileText, GripVertical, PlusCircle, Save, Trash2, X } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { saveVideoLibraryLessonsAction } from "./actions"
 import { RichNotesEditor, notesPreview } from "./RichNotesEditor"
 
@@ -77,6 +78,16 @@ export function LessonMapperClient({ moduleId, lessons, videos }: LessonMapperCl
   }, [lessons, moduleId])
 
   const editingNotesRow = rows.find((row) => row.rowKey === editingNotesKey) || null
+  const videoOptions = useMemo(() => [
+    { value: "", label: "No video attached" },
+    ...videos.map((video) => ({ value: video.id, label: video.label }))
+  ], [videos])
+  const accessibilityStatusOptions = [
+    { value: "draft", label: "Draft" },
+    { value: "in_progress", label: "In Progress" },
+    { value: "ready", label: "Ready" },
+    { value: "blocked", label: "Blocked" }
+  ]
 
   const accessibilitySummary = useMemo(() => {
     const activeRows = rows.filter((row) => row.isActive)
@@ -215,12 +226,7 @@ export function LessonMapperClient({ moduleId, lessons, videos }: LessonMapperCl
               </div>
               <input value={row.lessonTitle} onChange={(event) => updateRow(row.rowKey, { lessonTitle: event.target.value })} className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
               <input type="number" value={row.lessonOrder} onChange={(event) => updateRow(row.rowKey, { lessonOrder: event.target.value })} className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-              <select value={row.videoAssetId} onChange={(event) => updateRow(row.rowKey, { videoAssetId: event.target.value })} className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="">No video attached</option>
-                {videos.map((video) => (
-                  <option key={video.id} value={video.id}>{video.label}</option>
-                ))}
-              </select>
+              <PremiumPicker value={row.videoAssetId} onChange={(event) => updateRow(row.rowKey, { videoAssetId: event.target.value })} options={videoOptions} className="[&>select]:h-10 [&>select]:text-xs" />
               <button
                 type="button"
                 onClick={() => openNotes(row)}
@@ -234,12 +240,7 @@ export function LessonMapperClient({ moduleId, lessons, videos }: LessonMapperCl
               <textarea value={row.transcriptText} onChange={(event) => updateRow(row.rowKey, { transcriptText: event.target.value })} rows={2} placeholder="Transcript" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
               <textarea value={row.audioDescriptionText} onChange={(event) => updateRow(row.rowKey, { audioDescriptionText: event.target.value })} rows={2} placeholder="Audio description" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
               <input value={row.signLanguageVideoUrl} onChange={(event) => updateRow(row.rowKey, { signLanguageVideoUrl: event.target.value })} placeholder="Sign language URL" className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-              <select value={row.accessibilityStatus} onChange={(event) => updateRow(row.rowKey, { accessibilityStatus: event.target.value })} className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="draft">Draft</option>
-                <option value="in_progress">In Progress</option>
-                <option value="ready">Ready</option>
-                <option value="blocked">Blocked</option>
-              </select>
+              <PremiumPicker value={row.accessibilityStatus} onChange={(event) => updateRow(row.rowKey, { accessibilityStatus: event.target.value })} options={accessibilityStatusOptions} className="[&>select]:h-10 [&>select]:text-xs" />
               <label className="flex h-10 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs font-bold">
                 <input type="checkbox" checked={row.isActive} onChange={(event) => updateRow(row.rowKey, { isActive: event.target.checked })} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
                 Active

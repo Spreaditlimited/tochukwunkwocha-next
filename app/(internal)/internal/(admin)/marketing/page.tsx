@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { 
   BarChart3, 
-  ChevronDown, 
   ExternalLink, 
   FileText, 
   Mail, 
@@ -11,6 +10,7 @@ import {
   Users 
 } from "lucide-react"
 
+import { PremiumPicker } from "@/components/PremiumPicker"
 import { getMarketingDashboard, type MarketingChartRow } from "@/lib/marketing"
 import { formatDate } from "@/lib/utils"
 
@@ -98,6 +98,13 @@ export default async function MarketingPage({ searchParams }: PageProps) {
   const params = await searchParams || {}
   const days = Math.min(365, Math.max(1, Number(param(params, "days", "30")) || 30))
   const dashboard = await getMarketingDashboard({ days, limit: 150 })
+  const dayOptions = [
+    { value: "7", label: "Last 7 days" },
+    { value: "30", label: "Last 30 days" },
+    { value: "90", label: "Last 90 days" },
+    { value: "180", label: "Last 180 days" },
+    { value: "365", label: "Last 365 days" }
+  ]
 
   const summaryCards = [
     { label: "Selected Period", value: dashboard.summary.periodLeads, desc: "Leads captured in range", icon: BarChart3, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", border: "hover:border-amber-500/40" },
@@ -127,20 +134,7 @@ export default async function MarketingPage({ searchParams }: PageProps) {
         <form className="flex flex-wrap items-end gap-3">
           <label className="block w-full sm:w-auto">
             <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Date Range</span>
-            <div className="relative">
-              <select 
-                name="days" 
-                defaultValue={String(days)} 
-                className="w-full appearance-none rounded-lg border border-input bg-card py-2.5 pl-4 pr-10 text-sm font-bold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary sm:w-48"
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="180">Last 180 days</option>
-                <option value="365">Last 365 days</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            </div>
+            <PremiumPicker name="days" defaultValue={String(days)} options={dayOptions} className="sm:w-48" />
           </label>
           <button className="btn-primary w-full justify-center shadow-sm sm:w-auto" type="submit">
             <RefreshCw className="mr-2 h-4 w-4" /> Refresh

@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client"
+
 import { prisma } from "@/lib/prisma"
-import { upsertAdminSettings } from "@/lib/admin-settings"
+import { applyAdminSettingsToProcessEnv, upsertAdminSettings } from "@/lib/admin-settings"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { sanitizeRichNotes } from "@/lib/rich-notes"
@@ -439,6 +441,7 @@ export async function listVideoLibrary() {
       SELECT id, video_uid AS videoUid, filename, ready_to_stream AS readyToStream,
         duration_seconds AS durationSeconds, source_deleted_at AS sourceDeletedAt, updated_at AS updatedAt
       FROM tochukwu_learning_video_assets
+      WHERE source_deleted_at IS NULL
       ORDER BY updated_at DESC
       LIMIT 300
     `,
@@ -1106,63 +1109,406 @@ async function fetchTextUrl(url: string) {
   return clean(await response.text().catch(() => ""), 200000)
 }
 
-export async function autofillModuleAccessibility(input: { moduleId: string; includeAudioDescription?: boolean }) {
+function optionalCloudflareConfig() {
+  const accountId = clean(process.env.CLOUDFLARE_ACCOUNT_ID, 120)
+  const token = clean(process.env.CLOUDFLARE_STREAM_API_TOKEN, 500)
+  return accountId && token ? { accountId, token } : null
+}
+
+async function cloudflareJson(pathname: string, config: { accountId: string; token: string }, init?: RequestInit) {
+  const response = await fetch(`https://api.cloudflare.com/client/v4${pathname}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {})
+    }
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || payload?.success !== true) {
+    const message = payload?.errors?.[0]?.message || payload?.message || `Cloudflare request failed (${response.status})`
+    throw new Error(message)
+  }
+  return payload
+}
+
+async function cloudflareCaptionVtt(videoUid: string, language: string, config: { accountId: string; token: string }) {
+  const uid = clean(videoUid, 120)
+  const lang = clean(language, 40).toLowerCase() || "en"
+  if (!uid || !lang) return ""
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.accountId)}/stream/${encodeURIComponent(uid)}/captions/${encodeURIComponent(lang)}/vtt`,
+    {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        Accept: "text/vtt,text/plain,*/*"
+      }
+    }
+  ).catch(() => null)
+  if (!response?.ok) return ""
+  return clean(await response.text().catch(() => ""), 200000)
+}
+
+function normalizeCaptionLanguage(input: unknown) {
+  const raw = clean(input, 40).toLowerCase()
+  if (!raw) return "en"
+  if (raw === "en-us" || raw === "en-gb") return "en"
+  return raw
+}
+
+function captionLanguageFromJson(value: string | null, fallbackUrl: string) {
+  const raw = clean(value, 4000)
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed[0]) return normalizeCaptionLanguage(parsed[0])
+    } catch (_error) {}
+  }
+  const match = clean(fallbackUrl, 1200).match(/\/captions\/([a-z0-9-]+)\.vtt(?:$|\?)/i)
+  return normalizeCaptionLanguage(match?.[1] || "en")
+}
+
+function captionTrackUrl(track: Record<string, unknown>, videoUid: string) {
+  const direct = clean(track.url, 1200) || clean(track.vtt_url, 1200) || clean(track.webvtt, 1200) || clean(track.download_url, 1200)
+  if (direct) return direct
+  const language = normalizeCaptionLanguage(track.language || track.lang || "en")
+  return `https://videodelivery.net/${encodeURIComponent(videoUid)}/captions/${encodeURIComponent(language)}.vtt`
+}
+
+function pickCaptionTrack(rows: unknown) {
+  const list = Array.isArray(rows) ? rows.filter((row): row is Record<string, unknown> => !!row && typeof row === "object") : []
+  if (!list.length) return null
+  return list.find((row) => {
+    const language = normalizeCaptionLanguage(row.language || row.lang)
+    return language === "en"
+  }) || list[0] || null
+}
+
+export type AccessibilityAutofillResult = {
+  totalMatching: number
+  hasMore: boolean
+  nextOffset: number | null
+  summary: {
+    scanned: number
+    updated: number
+    skipped: number
+    blocked: number
+    captionsFound: number
+    captionGenerationStarted: number
+    transcriptsReady: number
+    transcriptsGenerated: number
+    missingCaptions: number
+    missingTranscripts: number
+    propagatedRows: number
+    reasonCounts: Record<string, number>
+  }
+  items: Array<{
+    lessonId: string
+    lessonTitle: string
+    videoUid: string | null
+    captionsFound: boolean
+    transcriptFound: boolean
+    status: string
+    changed: boolean
+    reason: string | null
+  }>
+}
+
+export async function autofillModuleAccessibility(input: {
+  moduleId?: string
+  courseSlug?: string
+  includeAudioDescription?: boolean
+  limit?: number
+  offset?: number
+  dryRun?: boolean
+}): Promise<AccessibilityAutofillResult> {
+  await applyAdminSettingsToProcessEnv().catch(() => null)
   await ensureVideoLibraryTables()
   const moduleId = toBigIntId(input.moduleId)
-  if (moduleId <= BigInt(0)) throw new Error("Module is required.")
-  const lessons = await prisma.$queryRaw<Array<{
+  const courseSlug = clean(input.courseSlug, 120).toLowerCase()
+  if (moduleId <= BigInt(0) && !courseSlug) throw new Error("Module or course is required.")
+  const limit = Math.max(1, Math.min(toInt(input.limit, 4), 8))
+  const offset = Math.max(0, toInt(input.offset, 0))
+  const dryRun = input.dryRun === true
+  const totalRows = moduleId > BigInt(0)
+    ? await prisma.$queryRaw<Array<{ total: number | bigint | null }>>`
+        SELECT COUNT(*) AS total
+        FROM tochukwu_learning_lessons
+        WHERE module_id = ${moduleId}
+          AND is_active = 1
+      `
+    : await prisma.$queryRaw<Array<{ total: number | bigint | null }>>`
+        SELECT COUNT(*) AS total
+        FROM tochukwu_learning_lessons l
+        JOIN tochukwu_learning_modules m ON m.id = l.module_id
+        WHERE m.course_slug = ${courseSlug}
+          AND l.is_active = 1
+      `
+  const totalMatching = toInt(totalRows[0]?.total)
+  type AccessibilityLessonRow = {
     id: bigint
     lessonTitle: string
+    videoAssetId: bigint | number | null
     captionsVttUrl: string | null
+    captionsLanguagesJson: string | null
     transcriptText: string | null
     audioDescriptionText: string | null
+    accessibilityStatus: string | null
     videoUid: string | null
-  }>>`
-    SELECT l.id, l.lesson_title AS lessonTitle, l.captions_vtt_url AS captionsVttUrl,
-      l.transcript_text AS transcriptText, l.audio_description_text AS audioDescriptionText,
-      a.video_uid AS videoUid
-    FROM tochukwu_learning_lessons l
-    LEFT JOIN tochukwu_learning_video_assets a ON a.id = l.video_asset_id
-    WHERE l.module_id = ${moduleId}
-      AND l.is_active = 1
-    ORDER BY l.lesson_order ASC, l.id ASC
-  `
+  }
+  const lessons = moduleId > BigInt(0)
+    ? await prisma.$queryRaw<AccessibilityLessonRow[]>`
+      SELECT l.id, l.lesson_title AS lessonTitle, l.video_asset_id AS videoAssetId,
+        l.captions_vtt_url AS captionsVttUrl, l.captions_languages_json AS captionsLanguagesJson,
+        l.transcript_text AS transcriptText, l.audio_description_text AS audioDescriptionText,
+        l.accessibility_status AS accessibilityStatus, a.video_uid AS videoUid
+      FROM tochukwu_learning_lessons l
+      LEFT JOIN tochukwu_learning_video_assets a ON a.id = l.video_asset_id
+      WHERE l.module_id = ${moduleId}
+        AND l.is_active = 1
+      ORDER BY l.id ASC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `
+    : await prisma.$queryRaw<AccessibilityLessonRow[]>`
+      SELECT l.id, l.lesson_title AS lessonTitle, l.video_asset_id AS videoAssetId,
+        l.captions_vtt_url AS captionsVttUrl, l.captions_languages_json AS captionsLanguagesJson,
+        l.transcript_text AS transcriptText, l.audio_description_text AS audioDescriptionText,
+        l.accessibility_status AS accessibilityStatus, a.video_uid AS videoUid
+      FROM tochukwu_learning_lessons l
+      JOIN tochukwu_learning_modules m ON m.id = l.module_id
+      LEFT JOIN tochukwu_learning_video_assets a ON a.id = l.video_asset_id
+      WHERE m.course_slug = ${courseSlug}
+        AND l.is_active = 1
+      ORDER BY l.id ASC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `
+  const videoAssetIds = Array.from(new Set(lessons.map((lesson) => toBigIntId(lesson.videoAssetId)).filter((id) => id > BigInt(0))))
+  const sharedA11yByVideoAssetId = new Map<string, {
+    captionsVttUrl: string
+    captionsLanguagesJson: string
+    transcriptText: string
+    audioDescriptionText: string
+    accessibilityStatus: string
+  }>()
+  if (videoAssetIds.length) {
+    const sharedRows = await prisma.$queryRaw<Array<{
+      videoAssetId: bigint
+      captionsVttUrl: string | null
+      captionsLanguagesJson: string | null
+      transcriptText: string | null
+      audioDescriptionText: string | null
+      accessibilityStatus: string | null
+    }>>`
+      SELECT video_asset_id AS videoAssetId, captions_vtt_url AS captionsVttUrl,
+        captions_languages_json AS captionsLanguagesJson, transcript_text AS transcriptText,
+        audio_description_text AS audioDescriptionText, accessibility_status AS accessibilityStatus
+      FROM tochukwu_learning_lessons
+      WHERE video_asset_id IN (${Prisma.join(videoAssetIds)})
+        AND (
+          COALESCE(TRIM(captions_vtt_url), '') <> ''
+          OR COALESCE(TRIM(transcript_text), '') <> ''
+          OR COALESCE(TRIM(audio_description_text), '') <> ''
+        )
+      ORDER BY id ASC
+    `
+    for (const row of sharedRows) {
+      const key = String(row.videoAssetId)
+      if (sharedA11yByVideoAssetId.has(key)) continue
+      sharedA11yByVideoAssetId.set(key, {
+        captionsVttUrl: clean(row.captionsVttUrl, 1200),
+        captionsLanguagesJson: clean(row.captionsLanguagesJson, 4000),
+        transcriptText: clean(row.transcriptText, 120000),
+        audioDescriptionText: clean(row.audioDescriptionText, 120000),
+        accessibilityStatus: clean(row.accessibilityStatus, 32).toLowerCase() || "draft"
+      })
+    }
+  }
+  const cloudflare = optionalCloudflareConfig()
   let scanned = 0
   let updated = 0
   let skipped = 0
   let blocked = 0
+  let captionsFound = 0
+  let captionGenerationStarted = 0
+  let transcriptsReady = 0
+  let transcriptsGenerated = 0
+  let missingCaptions = 0
+  let missingTranscripts = 0
+  let propagatedRows = 0
+  const reasonCounts: Record<string, number> = {}
+  const items: AccessibilityAutofillResult["items"] = []
   for (const lesson of lessons) {
     scanned += 1
+    const videoAssetId = toBigIntId(lesson.videoAssetId)
     const videoUid = clean(lesson.videoUid, 120)
+    const originalCaptionsUrl = clean(lesson.captionsVttUrl, 1200)
+    const originalTranscript = clean(lesson.transcriptText, 120000)
+    const originalAudioDescription = clean(lesson.audioDescriptionText, 120000)
+    const originalStatus = clean(lesson.accessibilityStatus, 32).toLowerCase() || "draft"
+    let captionsUrl = originalCaptionsUrl
+    let captionsLanguagesJson = clean(lesson.captionsLanguagesJson, 4000)
+    let transcript = originalTranscript
+    let audioDescriptionText = originalAudioDescription
+    let status = originalStatus
+    let reason = ""
+    if (videoAssetId > BigInt(0) && (!captionsUrl || !transcript || !audioDescriptionText)) {
+      const shared = sharedA11yByVideoAssetId.get(String(videoAssetId))
+      if (shared) {
+        if (!captionsUrl && shared.captionsVttUrl) captionsUrl = shared.captionsVttUrl
+        if (!captionsLanguagesJson && shared.captionsLanguagesJson) captionsLanguagesJson = shared.captionsLanguagesJson
+        if (!transcript && shared.transcriptText) transcript = shared.transcriptText
+        if (!audioDescriptionText && shared.audioDescriptionText) audioDescriptionText = shared.audioDescriptionText
+        if (captionsUrl || transcript || audioDescriptionText) reason = "inherited_from_shared_video"
+      }
+    }
     if (!videoUid) {
       blocked += 1
-      continue
+      status = "blocked"
+      reason = "no_video_uid"
     }
-    const captionsUrl = lesson.captionsVttUrl || `https://videodelivery.net/${encodeURIComponent(videoUid)}/captions/en.vtt`
-    let transcript = lesson.transcriptText || ""
-    if (!transcript) {
-      const vtt = await fetchTextUrl(captionsUrl)
+
+    if (!captionsUrl && videoUid && cloudflare) {
+      try {
+        const payload = await cloudflareJson(`/accounts/${encodeURIComponent(cloudflare.accountId)}/stream/${encodeURIComponent(videoUid)}/captions`, cloudflare)
+        const track = pickCaptionTrack(payload?.result)
+        if (track) {
+          captionsUrl = captionTrackUrl(track, videoUid)
+          const language = normalizeCaptionLanguage(track.language || track.lang || "en")
+          if (!captionsLanguagesJson) captionsLanguagesJson = JSON.stringify([language])
+          reason = reason || "captions_found"
+        }
+      } catch (_error) {}
+    }
+
+    if (!captionsUrl && videoUid && cloudflare) {
+      try {
+        await cloudflareJson(
+          `/accounts/${encodeURIComponent(cloudflare.accountId)}/stream/${encodeURIComponent(videoUid)}/captions/en/generate`,
+          cloudflare,
+          { method: "POST", body: JSON.stringify({ language: "en", waitForReady: false }) }
+        )
+        captionsUrl = `https://videodelivery.net/${encodeURIComponent(videoUid)}/captions/en.vtt`
+        captionsLanguagesJson = captionsLanguagesJson || JSON.stringify(["en"])
+        status = "in_progress"
+        reason = "caption_generation_started"
+        captionGenerationStarted += 1
+      } catch (_error) {}
+    }
+
+    if (!captionsUrl && videoUid) {
+      const guessed = `https://videodelivery.net/${encodeURIComponent(videoUid)}/captions/en.vtt`
+      const vtt = await fetchTextUrl(guessed)
+      if (vtt) {
+        captionsUrl = guessed
+        captionsLanguagesJson = captionsLanguagesJson || JSON.stringify(["en"])
+        transcript = transcript || stripVttToPlainText(vtt)
+        reason = reason || "captions_found"
+      }
+    }
+
+    if (!transcript && captionsUrl) {
+      const language = captionLanguageFromJson(captionsLanguagesJson, captionsUrl)
+      const vtt = videoUid && cloudflare
+        ? await cloudflareCaptionVtt(videoUid, language, cloudflare).catch(() => "")
+        : ""
+      const source = vtt || await fetchTextUrl(captionsUrl)
       transcript = stripVttToPlainText(vtt)
+      if (!transcript && source) transcript = stripVttToPlainText(source)
+      if (transcript) transcriptsGenerated += 1
     }
     const ready = Boolean(captionsUrl && transcript)
-    if (!captionsUrl && !transcript) {
+    if (captionsUrl) captionsFound += 1
+    if (transcript) transcriptsReady += 1
+    if (!captionsUrl) missingCaptions += 1
+    if (!transcript) missingTranscripts += 1
+    if (!reason) {
+      if (ready) {
+        status = "ready"
+        reason = "ready"
+      } else if (captionsUrl || transcript || audioDescriptionText) {
+        status = "in_progress"
+        reason = captionsUrl ? "transcript_pending" : "captions_missing"
+      } else {
+        status = "blocked"
+        blocked += 1
+        reason = "no_caption_source"
+      }
+    }
+    reasonCounts[reason] = Number(reasonCounts[reason] || 0) + 1
+    const changed = captionsUrl !== originalCaptionsUrl
+      || captionsLanguagesJson !== clean(lesson.captionsLanguagesJson, 4000)
+      || transcript !== originalTranscript
+      || audioDescriptionText !== originalAudioDescription
+      || status !== originalStatus
+    items.push({
+      lessonId: String(lesson.id),
+      lessonTitle: clean(lesson.lessonTitle, 220),
+      videoUid: videoUid || null,
+      captionsFound: Boolean(captionsUrl),
+      transcriptFound: Boolean(transcript),
+      status,
+      changed,
+      reason: reason || null
+    })
+    if (!changed) {
       skipped += 1
       continue
     }
-    await prisma.$executeRaw`
+    if (dryRun) {
+      updated += 1
+      continue
+    }
+    if (videoAssetId > BigInt(0)) {
+      const result = await prisma.$executeRaw`
+        UPDATE tochukwu_learning_lessons
+        SET captions_vtt_url = ${captionsUrl || null},
+            captions_languages_json = ${captionsLanguagesJson || null},
+            transcript_text = ${transcript || null},
+            audio_description_text = ${input.includeAudioDescription ? (audioDescriptionText || (transcript ? `Audio description notes can be reviewed from the transcript for ${lesson.lessonTitle}.` : null)) : audioDescriptionText || null},
+            accessibility_status = ${ready ? "ready" : status},
+            updated_at = ${new Date()}
+        WHERE video_asset_id = ${videoAssetId}
+      `
+      propagatedRows += Number(result || 0)
+    } else {
+      const result = await prisma.$executeRaw`
       UPDATE tochukwu_learning_lessons
       SET captions_vtt_url = ${captionsUrl || null},
-          captions_languages_json = COALESCE(captions_languages_json, ${JSON.stringify(["en"])}),
-          transcript_text = COALESCE(NULLIF(transcript_text, ''), ${transcript || null}),
-          audio_description_text = ${input.includeAudioDescription ? (lesson.audioDescriptionText || transcript ? `Audio description notes can be reviewed from the transcript for ${lesson.lessonTitle}.` : null) : lesson.audioDescriptionText},
-          accessibility_status = ${ready ? "ready" : "in_progress"},
+          captions_languages_json = ${captionsLanguagesJson || null},
+          transcript_text = ${transcript || null},
+          audio_description_text = ${input.includeAudioDescription ? (audioDescriptionText || (transcript ? `Audio description notes can be reviewed from the transcript for ${lesson.lessonTitle}.` : null)) : audioDescriptionText || null},
+          accessibility_status = ${ready ? "ready" : status},
           updated_at = ${new Date()}
       WHERE id = ${lesson.id}
       LIMIT 1
     `
+      propagatedRows += Number(result || 0)
+    }
     updated += 1
   }
-  return { scanned, updated, skipped, blocked }
+  const nextOffset = offset + scanned
+  return {
+    totalMatching,
+    hasMore: nextOffset < totalMatching,
+    nextOffset: nextOffset < totalMatching ? nextOffset : null,
+    summary: {
+      scanned,
+      updated,
+      skipped,
+      blocked,
+      captionsFound,
+      captionGenerationStarted,
+      transcriptsReady,
+      transcriptsGenerated,
+      missingCaptions,
+      missingTranscripts,
+      propagatedRows,
+      reasonCounts
+    },
+    items
+  }
 }
 
 function parseCsvTable(csvText: string) {
@@ -1639,25 +1985,32 @@ async function cloudflareRequest(pathname: string, init?: RequestInit) {
 export async function syncCloudflareVideos(maxPagesInput = 20) {
   await ensureVideoLibraryTables()
   const maxPages = Math.max(1, Math.min(maxPagesInput, 50))
+  const syncRunId = `cf_sync_${Date.now()}`
+  const syncStartedAt = new Date()
   let page = 1
   let totalPages = 1
   let fetched = 0
   let upserted = 0
+  let purged = 0
   while (page <= totalPages && page <= maxPages) {
-    const result = await syncCloudflareVideosPage(page, maxPages)
+    const result = await syncCloudflareVideosPage(page, maxPages, syncRunId, syncStartedAt.toISOString())
     fetched += result.fetched
     upserted += result.upserted
+    purged += result.purged
     totalPages = result.totalPages
     page = result.nextPage || page + 1
   }
-  return { fetched, upserted, scannedPages: page - 1, maxPages }
+  return { fetched, upserted, purged, scannedPages: page - 1, maxPages }
 }
 
-export async function syncCloudflareVideosPage(pageInput = 1, maxPagesInput = 20) {
+export async function syncCloudflareVideosPage(pageInput = 1, maxPagesInput = 20, syncRunIdInput?: string, syncStartedAtInput?: string) {
   await ensureVideoLibraryTables()
   const config = cloudflareConfig()
   const page = Math.max(1, toInt(pageInput, 1))
   const maxPages = Math.max(1, Math.min(toInt(maxPagesInput, 20), 50))
+  const syncRunId = clean(syncRunIdInput, 80) || `cf_sync_${Date.now()}`
+  const parsedStartedAt = syncStartedAtInput ? new Date(syncStartedAtInput) : new Date()
+  const syncStartedAt = Number.isFinite(parsedStartedAt.getTime()) ? parsedStartedAt : new Date()
   const payload = await cloudflareRequest(`/accounts/${encodeURIComponent(config.accountId)}/stream?per_page=100&page=${page}`)
   const rows = Array.isArray(payload.result) ? payload.result : []
   const totalPages = Math.max(1, Number(payload.result_info?.total_pages || 1) || 1)
@@ -1690,8 +2043,21 @@ export async function syncCloudflareVideosPage(pageInput = 1, maxPagesInput = 20
     `
     upserted += 1
   }
-  const done = page >= totalPages || page >= maxPages
-  return { page, totalPages, totalCount, maxPages, fetched, upserted, syncedUids, nextPage: done ? null : page + 1, done }
+  const fullSyncComplete = page >= totalPages
+  const done = fullSyncComplete || page >= maxPages
+  let purged = 0
+  if (fullSyncComplete) {
+    const result = await prisma.$executeRaw`
+      UPDATE tochukwu_learning_video_assets
+      SET source_deleted_at = ${new Date()},
+          updated_at = ${new Date()}
+      WHERE provider = 'cloudflare_stream'
+        AND source_deleted_at IS NULL
+        AND updated_at < ${syncStartedAt}
+    `
+    purged = Number(result || 0)
+  }
+  return { page, totalPages, totalCount, maxPages, fetched, upserted, purged, syncedUids, syncRunId, syncStartedAt: syncStartedAt.toISOString(), fullSyncComplete, nextPage: done ? null : page + 1, done }
 }
 
 async function ensureCloudflareSigningKey(updatedBy: string, forceRotate = false) {

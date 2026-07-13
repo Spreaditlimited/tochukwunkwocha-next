@@ -9,7 +9,12 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const page = Number(body.page || 1)
   const maxPages = Number(body.maxPages || 20)
-  const result = await syncCloudflareVideosPage(Number.isFinite(page) ? page : 1, Number.isFinite(maxPages) ? maxPages : 20)
+  const result = await syncCloudflareVideosPage(
+    Number.isFinite(page) ? page : 1,
+    Number.isFinite(maxPages) ? maxPages : 20,
+    String(body.syncRunId || ""),
+    String(body.syncStartedAt || "")
+  )
   if (result.done) revalidatePath("/internal/video-library")
   return NextResponse.json({ ok: true, ...result })
 }
