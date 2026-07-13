@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 
+import { moveEnrollmentBrevoList, sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
 
 function clean(value: unknown, max = 500) {
@@ -323,8 +324,8 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
   if (!isFuture(item.batchStartAt)) throw new Error("This batch can no longer be changed.")
   if (targetBatchKey === item.batchKey) throw new Error("Choose a different batch.")
 
-  const targetRows = await prisma.$queryRaw<Array<{ batchKey: string; batchLabel: string; batchStartAt: Date | null; status: string }>>(Prisma.sql`
-    SELECT batch_key AS batchKey, batch_label AS batchLabel, batch_start_at AS batchStartAt, status
+  const targetRows = await prisma.$queryRaw<Array<{ batchKey: string; batchLabel: string; batchStartAt: Date | null; status: string; brevoListId: string | null }>>(Prisma.sql`
+    SELECT batch_key AS batchKey, batch_label AS batchLabel, batch_start_at AS batchStartAt, status, brevo_list_id AS brevoListId
     FROM course_batches
     WHERE course_slug COLLATE utf8mb4_unicode_ci = ${item.courseSlug} COLLATE utf8mb4_unicode_ci
       AND batch_key COLLATE utf8mb4_unicode_ci = ${targetBatchKey} COLLATE utf8mb4_unicode_ci
@@ -414,6 +415,46 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
          ${item.batchKey || null}, ${item.batchLabel || null}, ${item.batchStartAt || null},
          ${target.batchKey}, ${target.batchLabel}, ${target.batchStartAt || null}, ${item.seatCount}, ${now})
     `)
+  })
+
+  await moveEnrollmentBrevoList({
+    fullName: item.displayName,
+    email: item.email || account.email,
+    phone: item.phone,
+    courseSlug: item.courseSlug,
+    oldBatchKey: item.batchKey,
+    oldBatchLabel: item.batchLabel,
+    oldListId: item.brevoListId,
+    newBatchKey: target.batchKey,
+    newBatchLabel: target.batchLabel,
+    newListId: target.brevoListId,
+    source: "batch_switch"
+  }).catch((error) => {
+    console.warn("batch_switch_brevo_move_failed", {
+      email: item.email || account.email,
+      courseSlug: item.courseSlug,
+      oldBatchKey: item.batchKey,
+      newBatchKey: target.batchKey,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  })
+
+  await sendBatchSwitchConfirmationEmail({
+    email: item.email || account.email,
+    fullName: item.displayName || account.fullName,
+    courseName: item.courseName,
+    oldBatchLabel: item.batchLabel,
+    oldBatchStartText: displayBatchDate(item.batchStartAt),
+    newBatchLabel: target.batchLabel,
+    newBatchStartText: displayBatchDate(target.batchStartAt)
+  }).catch((error) => {
+    console.warn("batch_switch_email_failed", {
+      email: item.email || account.email,
+      courseSlug: item.courseSlug,
+      oldBatchKey: item.batchKey,
+      newBatchKey: target.batchKey,
+      error: error instanceof Error ? error.message : String(error)
+    })
   })
 
   return {
