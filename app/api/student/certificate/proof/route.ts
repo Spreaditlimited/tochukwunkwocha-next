@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
 
+import {
+  certificateEligibilitySnapshot,
+  ensureCertificateEligibilityColumns,
+  getCertificateCourseCompletion
+} from "@/lib/certificate-eligibility"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { requireStudent } from "@/lib/student-auth"
@@ -89,25 +94,6 @@ async function courseFeatures(courseSlug: string) {
   return rows[0] || null
 }
 
-async function courseCompletion(accountId: bigint, courseSlug: string) {
-  const rows = await prisma.$queryRaw<Array<{ totalLessons: number | bigint | null; completedLessons: number | bigint | null }>>`
-    SELECT
-      COUNT(l.id) AS totalLessons,
-      SUM(CASE WHEN p.is_completed = 1 THEN 1 ELSE 0 END) AS completedLessons
-    FROM tochukwu_learning_lessons l
-    JOIN tochukwu_learning_modules m ON m.id = l.module_id
-    JOIN tochukwu_learning_course_modules cm ON cm.module_id = m.id
-    LEFT JOIN tochukwu_learning_lesson_progress p ON p.lesson_id = l.id AND p.account_id = ${accountId}
-    WHERE cm.course_slug = ${courseSlug}
-      AND COALESCE(l.status, 'published') = 'published'
-  `
-  const row = rows[0]
-  return {
-    totalLessons: Number(row?.totalLessons || 0),
-    completedLessons: Number(row?.completedLessons || 0)
-  }
-}
-
 async function latestProofStatus(accountId: bigint, email: string, courseSlug: string) {
   const rows = await prisma.$queryRaw<{ status: string | null }[]>`
     SELECT status
@@ -145,7 +131,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Certificate proof is not required for this course." }, { status: 400 })
     }
 
-    const completion = await courseCompletion(session.account.id, courseSlug)
+    const completion = await getCertificateCourseCompletion(session.account.id, courseSlug)
     if (completion.totalLessons <= 0 || completion.completedLessons < completion.totalLessons) {
       return NextResponse.json({ ok: false, error: "Complete all lessons before submitting certificate proof." }, { status: 400 })
     }
@@ -160,12 +146,20 @@ export async function POST(request: Request) {
 
     const now = new Date()
     const assignmentUuid = `asg_${crypto.randomUUID().replace(/-/g, "")}`
+    await ensureCertificateEligibilityColumns()
+    const eligibilitySnapshot = certificateEligibilitySnapshot({
+      ...completion,
+      source: "student_certificate_proof_submission"
+    })
     await prisma.$executeRaw`
       INSERT INTO tochukwu_learning_assignments
-        (assignment_uuid, course_slug, account_id, student_email, student_name, submission_kind, submission_text, submission_link, status, created_at, updated_at)
+        (assignment_uuid, course_slug, account_id, student_email, student_name, submission_kind, submission_text,
+         submission_link, status, certificate_eligible_at_submission, certificate_eligibility_checked_at,
+         certificate_eligibility_snapshot_json, created_at, updated_at)
       VALUES
         (${assignmentUuid}, ${courseSlug}, ${session.account.id}, ${email}, ${session.account.fullName},
-         'link', ${CERTIFICATE_PROOF_MARKER}, ${websiteUrl}, 'submitted', ${now}, ${now})
+         'link', ${CERTIFICATE_PROOF_MARKER}, ${websiteUrl}, 'submitted', 1, ${now},
+         ${eligibilitySnapshot}, ${now}, ${now})
     `
 
     return NextResponse.json({

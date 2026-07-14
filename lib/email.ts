@@ -1,4 +1,5 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+import nodemailer from "nodemailer"
 
 type EmailInput = {
   to: string
@@ -94,31 +95,30 @@ export async function sendEmail(input: EmailInput) {
       : rawHtmlContent
     : brandedEmailTemplate({ subject, html: textToHtml(textContent) })
 
-  const brevoKey = clean(process.env.BREVO_API_KEY, 1000)
   const from = sender()
-  if (brevoKey && from) {
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "api-key": brevoKey,
-        "content-type": "application/json",
-        accept: "application/json"
-      },
-      body: JSON.stringify({
-        sender: from,
-        to: [{ email: to }],
-        subject,
-        htmlContent: htmlContent || undefined,
-        textContent: textContent || undefined
-      })
+  const smtpHost = clean(process.env.SMTP_HOST, 255)
+  const smtpPort = Number(clean(process.env.SMTP_PORT, 12))
+  const smtpUser = clean(process.env.SMTP_USER, 255)
+  const smtpPass = clean(process.env.SMTP_PASS, 1000)
+  if (smtpHost && Number.isFinite(smtpPort) && smtpPort > 0 && smtpUser && smtpPass && from) {
+    const secureSetting = clean(process.env.SMTP_SECURE, 12).toLowerCase()
+    const secure = secureSetting ? secureSetting === "1" || secureSetting === "true" : smtpPort === 465
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure,
+      auth: { user: smtpUser, pass: smtpPass }
     })
-    if (!response.ok) {
-      const body = await response.text().catch(() => "")
-      throw new Error(body || `Email send failed (${response.status})`)
-    }
-    return { ok: true }
+    const result = await transporter.sendMail({
+      from: `${from.name} <${from.email}>`,
+      to,
+      subject,
+      html: htmlContent || undefined,
+      text: textContent || undefined
+    })
+    return { ok: true, messageId: clean(result.messageId, 500) || null }
   }
 
-  console.warn("student_email_not_sent_provider_missing", { to, subject })
-  return { ok: false, skipped: true }
+  console.warn("transactional_email_not_sent_smtp_missing", { to, subject })
+  return { ok: false, skipped: true, error: "The site SMTP email provider is not configured." }
 }

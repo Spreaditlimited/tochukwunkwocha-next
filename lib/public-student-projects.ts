@@ -4,6 +4,8 @@ import { unstable_cache } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { listPublicSelfDeclaredProjectLinks, type StudentProjectLink } from "@/lib/student-project-links"
 
+const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
+
 export type PublicStudentProjectLink = {
   label: string
   url: string
@@ -80,6 +82,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
      AND c.status = 'issued'
     WHERE a.status = 'approved'
       AND a.submission_kind = 'link'
+      AND a.submission_text = ${CERTIFICATE_PROOF_MARKER}
       AND COALESCE(a.submission_link, '') <> ''
     ORDER BY COALESCE(a.reviewed_at, a.updated_at, a.created_at) DESC, a.id DESC
     LIMIT ${safeLimit}

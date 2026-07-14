@@ -1,11 +1,12 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 
 import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
 import {
   formBool,
+  resendCertificateApprovalEmail,
   resendStudentResetLink,
   resetStudentDevices,
   reviewAssignment,
@@ -29,15 +30,44 @@ export async function saveCourseFeaturesAction(formData: FormData) {
   revalidatePath(PATH)
 }
 
+export async function resendCertificateApprovalEmailAction(formData: FormData) {
+  await requireAdmin()
+  const result = await resendCertificateApprovalEmail(String(formData.get("assignmentId") || ""))
+  const failed = !result.certificate.issued || !result.email.sent
+  await setInternalToast({
+    type: failed ? "error" : "success",
+    title: failed ? "Certificate email not sent" : "Certificate email sent",
+    message: [result.certificate.message, result.email.error].filter(Boolean).join(" ")
+  })
+  revalidateTag("public-student-projects")
+  revalidatePath("/projects")
+  revalidatePath(PATH)
+}
+
 export async function reviewAssignmentAction(formData: FormData) {
   await requireAdmin()
-  await reviewAssignment({
+  const result = await reviewAssignment({
     assignmentId: String(formData.get("assignmentId") || ""),
     status: String(formData.get("status") || ""),
     feedback: String(formData.get("feedback") || ""),
     sendApprovalEmail: formData.get("sendApprovalEmail") === "on"
   })
-  await setInternalToast({ title: "Assignment reviewed", message: "The learner assignment status has been updated." })
+  const details = [
+    result.publicProjectPublished ? "The student project is public." : "",
+    result.certificate.message,
+    result.email.attempted
+      ? result.email.sent
+        ? "Student email sent."
+        : `Student email failed: ${result.email.error}`
+      : ""
+  ].filter(Boolean)
+  await setInternalToast({
+    type: result.email.attempted && !result.email.sent ? "error" : "success",
+    title: result.email.attempted && !result.email.sent ? "Review saved; email failed" : "Assignment reviewed",
+    message: details.join(" ") || "The learner assignment status has been updated."
+  })
+  revalidateTag("public-student-projects")
+  revalidatePath("/projects")
   revalidatePath(PATH)
 }
 

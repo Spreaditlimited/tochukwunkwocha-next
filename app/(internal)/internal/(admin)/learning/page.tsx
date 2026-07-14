@@ -24,6 +24,7 @@ import { CERTIFICATE_PROOF_MARKER, listLearningSupportData } from "@/lib/admin-l
 import { formatDate } from "@/lib/utils"
 import {
   resendStudentResetLinkAction,
+  resendCertificateApprovalEmailAction,
   resetStudentDevicesAction,
   reviewAssignmentAction,
   reviewTranscriptAccessAction,
@@ -389,6 +390,9 @@ export default async function InternalLearningSupportPage() {
               const certificateUrl = assignment.certificateNo
                 ? `/dashboard/certificate?certificate_no=${encodeURIComponent(assignment.certificateNo)}`
                 : ""
+              const isApprovedCertificateProof = assignment.status === "approved"
+                && assignment.submissionKind === "link"
+                && assignment.submissionText === CERTIFICATE_PROOF_MARKER
                 
               return (
                 <article key={String(assignment.id)} className="rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-primary/20">
@@ -409,11 +413,22 @@ export default async function InternalLearningSupportPage() {
                         <span className="flex items-center gap-1.5"><Clock className="h-3 w-3" /> {formatDate(assignment.createdAt)}</span>
                       </p>
                     </div>
-                    {certificateUrl && (
-                      <a href={certificateUrl} className="btn-secondary shrink-0 shadow-sm" target="_blank" rel="noreferrer">
-                        <Award className="mr-2 h-4 w-4" /> View Associated Certificate
-                      </a>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {certificateUrl && (
+                        <a href={certificateUrl} className="btn-secondary shrink-0 shadow-sm" target="_blank" rel="noreferrer">
+                          <Award className="mr-2 h-4 w-4" /> View Associated Certificate
+                        </a>
+                      )}
+                      {isApprovedCertificateProof && (
+                        <form action={resendCertificateApprovalEmailAction}>
+                          <input type="hidden" name="assignmentId" value={String(assignment.id)} />
+                          <button type="submit" className="btn-secondary shrink-0 shadow-sm">
+                            <Mail className="mr-2 h-4 w-4" />
+                            {certificateUrl ? "Resend Certificate Email" : "Issue Certificate & Send Email"}
+                          </button>
+                        </form>
+                      )}
+                    </div>
                   </div>
 
                   {/* Grading Workspace */}

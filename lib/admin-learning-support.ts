@@ -2,13 +2,18 @@ import crypto from "crypto"
 import { Prisma } from "@prisma/client"
 
 import { requireAdmin } from "@/lib/auth"
+import {
+  CERTIFICATE_PROOF_MARKER,
+  ensureCertificateEligibilityColumns,
+  getCertificateCourseCompletion
+} from "@/lib/certificate-eligibility"
 import { ensureCertificateVerificationColumns, getLatestApprovedStudentProject } from "@/lib/certificate-verification"
 import { sendEmail } from "@/lib/email"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 
-export const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
+export { CERTIFICATE_PROOF_MARKER }
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -151,6 +156,7 @@ export async function ensureLearningSupportTables() {
       KEY idx_transcript_access_audit (account_id, course_slug, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  await ensureCertificateEligibilityColumns()
 }
 
 export async function listLearningSupportData(filters?: { courseSlug?: string; status?: string; search?: string }) {
@@ -315,40 +321,57 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
     studentEmail: string
     studentName: string | null
     certificateNameConfirmedAt: Date | null
+    certificateEligibleAtSubmission: number | bigint | boolean | null
     fullName: string | null
     certificateNo: string | null
   }>>`
     SELECT a.account_id AS accountId, a.course_slug AS courseSlug, a.student_email AS studentEmail,
       a.student_name AS studentName, sa.certificate_name_confirmed_at AS certificateNameConfirmedAt,
-      sa.full_name AS fullName, c.certificate_no AS certificateNo
+      sa.full_name AS fullName, a.certificate_eligible_at_submission AS certificateEligibleAtSubmission,
+      c.certificate_no AS certificateNo
     FROM tochukwu_learning_assignments a
     LEFT JOIN student_accounts sa ON sa.id = a.account_id
     LEFT JOIN student_certificates c ON c.account_id = a.account_id AND c.course_slug = a.course_slug AND c.status = 'issued'
     WHERE a.id = ${assignmentId}
     LIMIT 1
-  `.catch(() => [])
+  `
   const item = rows[0]
-  if (!item) return ""
-  if (item.certificateNo) return `${siteBaseUrl()}/dashboard/certificate?certificate_no=${encodeURIComponent(item.certificateNo)}`
-  if (!item.certificateNameConfirmedAt || !clean(item.fullName, 180)) return ""
-  const completionRows = await prisma.$queryRaw<Array<{ totalLessons: number | bigint | null; completedLessons: number | bigint | null }>>`
-    SELECT
-      COUNT(l.id) AS totalLessons,
-      SUM(CASE WHEN p.is_completed = 1 THEN 1 ELSE 0 END) AS completedLessons
-    FROM tochukwu_learning_lessons l
-    JOIN tochukwu_learning_modules m ON m.id = l.module_id
-    JOIN tochukwu_learning_course_modules cm ON cm.module_id = m.id
-    LEFT JOIN tochukwu_learning_lesson_progress p ON p.lesson_id = l.id AND p.account_id = ${item.accountId}
-    WHERE cm.course_slug = ${item.courseSlug}
-      AND COALESCE(l.status, 'published') = 'published'
-  `.catch(() => [])
-  const completion = completionRows[0]
-  const totalLessons = Number(completion?.totalLessons || 0)
-  const completedLessons = Number(completion?.completedLessons || 0)
-  if (totalLessons <= 0 || completedLessons < totalLessons) return ""
+  if (!item) return { issued: false, certificateNo: "", certificateUrl: "", reason: "assignment_not_found" }
+  const project = await getLatestApprovedStudentProject({ accountId: item.accountId, courseSlug: item.courseSlug })
+  if (item.certificateNo) {
+    if (project.projectUrl) {
+      await prisma.$executeRaw`
+        UPDATE student_certificates
+        SET project_url = ${project.projectUrl},
+            project_verified_at = ${project.projectVerifiedAt || new Date()},
+            project_status_at_issue = 'live_at_issue',
+            updated_at = ${new Date()}
+        WHERE account_id = ${item.accountId}
+          AND course_slug = ${item.courseSlug}
+          AND status = 'issued'
+      `
+    }
+    return {
+      issued: true,
+      certificateNo: item.certificateNo,
+      certificateUrl: `${siteBaseUrl()}/dashboard/certificate?certificate_no=${encodeURIComponent(item.certificateNo)}`,
+      reason: ""
+    }
+  }
+  if (!item.certificateNameConfirmedAt) {
+    return { issued: false, certificateNo: "", certificateUrl: "", reason: "certificate_name_unconfirmed" }
+  }
+  if (!clean(item.fullName, 180)) {
+    return { issued: false, certificateNo: "", certificateUrl: "", reason: "recipient_name_missing" }
+  }
+  if (Number(item.certificateEligibleAtSubmission || 0) !== 1) {
+    const completion = await getCertificateCourseCompletion(item.accountId, item.courseSlug)
+    if (completion.totalLessons <= 0 || completion.completedLessons < completion.totalLessons) {
+      return { issued: false, certificateNo: "", certificateUrl: "", reason: "course_incomplete" }
+    }
+  }
   const now = new Date()
   const certNo = certificateNo()
-  const project = await getLatestApprovedStudentProject({ accountId: item.accountId, courseSlug: item.courseSlug })
   await prisma.$executeRaw`
     INSERT INTO student_certificates
       (account_id, course_slug, certificate_no, recipient_name, status, issued_at, project_url, project_verified_at, project_status_at_issue, created_at, updated_at)
@@ -360,8 +383,33 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
       project_verified_at = COALESCE(project_verified_at, VALUES(project_verified_at)),
       project_status_at_issue = COALESCE(project_status_at_issue, VALUES(project_status_at_issue)),
       updated_at = VALUES(updated_at)
-  `.catch(() => null)
-  return `${siteBaseUrl()}/dashboard/certificate?certificate_no=${encodeURIComponent(certNo)}`
+  `
+  const certificateRows = await prisma.$queryRaw<Array<{ certificateNo: string | null }>>`
+    SELECT certificate_no AS certificateNo
+    FROM student_certificates
+    WHERE account_id = ${item.accountId}
+      AND course_slug = ${item.courseSlug}
+      AND status = 'issued'
+    LIMIT 1
+  `
+  const issuedCertificateNo = clean(certificateRows[0]?.certificateNo, 140)
+  if (!issuedCertificateNo) {
+    return { issued: false, certificateNo: "", certificateUrl: "", reason: "certificate_not_found_after_upsert" }
+  }
+  return {
+    issued: true,
+    certificateNo: issuedCertificateNo,
+    certificateUrl: `${siteBaseUrl()}/dashboard/certificate?certificate_no=${encodeURIComponent(issuedCertificateNo)}`,
+    reason: ""
+  }
+}
+
+function certificateBlockReason(reason: string) {
+  if (reason === "certificate_name_unconfirmed") return "the student has not confirmed their certificate name"
+  if (reason === "recipient_name_missing") return "the student profile name is missing"
+  if (reason === "course_incomplete") return "the student is not currently at 100% course completion"
+  if (reason === "certificate_not_found_after_upsert") return "the certificate record could not be loaded after issuance"
+  return reason.replace(/_/g, " ") || "an unknown certificate requirement"
 }
 
 export async function reviewAssignment(input: { assignmentId: string; status: string; feedback?: string; sendApprovalEmail?: boolean }) {
@@ -398,8 +446,26 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
   `.catch(() => null)
   const item = before[0]
   const certificateProof = item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER
-  if ((input.sendApprovalEmail || (item.status !== status && status === "approved")) && item.studentEmail) {
-    const certificateUrl = status === "approved" && certificateProof ? await issueCertificateIfEligible(assignmentId) : ""
+  const becameApproved = item.status !== status && status === "approved"
+  let certificate = { issued: false, certificateNo: "", certificateUrl: "", reason: "", error: "" }
+  if (status === "approved" && certificateProof && (becameApproved || input.sendApprovalEmail)) {
+    try {
+      certificate = { ...(await issueCertificateIfEligible(assignmentId)), error: "" }
+    } catch (error) {
+      certificate = {
+        issued: false,
+        certificateNo: "",
+        certificateUrl: "",
+        reason: "certificate_issue_failed",
+        error: error instanceof Error ? error.message : "Certificate issuance failed."
+      }
+      console.warn("student_certificate_issue_failed", { assignmentId: assignmentId.toString(), error: certificate.error })
+    }
+  }
+  let email = { attempted: false, sent: false, error: "" }
+  if ((input.sendApprovalEmail || becameApproved) && item.studentEmail) {
+    email.attempted = true
+    const certificateUrl = certificate.certificateUrl
     const statusLabel = status.replace(/_/g, " ")
     const courseLabel = escapeHtml(item.courseSlug)
     const feedbackHtml = feedback ? `<p><strong>Feedback:</strong><br/>${escapeHtml(feedback).replace(/\r?\n/g, "<br/>")}</p>` : ""
@@ -411,13 +477,64 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
       : status === "approved" && certificateProof
         ? "<p>Your proof has been approved. Your certificate will be available after all certificate requirements are fully satisfied.</p>"
         : ""
-    await sendEmail({
-      to: item.studentEmail,
-      subject: certificateUrl ? "Your Website Proof Was Approved - Certificate Ready" : `Your learning support status changed to ${status.replace(/_/g, " ")}`,
-      html: `<p>Hello ${escapeHtml(item.studentName || "Student")},</p><p>Your learning support submission for <strong>${courseLabel}</strong> is now <strong>${escapeHtml(statusLabel)}</strong>.</p>${websiteHtml}${feedbackHtml}${certificateHtml}<p><a href="${siteBaseUrl()}/dashboard/courses" style="color:#0d4f9a;font-weight:700;">Open your dashboard</a></p>`,
-      text: `Hello ${item.studentName || "Student"},\n\nYour submission for ${item.courseSlug} is now ${status}.\n${item.submissionLink ? `Approved website: ${item.submissionLink}\n` : ""}${feedback ? `Feedback: ${feedback}\n` : ""}${certificateUrl ? `Certificate: ${certificateUrl}\n` : ""}\nTochukwu Tech and AI Academy`
-    })
+    try {
+      const delivery = await sendEmail({
+        to: item.studentEmail,
+        subject: certificateUrl ? "Your Website Proof Was Approved - Certificate Ready" : `Your learning support status changed to ${status.replace(/_/g, " ")}`,
+        html: `<p>Hello ${escapeHtml(item.studentName || "Student")},</p><p>Your learning support submission for <strong>${courseLabel}</strong> is now <strong>${escapeHtml(statusLabel)}</strong>.</p>${websiteHtml}${feedbackHtml}${certificateHtml}<p><a href="${siteBaseUrl()}/dashboard/courses" style="color:#0d4f9a;font-weight:700;">Open your dashboard</a></p>`,
+        text: `Hello ${item.studentName || "Student"},\n\nYour submission for ${item.courseSlug} is now ${status}.\n${item.submissionLink ? `Approved website: ${item.submissionLink}\n` : ""}${feedback ? `Feedback: ${feedback}\n` : ""}${certificateUrl ? `Certificate: ${certificateUrl}\n` : ""}\nTochukwu Tech and AI Academy`
+      })
+      email.sent = delivery.ok
+      email.error = delivery.ok ? "" : delivery.error || "Email provider did not send the message."
+    } catch (error) {
+      email.error = error instanceof Error ? error.message : "Email delivery failed."
+      console.warn("assignment_status_email_failed", { assignmentId: assignmentId.toString(), error: email.error })
+    }
   }
+  return {
+    status,
+    becameApproved,
+    publicProjectPublished: status === "approved" && certificateProof && Boolean(item.submissionLink),
+    certificate: {
+      ...certificate,
+      message: certificate.issued
+        ? "Certificate ready."
+        : certificate.error
+          ? `Certificate issuance failed: ${certificate.error}`
+          : certificate.reason
+            ? `Certificate not issued because ${certificateBlockReason(certificate.reason)}.`
+            : ""
+    },
+    email
+  }
+}
+
+export async function resendCertificateApprovalEmail(assignmentIdInput: string) {
+  const assignmentId = BigInt(String(assignmentIdInput || "0"))
+  if (assignmentId <= BigInt(0)) throw new Error("assignment_id is required.")
+  const rows = await prisma.$queryRaw<Array<{
+    status: string
+    submissionKind: string
+    submissionText: string | null
+    adminFeedback: string | null
+  }>>`
+    SELECT status, submission_kind AS submissionKind, submission_text AS submissionText,
+      admin_feedback AS adminFeedback
+    FROM tochukwu_learning_assignments
+    WHERE id = ${assignmentId}
+    LIMIT 1
+  `
+  const item = rows[0]
+  if (!item) throw new Error("Assignment not found.")
+  if (item.status !== "approved" || item.submissionKind !== "link" || item.submissionText !== CERTIFICATE_PROOF_MARKER) {
+    throw new Error("Only approved certificate proof submissions can send a certificate approval email.")
+  }
+  return reviewAssignment({
+    assignmentId: assignmentId.toString(),
+    status: "approved",
+    feedback: item.adminFeedback || "",
+    sendApprovalEmail: true
+  })
 }
 
 export async function reviewTranscriptAccess(input: { accountId: string; courseSlug: string; status: string; notes?: string; expiresAt?: string }) {
