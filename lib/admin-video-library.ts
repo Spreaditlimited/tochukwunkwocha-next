@@ -2074,7 +2074,7 @@ async function ensureCloudflareSigningKey(updatedBy: string, forceRotate = false
     await upsertAdminSettings([
       { key: "CLOUDFLARE_STREAM_SIGNING_KEY_ID", value: keyId },
       { key: "CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY", value: privateKey },
-      { key: "CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS", value: clean(process.env.CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS, 20) || "300" }
+      { key: "CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS", value: clean(process.env.CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS, 20) || "43200" }
     ], updatedBy)
     keySource = forceRotate ? "rotated" : "created"
   }

@@ -75,6 +75,9 @@ function replaceVideoUidWithToken(baseUrl: string, videoUid: string, token: stri
   return parsed.toString()
 }
 
+const MIN_LESSON_TOKEN_TTL_SECONDS = 60 * 60 * 6
+const DEFAULT_LESSON_TOKEN_TTL_SECONDS = 60 * 60 * 12
+
 export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: string | null }) {
   const keyId = clean(process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID, 120)
   const privateKey = normalizePrivateKeyPem(String(process.env.CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY || ""))
@@ -83,8 +86,11 @@ export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: st
   if (!privateKey) throw new Error("Missing CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY")
   if (!uid) throw new Error("video_uid is required")
 
-  const ttlInput = Number(process.env.CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS || 300)
-  const ttlSeconds = Math.max(120, Math.min(Number.isFinite(ttlInput) ? ttlInput : 300, 60 * 60 * 12))
+  const ttlInput = Number(process.env.CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS || DEFAULT_LESSON_TOKEN_TTL_SECONDS)
+  const ttlSeconds = Math.max(
+    MIN_LESSON_TOKEN_TTL_SECONDS,
+    Math.min(Number.isFinite(ttlInput) ? ttlInput : DEFAULT_LESSON_TOKEN_TTL_SECONDS, DEFAULT_LESSON_TOKEN_TTL_SECONDS)
+  )
   const nowSec = Math.floor(Date.now() / 1000)
   const exp = nowSec + ttlSeconds
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: keyId }))
