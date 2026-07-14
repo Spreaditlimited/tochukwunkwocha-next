@@ -2,6 +2,7 @@ import Image from "next/image"
 import { FileText, ImageIcon, Sparkles } from "lucide-react"
 
 import { generateBlogImageAction, generateBlogLeadMagnetAction } from "@/app/(internal)/internal/actions"
+import { BlogAutomationSubmitButton } from "@/components/BlogAutomationSubmitButton"
 import { getBlogImageSrc } from "@/lib/blog"
 
 type LeadMagnet = {
@@ -57,10 +58,7 @@ export function BlogAutomationPanel({
               </p>
               <form action={generateBlogImageAction} className="mt-4">
                 <input type="hidden" name="pidBlog" value={pidBlog} />
-                <button className="btn-primary justify-center" type="submit">
-                  <ImageIcon className="h-4 w-4" />
-                  Generate image
-                </button>
+                <BlogAutomationSubmitButton type="image" />
               </form>
             </div>
           </div>
@@ -79,16 +77,13 @@ export function BlogAutomationPanel({
                   : "Generates the lead magnet copy, PDF file, email delivery copy, and activates the offer for this post."}
               </p>
               {leadMagnet?.pdfUrl ? (
-                <a href={leadMagnet.pdfUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-black text-primary">
+                <a href={leadMagnet.pdfUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-black text-primary hover:underline">
                   View current PDF
                 </a>
               ) : null}
               <form action={generateBlogLeadMagnetAction} className="mt-4">
                 <input type="hidden" name="pidBlog" value={pidBlog} />
-                <button className="btn-primary justify-center" type="submit">
-                  <FileText className="h-4 w-4" />
-                  Generate lead magnet
-                </button>
+                <BlogAutomationSubmitButton type="leadMagnet" />
               </form>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { parseBlogSeo } from "@/lib/blog"
+import { BlogContentEditor } from "@/components/BlogContentEditor"
 
 type BlogPostFormPost = {
   pidBlog?: string
@@ -45,10 +46,7 @@ export function BlogPostForm({
           <span className="label">Excerpt</span>
           <textarea className="field mt-1 min-h-24" name="excerpt" defaultValue={post?.excerpt || ""} />
         </label>
-        <label>
-          <span className="label">Content HTML</span>
-          <textarea className="field mt-1 min-h-[420px] font-mono text-xs" name="blogContent" required defaultValue={post?.blogContent || ""} />
-        </label>
+        <BlogContentEditor defaultHtml={post?.blogContent || ""} />
       </div>
 
       <div className="admin-card grid gap-4 md:grid-cols-2">

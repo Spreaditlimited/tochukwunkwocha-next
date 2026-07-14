@@ -3,6 +3,7 @@ import Link from "next/link"
 import { 
   Calendar, 
   CheckCircle2, 
+  Clock3,
   Edit3, 
   FileEdit, 
   FileText, 
@@ -11,18 +12,40 @@ import {
   Search 
 } from "lucide-react"
 
-import { getBlogImageSrc, listCmsPosts } from "@/lib/blog"
+import { getBlogImageSrc, listCmsPostsPage } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
+const PAGE_SIZE = 20
+
+function normalizePage(value: string | undefined) {
+  const page = Number.parseInt(String(value || "1"), 10)
+  return Number.isFinite(page) && page > 0 ? page : 1
+}
+
+function pageHref(page: number, q?: string) {
+  const params = new URLSearchParams()
+  if (q) params.set("q", q)
+  if (page > 1) params.set("page", String(page))
+  const query = params.toString()
+  return query ? `/internal/blog?${query}` : "/internal/blog"
+}
+
 export default async function BlogCmsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ q?: string }>
+  searchParams?: Promise<{ q?: string; page?: string }>
 }) {
   const params = searchParams ? await searchParams : {}
-  const posts = await listCmsPosts(params.q)
+  const result = await listCmsPostsPage({
+    search: params.q,
+    page: normalizePage(params.page),
+    pageSize: PAGE_SIZE
+  })
+  const { posts, total, page, totalPages } = result
+  const firstItem = total ? (page - 1) * PAGE_SIZE + 1 : 0
+  const lastItem = Math.min(page * PAGE_SIZE, total)
 
   return (
     <main className="space-y-8 pb-12">
@@ -59,6 +82,16 @@ export default async function BlogCmsPage({
         </button>
       </form>
 
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Showing <span className="font-bold text-foreground">{firstItem}-{lastItem}</span> of{" "}
+          <span className="font-bold text-foreground">{total}</span> posts
+        </p>
+        <p className="text-xs font-semibold">
+          Page {page} of {totalPages}. Public visibility requires Published status and a created date that is not in the future.
+        </p>
+      </div>
+
       {/* Data Table */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="overflow-x-auto">
@@ -78,6 +111,8 @@ export default async function BlogCmsPage({
                 posts.map((post) => {
                   const imageSrc = getBlogImageSrc(post.blogImage)
                   const leadMagnet = post.leadMagnet
+                  const isScheduled = Boolean(post.blogPublished && post.createdAt > new Date())
+                  const isLivePublished = Boolean(post.blogPublished && !isScheduled)
 
                   return (
                   <tr key={post.pidBlog} className="group transition-colors hover:bg-muted/5">
@@ -107,9 +142,13 @@ export default async function BlogCmsPage({
                       </p>
                     </td>
                     <td className="px-6 py-4">
-                      {post.blogPublished ? (
+                      {isLivePublished ? (
                         <span className="inline-flex items-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                           <CheckCircle2 className="mr-1.5 h-3 w-3" /> Published
+                        </span>
+                      ) : isScheduled ? (
+                        <span className="inline-flex items-center rounded-md border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-sky-700 dark:text-sky-300">
+                          <Clock3 className="mr-1.5 h-3 w-3" /> Scheduled
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">
@@ -185,6 +224,55 @@ export default async function BlogCmsPage({
           </table>
         </div>
       </div>
+
+      {totalPages > 1 ? (
+        <nav className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Blog CMS pagination">
+          <Link
+            href={pageHref(Math.max(1, page - 1), params.q)}
+            aria-disabled={page <= 1}
+            className={page <= 1
+              ? "pointer-events-none inline-flex items-center justify-center rounded-lg border border-border bg-muted/30 px-5 py-3 text-sm font-bold text-muted-foreground/50"
+              : "inline-flex items-center justify-center rounded-lg border border-border bg-card px-5 py-3 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-primary"
+            }
+          >
+            Previous
+          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            {Array.from({ length: totalPages }, (_, index) => index + 1)
+              .filter((item) => item === 1 || item === totalPages || Math.abs(item - page) <= 2)
+              .map((item, index, pages) => {
+                const previous = pages[index - 1]
+                return (
+                  <span key={item} className="inline-flex items-center gap-2">
+                    {previous && item - previous > 1 ? (
+                      <span className="px-1 text-sm font-bold text-muted-foreground">...</span>
+                    ) : null}
+                    <Link
+                      href={pageHref(item, params.q)}
+                      aria-current={item === page ? "page" : undefined}
+                      className={item === page
+                        ? "inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-primary px-3 text-sm font-black text-primary-foreground"
+                        : "inline-flex h-10 min-w-10 items-center justify-center rounded-lg border border-border bg-card px-3 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-primary"
+                      }
+                    >
+                      {item}
+                    </Link>
+                  </span>
+                )
+              })}
+          </div>
+          <Link
+            href={pageHref(Math.min(totalPages, page + 1), params.q)}
+            aria-disabled={page >= totalPages}
+            className={page >= totalPages
+              ? "pointer-events-none inline-flex items-center justify-center rounded-lg border border-border bg-muted/30 px-5 py-3 text-sm font-bold text-muted-foreground/50"
+              : "inline-flex items-center justify-center rounded-lg border border-border bg-card px-5 py-3 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-primary"
+            }
+          >
+            Next
+          </Link>
+        </nav>
+      ) : null}
       
     </main>
   )

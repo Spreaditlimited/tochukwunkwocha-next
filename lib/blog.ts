@@ -230,9 +230,48 @@ export async function listCmsPosts(search?: string) {
     include: {
       leadMagnet: true
     },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 100
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    take: 200
   })
+}
+
+export async function listCmsPostsPage(input: {
+  search?: string
+  page?: number
+  pageSize?: number
+}) {
+  const q = String(input.search || "").trim()
+  const pageSize = Math.max(1, Math.min(20, Math.round(Number(input.pageSize || 20))))
+  const requestedPage = Math.max(1, Math.round(Number(input.page || 1)))
+  const where = q
+    ? {
+        OR: [
+          { blogTitle: { contains: q } },
+          { blogSlug: { contains: q } },
+          { blogContent: { contains: q } }
+        ]
+      }
+    : undefined
+  const total = await prisma.tochukwuBlogPost.count({ where })
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const page = Math.min(requestedPage, totalPages)
+  const posts = await prisma.tochukwuBlogPost.findMany({
+    where,
+    include: {
+      leadMagnet: true
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  })
+
+  return {
+    posts,
+    total,
+    page,
+    pageSize,
+    totalPages
+  }
 }
 
 export async function makeUniqueBlogSlug(titleOrSlug: string, currentPidBlog?: string) {

@@ -126,6 +126,28 @@ export async function loginAdmin(emailInput: string, passwordInput: string) {
     readRawEnvValue("ADMIN_DASHBOARD_PASSWORD")
   ]
 
+  if (email) {
+    const admin = await prisma.tochukwuAdminAccount.findUnique({ where: { email } })
+    if (!admin || !admin.isActive) return null
+
+    const hash = await hashPassword(password, admin.passwordSalt)
+    if (!timingSafeEqual(hash, admin.passwordHash)) return null
+
+    const now = new Date()
+    await prisma.tochukwuAdminAccount.update({
+      where: { adminUuid: admin.adminUuid },
+      data: { lastLoginAt: now, updatedAt: now }
+    })
+
+    return {
+      adminUuid: admin.adminUuid,
+      fullName: admin.fullName,
+      email: admin.email,
+      isOwner: admin.isOwner,
+      allowedPages: parseAllowedPages(admin.allowedPages)
+    } satisfies AdminSession
+  }
+
   if (matchesAnySecret(password, expectedDashboardPasswords)) {
     return {
       adminUuid: "owner",
@@ -136,27 +158,7 @@ export async function loginAdmin(emailInput: string, passwordInput: string) {
     } satisfies AdminSession
   }
 
-  if (!email) return null
-
-  const admin = await prisma.tochukwuAdminAccount.findUnique({ where: { email } })
-  if (!admin || !admin.isActive) return null
-
-  const hash = await hashPassword(password, admin.passwordSalt)
-  if (!timingSafeEqual(hash, admin.passwordHash)) return null
-
-  const now = new Date()
-  await prisma.tochukwuAdminAccount.update({
-    where: { adminUuid: admin.adminUuid },
-    data: { lastLoginAt: now, updatedAt: now }
-  })
-
-  return {
-    adminUuid: admin.adminUuid,
-    fullName: admin.fullName,
-    email: admin.email,
-    isOwner: admin.isOwner,
-    allowedPages: parseAllowedPages(admin.allowedPages)
-  } satisfies AdminSession
+  return null
 }
 
 export async function setAdminSession(session: AdminSession) {

@@ -184,6 +184,26 @@
     @apply font-semibold text-primary underline decoration-primary/30 transition-colors hover:decoration-primary;
   }
 
+  .blog-content .btn-primary {
+    @apply my-0 inline-flex items-center justify-center rounded-md bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground no-underline transition-all duration-200 hover:bg-primary/90 hover:text-primary-foreground hover:no-underline;
+  }
+
+  .blog-content aside {
+    @apply my-10 rounded-xl border border-border bg-brand-ink p-6 text-white shadow-sm sm:p-8;
+  }
+
+  .blog-content aside h2 {
+    @apply mt-0 text-2xl font-black text-white;
+  }
+
+  .blog-content aside p {
+    @apply text-slate-300;
+  }
+
+  .blog-content aside a {
+    @apply text-primary-foreground;
+  }
+
   .student-dashboard {
     --sd-bg: #c7ebf8;
     --sd-text: hsl(var(--foreground));
