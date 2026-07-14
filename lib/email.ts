@@ -1,4 +1,5 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+import { finishEmailDeliveryLog, startEmailDeliveryLog } from "@/lib/email-delivery-log"
 import nodemailer from "nodemailer"
 
 type EmailInput = {
@@ -89,6 +90,7 @@ export async function sendEmail(input: EmailInput) {
   if (!to || !subject || (!rawHtmlContent && !textContent)) {
     throw new Error("to, subject, and email body are required")
   }
+  const deliveryLogUuid = await startEmailDeliveryLog({ recipient: to, subject })
   const htmlContent = rawHtmlContent
     ? shouldDecorateHtml(rawHtmlContent)
       ? brandedEmailTemplate({ subject, html: rawHtmlContent })
@@ -109,16 +111,33 @@ export async function sendEmail(input: EmailInput) {
       secure,
       auth: { user: smtpUser, pass: smtpPass }
     })
-    const result = await transporter.sendMail({
-      from: `${from.name} <${from.email}>`,
-      to,
-      subject,
-      html: htmlContent || undefined,
-      text: textContent || undefined
-    })
-    return { ok: true, messageId: clean(result.messageId, 500) || null }
+    try {
+      const result = await transporter.sendMail({
+        from: `${from.name} <${from.email}>`,
+        to,
+        subject,
+        html: htmlContent || undefined,
+        text: textContent || undefined
+      })
+      const messageId = clean(result.messageId, 500) || null
+      await finishEmailDeliveryLog({
+        logUuid: deliveryLogUuid,
+        status: "sent",
+        messageId,
+        providerResponse: result.response
+      })
+      return { ok: true, messageId }
+    } catch (error) {
+      await finishEmailDeliveryLog({ logUuid: deliveryLogUuid, status: "failed", error })
+      throw error
+    }
   }
 
   console.warn("transactional_email_not_sent_smtp_missing", { to, subject })
+  await finishEmailDeliveryLog({
+    logUuid: deliveryLogUuid,
+    status: "skipped",
+    error: "The site SMTP email provider is not configured."
+  })
   return { ok: false, skipped: true, error: "The site SMTP email provider is not configured." }
 }

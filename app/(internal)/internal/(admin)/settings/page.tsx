@@ -4,6 +4,7 @@ import {
   History,
   KeyRound, 
   Lock,
+  Mail,
   RefreshCw,
   Save,
   Settings,
@@ -13,6 +14,7 @@ import {
 import { PasswordField } from "@/components/PasswordField"
 import { listAdminSettings, listAdminSettingsAudit } from "@/lib/admin-settings"
 import { requireAdmin } from "@/lib/auth"
+import { listEmailDeliveryLogs } from "@/lib/email-delivery-log"
 import { formatDate } from "@/lib/utils"
 import { saveAdminSettingsAction } from "./actions"
 
@@ -20,7 +22,11 @@ export const dynamic = "force-dynamic"
 
 export default async function InternalSettingsPage() {
   const session = await requireAdmin()
-  const [settings, audit] = await Promise.all([listAdminSettings(), listAdminSettingsAudit(80)])
+  const [settings, audit, emailDeliveryLogs] = await Promise.all([
+    listAdminSettings(),
+    listAdminSettingsAudit(80),
+    listEmailDeliveryLogs(100)
+  ])
   
   const grouped = new Map<string, typeof settings>()
   for (const setting of settings) {
@@ -224,6 +230,73 @@ export default async function InternalSettingsPage() {
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center text-sm font-semibold text-muted-foreground">
                     No configuration changes have been recorded in the audit ledger.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Transactional Email Delivery Ledger */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex items-center gap-3 border-b border-border bg-muted/20 p-6 sm:p-8">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Mail className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-heading text-xl font-black text-foreground">Transactional Email Delivery Log</h2>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">
+              Server SMTP attempts for account access, certificates, resets, and other transactional messages. Email bodies are not stored.
+            </p>
+          </div>
+        </div>
+
+        <div className="max-h-[600px] overflow-auto bg-background scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
+          <table className="w-full min-w-[72rem] text-left text-sm">
+            <thead className="sticky top-0 z-10 border-b border-border bg-card/90 text-[10px] font-bold uppercase tracking-widest text-muted-foreground backdrop-blur-md">
+              <tr>
+                <th className="px-6 py-4">Recipient</th>
+                <th className="px-6 py-4">Subject</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">SMTP Details</th>
+                <th className="px-6 py-4 text-right">Attempted</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {emailDeliveryLogs.length ? emailDeliveryLogs.map((item) => {
+                const isSent = item.status === "sent"
+                const isFailed = item.status === "failed" || item.status === "skipped"
+                return (
+                  <tr key={item.logUuid} className="align-top transition-colors hover:bg-muted/5">
+                    <td className="px-6 py-4 font-medium text-foreground">{item.recipient}</td>
+                    <td className="max-w-md whitespace-normal break-words px-6 py-4 text-xs text-muted-foreground">{item.subject}</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                        isSent
+                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : isFailed
+                            ? "border-destructive/20 bg-destructive/10 text-destructive"
+                            : "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="max-w-lg whitespace-normal break-words px-6 py-4 text-xs text-muted-foreground">
+                      {item.errorMessage || item.providerResponse || item.messageId || "Awaiting provider response"}
+                      {item.messageId && (item.errorMessage || item.providerResponse) ? (
+                        <p className="mt-1 font-mono text-[10px] opacity-75">ID: {item.messageId}</p>
+                      ) : null}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-right text-xs font-medium text-muted-foreground">
+                      {formatDate(item.attemptedAt)}
+                    </td>
+                  </tr>
+                )
+              }) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-sm font-semibold text-muted-foreground">
+                    No transactional email attempts have been recorded yet. New attempts will appear here.
                   </td>
                 </tr>
               )}
