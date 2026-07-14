@@ -35,13 +35,14 @@ export type EnrollmentPaymentRow = {
   proofUrl: string | null
   proofPublicId: string | null
   status: string | null
-  source: "manual"
+  source: "manual" | "online"
   providerLabel: string
   reviewNote: string | null
   reviewedBy: string | null
   reviewedAt: Date | null
   metaPurchaseSent: boolean
   metaPurchaseSentAt: Date | null
+  recoveryOrigin: boolean
   createdAt: Date | null
 }
 
@@ -167,6 +168,7 @@ async function ensureManualPaymentReviewColumns() {
   await addColumnIfMissing("course_manual_payments", "coupon_id", "BIGINT NULL")
   await addColumnIfMissing("course_manual_payments", "buyer_type", "VARCHAR(40) NOT NULL DEFAULT 'student'")
   await addColumnIfMissing("course_manual_payments", "seat_count", "INT NOT NULL DEFAULT 1")
+  await addColumnIfMissing("course_manual_payments", "recovery_origin", "TINYINT(1) NOT NULL DEFAULT 0")
 }
 
 async function ensureWhatsAppMarketingTables() {
@@ -409,7 +411,15 @@ export async function listEnrollmentPayments(input: {
   limit?: number
 }) {
   await ensureManualPaymentReviewColumns()
-  const rows = await prisma.$queryRaw<EnrollmentPaymentRow[]>`
+  const courseSlug = normalizeCourse(input.courseSlug) || "all"
+  const status = clean(input.status, 40) || "all"
+  const batchKey = clean(input.batchKey, 80) || "all"
+  const search = clean(input.search, 120)
+  const searchPattern = `%${search}%`
+  const limit = Math.max(20, Math.min(300, toInt(input.limit, 100)))
+
+  const [manualRows, onlineRows] = await Promise.all([
+    prisma.$queryRaw<EnrollmentPaymentRow[]>`
     SELECT
       payment_uuid AS paymentUuid,
       course_slug AS courseSlug,
@@ -437,30 +447,97 @@ export async function listEnrollmentPayments(input: {
       reviewed_at AS reviewedAt,
       COALESCE(meta_purchase_sent, 0) AS metaPurchaseSent,
       meta_purchase_sent_at AS metaPurchaseSentAt,
+      COALESCE(recovery_origin, 0) AS recoveryOrigin,
       created_at AS createdAt
     FROM course_manual_payments
-    WHERE (${normalizeCourse(input.courseSlug) || "all"} = 'all' OR course_slug = ${normalizeCourse(input.courseSlug)})
-      AND (${clean(input.status, 40) || "pending_verification"} = 'all' OR status = ${clean(input.status, 40) || "pending_verification"})
-      AND (${clean(input.batchKey, 80) || "all"} = 'all' OR COALESCE(batch_key, '') = ${clean(input.batchKey, 80)})
+    WHERE (
+        ${status} = 'all'
+        OR (${status} = 'pending_verification' AND status IN ('pending_verification', 'recovery_required'))
+        OR status = ${status}
+      )
+      AND (status = 'recovery_required' OR COALESCE(recovery_origin, 0) = 1 OR ${courseSlug} = 'all' OR course_slug = ${courseSlug})
+      AND (status = 'recovery_required' OR COALESCE(recovery_origin, 0) = 1 OR ${batchKey} = 'all' OR COALESCE(batch_key, '') = ${batchKey})
       AND (
-        ${clean(input.search, 120)} = ''
-        OR first_name LIKE ${`%${clean(input.search, 120)}%`}
-        OR email LIKE ${`%${clean(input.search, 120)}%`}
-        OR phone LIKE ${`%${clean(input.search, 120)}%`}
-        OR transfer_reference LIKE ${`%${clean(input.search, 120)}%`}
-        OR payment_uuid LIKE ${`%${clean(input.search, 120)}%`}
+        status = 'recovery_required'
+        OR COALESCE(recovery_origin, 0) = 1
+        OR ${search} = ''
+        OR first_name LIKE ${searchPattern}
+        OR email LIKE ${searchPattern}
+        OR phone LIKE ${searchPattern}
+        OR transfer_reference LIKE ${searchPattern}
+        OR payment_uuid LIKE ${searchPattern}
       )
     ORDER BY created_at DESC
-    LIMIT ${Math.max(20, Math.min(300, toInt(input.limit, 100)))}
-  `
-  return rows.map((row) => ({
-    ...row,
-    amountMinor: toInt(row.amountMinor),
-    baseAmountMinor: toInt(row.baseAmountMinor),
-    discountMinor: toInt(row.discountMinor),
-    seatCount: Math.max(1, toInt(row.seatCount, 1)),
-    metaPurchaseSent: Boolean(Number(row.metaPurchaseSent || 0))
-  }))
+    LIMIT ${limit}
+  `,
+    prisma.$queryRaw<EnrollmentPaymentRow[]>`
+      SELECT
+        order_uuid AS paymentUuid,
+        course_slug AS courseSlug,
+        batch_key AS batchKey,
+        batch_label AS batchLabel,
+        first_name AS firstName,
+        email,
+        phone,
+        country,
+        currency,
+        COALESCE(final_amount_minor, amount_minor, 0) AS amountMinor,
+        COALESCE(base_amount_minor, amount_minor, 0) AS baseAmountMinor,
+        COALESCE(discount_minor, 0) AS discountMinor,
+        coupon_code AS couponCode,
+        buyer_type AS buyerType,
+        COALESCE(seat_count, 1) AS seatCount,
+        provider_reference AS transferReference,
+        NULL AS proofUrl,
+        NULL AS proofPublicId,
+        'approved' AS status,
+        'online' AS source,
+        UPPER(COALESCE(provider, 'Online')) AS providerLabel,
+        'Automatically verified by payment provider' AS reviewNote,
+        UPPER(COALESCE(provider, 'Online')) AS reviewedBy,
+        COALESCE(paid_at, updated_at, created_at) AS reviewedAt,
+        0 AS metaPurchaseSent,
+        NULL AS metaPurchaseSentAt,
+        0 AS recoveryOrigin,
+        created_at AS createdAt
+      FROM course_orders
+      WHERE status = 'paid'
+        AND (${courseSlug} = 'all' OR course_slug = ${courseSlug})
+        AND (${status} IN ('all', 'approved', 'paid'))
+        AND (${batchKey} = 'all' OR COALESCE(batch_key, '') = ${batchKey})
+        AND (
+          ${search} = ''
+          OR first_name LIKE ${searchPattern}
+          OR email LIKE ${searchPattern}
+          OR phone LIKE ${searchPattern}
+          OR provider_reference LIKE ${searchPattern}
+          OR order_uuid LIKE ${searchPattern}
+          OR provider LIKE ${searchPattern}
+        )
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `
+  ])
+
+  return [...manualRows, ...onlineRows]
+    .sort((left, right) => {
+      const leftRecovery = left.status === "recovery_required"
+        || Boolean(Number(left.recoveryOrigin || 0))
+      const rightRecovery = right.status === "recovery_required"
+        || Boolean(Number(right.recoveryOrigin || 0))
+      if (leftRecovery !== rightRecovery) return leftRecovery ? -1 : 1
+      return (right.createdAt?.getTime() || 0) - (left.createdAt?.getTime() || 0)
+    })
+    .slice(0, limit)
+    .map((row) => ({
+      ...row,
+      amountMinor: toInt(row.amountMinor),
+      baseAmountMinor: toInt(row.baseAmountMinor),
+      discountMinor: toInt(row.discountMinor),
+      seatCount: Math.max(1, toInt(row.seatCount, 1)),
+      metaPurchaseSent: Boolean(Number(row.metaPurchaseSent || 0)),
+      recoveryOrigin: Boolean(Number(row.recoveryOrigin || 0))
+    }))
 }
 
 export async function enrollmentSummary(courseSlugInput?: string, batchKeyInput?: string) {
@@ -532,7 +609,7 @@ export async function enrollmentDashboardSummary(courseSlugInput?: string, batch
       SELECT COUNT(*) AS count
       FROM course_manual_payments
       WHERE (${includeAllCourses ? 1 : 0} = 1 OR course_slug = ${courseSlug})
-        AND status = 'pending_verification'
+        AND status IN ('pending_verification', 'recovery_required')
         AND (${scopedBatch || "all"} = 'all' OR COALESCE(batch_key, '') = ${scopedBatch})
     `.catch(() => [{ count: 0 }]),
     prisma.$queryRaw<Array<{ count: number | bigint | null }>>`
@@ -909,6 +986,48 @@ export async function updateManualPaymentEmail(input: { paymentUuid: string; new
     }
   }
   return { paymentUuid, previousEmail: oldEmail, email: newEmail }
+}
+
+export async function completeManualPaymentRecovery(input: {
+  paymentUuid: string
+  firstName: string
+  email: string
+  phone: string
+  transferReference?: string
+  actor: string
+}) {
+  const paymentUuid = clean(input.paymentUuid, 80)
+  const firstName = clean(input.firstName, 160)
+  const email = normalizeEmail(input.email)
+  const phone = clean(input.phone, 40)
+  const transferReference = clean(input.transferReference, 190)
+  if (!paymentUuid || !firstName || !email || !phone) {
+    throw new Error("Name, valid email, and phone are required before this recovery can be reviewed.")
+  }
+
+  const rows = await prisma.$queryRaw<Array<{ status: string | null }>>`
+    SELECT status
+    FROM course_manual_payments
+    WHERE payment_uuid = ${paymentUuid}
+    LIMIT 1
+  `
+  if (!rows[0]) throw new Error("Recovered payment not found.")
+  if (rows[0].status !== "recovery_required") throw new Error("This payment is no longer awaiting recovery details.")
+
+  const now = new Date()
+  await prisma.$executeRaw`
+    UPDATE course_manual_payments
+    SET first_name = ${firstName},
+        email = ${email},
+        phone = ${phone},
+        transfer_reference = COALESCE(${transferReference || null}, transfer_reference),
+        status = 'pending_verification',
+        review_note = CONCAT(COALESCE(review_note, ''), ${`\n[RECOVERY_COMPLETED] Customer details supplied by ${clean(input.actor, 120) || "admin"}.`}),
+        updated_at = ${now}
+    WHERE payment_uuid = ${paymentUuid}
+    LIMIT 1
+  `
+  return { paymentUuid }
 }
 
 export async function resendManualPaymentActivationEmail(input: {

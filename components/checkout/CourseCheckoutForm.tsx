@@ -173,6 +173,16 @@ function metaAttribution() {
   }
 }
 
+class CheckoutRequestError extends Error {
+  code: string
+
+  constructor(message: string, code = "") {
+    super(message)
+    this.name = "CheckoutRequestError"
+    this.code = code
+  }
+}
+
 async function postJson<T>(url: string, body: Record<string, unknown>) {
   const response = await fetch(url, {
     method: "POST",
@@ -181,7 +191,7 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   })
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.ok) {
-    throw new Error(json?.error || "Request failed")
+    throw new CheckoutRequestError(json?.error || "Request failed", String(json?.code || ""))
   }
   return json as T
 }
@@ -252,6 +262,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   }, [])
 
   useEffect(() => {
+    if (provider === "manual_transfer") return
     let cancelled = false
     postJson<{ batches: CheckoutBatch[]; pricing: PricingPayload }>("/api/checkout/config", {
       courseSlug: checkoutCourseSlug,
@@ -370,25 +381,46 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
     try {
       if (provider === "manual_transfer") {
-        const recaptchaToken = await getRecaptchaToken("course_order_create")
-        const result = await postJson<{ paymentUuid: string }>("/api/checkout/manual-payment", {
-          courseSlug: checkoutCourseSlug,
-          returnSlug: publicCourseSlug,
-          firstName,
-          email,
-          phone,
-          country,
-          couponCode,
-          transferReference,
-          proofUrl,
-          proofPublicId,
-          batchKey,
-          buyerType,
-          seatCount: buyerType === "family" ? seatCount : 1,
-          affiliateCode,
-          whatsappOptIn,
-          recaptchaToken
-        })
+        let result: { paymentUuid: string } | null = null
+        let lastError: unknown = null
+
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          let recaptchaToken = ""
+          try {
+            recaptchaToken = await getRecaptchaToken("course_order_create")
+          } catch (error) {
+            lastError = error
+            if (attempt === 1) continue
+          }
+
+          try {
+            result = await postJson<{ paymentUuid: string }>("/api/checkout/manual-payment", {
+              courseSlug: checkoutCourseSlug,
+              returnSlug: publicCourseSlug,
+              firstName,
+              email,
+              phone,
+              country,
+              couponCode,
+              transferReference,
+              proofUrl,
+              proofPublicId,
+              batchKey,
+              buyerType,
+              seatCount: buyerType === "family" ? seatCount : 1,
+              affiliateCode,
+              whatsappOptIn,
+              recaptchaToken,
+              allowProofFallback: attempt === 2
+            })
+            break
+          } catch (error) {
+            lastError = error
+            if (!(error instanceof CheckoutRequestError) || error.code !== "recaptcha_failed" || attempt === 2) throw error
+          }
+        }
+
+        if (!result) throw lastError instanceof Error ? lastError : new Error("Could not submit manual payment.")
         setStatusMessage(`Manual payment submitted for review. Reference: ${result.paymentUuid}`)
         return
       }

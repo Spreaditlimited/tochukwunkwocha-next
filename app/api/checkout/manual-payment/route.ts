@@ -9,7 +9,41 @@ import {
   recordAffiliateAttribution,
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
+import { prisma } from "@/lib/prisma"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
+
+function trustedUploadedProof(proofUrl: string, proofPublicId: string) {
+  const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim()
+  if (!cloudName || !proofPublicId.startsWith("tochukwunkwocha-site/manual-payments/")) return false
+  try {
+    const url = new URL(proofUrl)
+    return url.protocol === "https:" && url.hostname === "res.cloudinary.com" && url.pathname.startsWith(`/${cloudName}/`)
+  } catch {
+    return false
+  }
+}
+
+async function existingPaymentForProof(proofPublicId: string) {
+  if (!proofPublicId) return null
+  const rows = await prisma.$queryRaw<Array<{ paymentUuid: string }>>`
+    SELECT payment_uuid AS paymentUuid
+    FROM course_manual_payments
+    WHERE proof_public_id = ${proofPublicId}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  return rows[0]?.paymentUuid || null
+}
+
+async function proofFallbackWithinRateLimit(email: string) {
+  const rows = await prisma.$queryRaw<Array<{ total: number | bigint }>>`
+    SELECT COUNT(*) AS total
+    FROM course_manual_payments
+    WHERE email = ${email}
+      AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+  `
+  return Number(rows[0]?.total || 0) < 3
+}
 
 export async function POST(request: Request) {
   try {
@@ -26,20 +60,54 @@ export async function POST(request: Request) {
     if (!firstName || !email || !phone) {
       return NextResponse.json({ ok: false, error: "Full name, valid email, and phone number are required." }, { status: 400 })
     }
+    if (!/^https:\/\//i.test(proofUrl)) {
+      return NextResponse.json({ ok: false, error: "Upload a valid payment proof before submitting." }, { status: 400 })
+    }
+
+    const existingPaymentUuid = await existingPaymentForProof(proofPublicId)
+    if (existingPaymentUuid) {
+      return NextResponse.json({ ok: true, paymentUuid: existingPaymentUuid, alreadySubmitted: true })
+    }
+
     const recaptcha = await verifyRecaptchaToken({
       token: body.recaptchaToken,
       expectedAction: "course_order_create",
       remoteip: clientIpFromRequest(request),
       request
     })
+    let usedProofFallback = false
     if (!recaptcha.ok) {
-      return NextResponse.json({ ok: false, error: "We could not verify this submission. Please try again." }, { status: 400 })
+      const reason = "reason" in recaptcha ? recaptcha.reason : "unknown"
+      const score = "score" in recaptcha ? recaptcha.score : undefined
+      const action = "action" in recaptcha ? recaptcha.action : undefined
+      console.warn("[manual-payment] reCAPTCHA verification failed", {
+        reason,
+        score,
+        action,
+        requestId: request.headers.get("x-vercel-id") || request.headers.get("x-nf-request-id") || undefined
+      })
+
+      const fallbackRequested = body.allowProofFallback === true
+      const trustedProof = trustedUploadedProof(proofUrl, proofPublicId)
+      const withinRateLimit = fallbackRequested && trustedProof
+        ? await proofFallbackWithinRateLimit(email)
+        : false
+
+      if (!fallbackRequested || !trustedProof || !withinRateLimit) {
+        return NextResponse.json(
+          { ok: false, code: "recaptcha_failed", error: "We could not verify this submission. Please try again." },
+          { status: fallbackRequested && trustedProof && !withinRateLimit ? 429 : 400 }
+        )
+      }
+
+      usedProofFallback = true
+      console.warn("[manual-payment] accepting proof-backed reCAPTCHA fallback", {
+        reason,
+        requestId: request.headers.get("x-vercel-id") || request.headers.get("x-nf-request-id") || undefined
+      })
     }
     if (!manualTransferAllowedForCountry(country)) {
       return NextResponse.json({ ok: false, error: "Bank transfer is only available for Nigeria checkout." }, { status: 400 })
-    }
-    if (!/^https:\/\//i.test(proofUrl)) {
-      return NextResponse.json({ ok: false, error: "Enter a valid HTTPS payment proof URL." }, { status: 400 })
     }
 
     const result = await checkoutContext({
@@ -67,6 +135,15 @@ export async function POST(request: Request) {
       buyerType: result.buyerType,
       seatCount: result.seatCount
     })
+    if (usedProofFallback) {
+      await prisma.$executeRaw`
+        UPDATE course_manual_payments
+        SET review_note = 'Proof-backed recovery: reCAPTCHA failed after a client retry; manual verification required.',
+            updated_at = ${new Date()}
+        WHERE payment_uuid = ${paymentUuid}
+        LIMIT 1
+      `.catch(() => undefined)
+    }
     await recordAffiliateAttribution({
       sourceUuid: paymentUuid,
       courseSlug,
@@ -85,7 +162,7 @@ export async function POST(request: Request) {
       optedIn: body.whatsappOptIn === true
     })
 
-    return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing })
+    return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing, proofFallback: usedProofFallback })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not submit manual payment" }, { status: 500 })
   }

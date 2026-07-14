@@ -62,7 +62,11 @@ async function updateManualPaymentReview(input: {
       UPDATE course_manual_payments
       SET status = ${input.status},
           reviewed_by = ${input.reviewedBy},
-          review_note = ${input.reviewNote || null},
+          review_note = CASE
+            WHEN ${input.reviewNote || null} IS NULL THEN review_note
+            WHEN COALESCE(review_note, '') = '' THEN ${input.reviewNote || null}
+            ELSE CONCAT(review_note, '\n', ${input.reviewNote || null})
+          END,
           reviewed_at = ${reviewedAt},
           updated_at = ${reviewedAt}
       WHERE payment_uuid = ${input.paymentUuid}
@@ -181,6 +185,9 @@ export async function reviewManualPayment(input: {
 
   const payment = await findManualPayment(paymentUuid)
   if (!payment) throw new Error("Manual payment not found.")
+  if (payment.status === "recovery_required") {
+    throw new Error("Complete the recovered customer's name, email, and phone before reviewing this payment.")
+  }
 
   const nextStatus = input.action === "approve" ? "approved" : "rejected"
   if (nextStatus === "approved") {

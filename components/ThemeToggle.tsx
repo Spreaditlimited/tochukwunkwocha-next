@@ -16,9 +16,10 @@ export function ThemeToggle({ className }: { className?: string }) {
   }, [])
 
   function toggleTheme() {
-    const nextTheme = theme === "dark" ? "light" : "dark"
+    const nextTheme = document.documentElement.classList.contains("dark") ? "light" : "dark"
     document.documentElement.classList.toggle("dark", nextTheme === "dark")
     document.documentElement.dataset.theme = nextTheme
+    document.documentElement.style.colorScheme = nextTheme
     localStorage.setItem("tochukwu-theme", nextTheme)
     setTheme(nextTheme)
   }

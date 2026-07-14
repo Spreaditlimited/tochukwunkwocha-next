@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
 import {
   addExternalStudentPayment,
+  completeManualPaymentRecovery,
   deleteHolidayWaitlistContact,
   resendBatchActivationEmails,
   resendManualPaymentActivationEmail,
@@ -72,6 +73,32 @@ export async function updateManualPaymentEmailAction(formData: FormData) {
     actor: admin.email || admin.adminUuid || "admin"
   })
   await setInternalToast({ title: "Payment email updated", message: "The manual payment record now uses the corrected email address." })
+  revalidatePath("/internal/manual-payments")
+  revalidatePath("/dashboard")
+}
+
+export async function completeManualPaymentRecoveryAction(formData: FormData) {
+  const admin = await requireAdmin()
+  const actor = admin.email || admin.adminUuid || "admin"
+  const paymentUuid = String(formData.get("paymentUuid") || "")
+  await completeManualPaymentRecovery({
+    paymentUuid,
+    firstName: String(formData.get("firstName") || ""),
+    email: String(formData.get("email") || ""),
+    phone: String(formData.get("phone") || ""),
+    transferReference: String(formData.get("transferReference") || ""),
+    actor
+  })
+  await reviewManualPayment({
+    paymentUuid,
+    action: "approve",
+    reviewedBy: actor,
+    reviewNote: "Recovered customer details confirmed and payment proof approved by admin."
+  })
+  await setInternalToast({
+    title: "Recovered payment approved",
+    message: "Customer details were saved, access was provisioned, and the normal approval notifications were processed."
+  })
   revalidatePath("/internal/manual-payments")
   revalidatePath("/dashboard")
 }

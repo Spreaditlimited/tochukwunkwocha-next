@@ -19,6 +19,7 @@ import {
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { TrademarkText } from "@/components/TrademarkText"
+import { ScrollPreservingGetForm } from "@/components/internal/ScrollPreservingGetForm"
 import {
   enrollmentDashboardSummary,
   enrollmentSummary,
@@ -34,6 +35,7 @@ import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 import {
   addExternalStudentPaymentAction,
+  completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
   resendBatchActivationEmailsAction,
   resendManualPaymentActivationEmailAction,
@@ -78,7 +80,7 @@ function formatTotalsByCurrency(totals: Record<string, number>) {
 export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   const params = await searchParams || {}
   const courseSlug = param(params, "course", "all")
-  const status = param(params, "status", "pending_verification")
+  const status = param(params, "status", "all")
   const batchKey = param(params, "batch", "all")
   const search = param(params, "q", "")
   const waCourse = param(params, "waCourse", courseSlug === "all" ? "all" : courseSlug)
@@ -86,12 +88,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   const summaryCourseSlug = param(params, "summaryCourse", courseSlug || "all")
   const summaryBatchKey = summaryCourseSlug === "all" ? "all" : param(params, "summaryBatch", batchKey || "all")
 
-  const [courses, allBatches, summaryBatches, payments, summary, dashboardSummary, waitlist, whatsAppContacts, whatsAppCampaigns, onboardingFailures] = await Promise.all([
+  const [courses, allBatches, summaryBatches, payments, globalSummary, dashboardSummary, waitlist, whatsAppContacts, whatsAppCampaigns, onboardingFailures] = await Promise.all([
     listEnrollmentCourses(),
     listEnrollmentBatches(courseSlug === "all" ? undefined : courseSlug),
     summaryCourseSlug === "all" ? Promise.resolve([]) : listEnrollmentBatches(summaryCourseSlug),
     listEnrollmentPayments({ courseSlug, status, batchKey, search, limit: 150 }),
-    enrollmentSummary(courseSlug, batchKey),
+    enrollmentSummary("all", "all"),
     enrollmentDashboardSummary(summaryCourseSlug, summaryBatchKey),
     listHolidayWaitlistContacts(160),
     listWhatsAppMarketingContacts({ courseSlug: waCourse, opted: "in", search: waSearch, limit: 160 }),
@@ -103,10 +105,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   const selectedCourseMode = selectedCourse?.enrollmentMode || "batch"
   const batchesForSelected = allBatches.filter((batch) => courseSlug === "all" || batch.courseSlug === courseSlug)
   
-  const pendingCount = summary.find((item) => item.status === "pending_verification")?.students || 0
-  const approvedCount = summary.find((item) => item.status === "approved")?.students || 0
-  const rejectedCount = summary.find((item) => item.status === "rejected")?.students || 0
-  const approvedTotal = summary.find((item) => item.status === "approved")?.totalMinor || 0
+  const pendingCount = (globalSummary.find((item) => item.status === "pending_verification")?.students || 0)
+    + (globalSummary.find((item) => item.status === "recovery_required")?.students || 0)
+  const approvedCount = globalSummary.find((item) => item.status === "approved")?.students || 0
+  const rejectedCount = globalSummary.find((item) => item.status === "rejected")?.students || 0
+  const approvedTotal = globalSummary.find((item) => item.status === "approved")?.totalMinor || 0
   const dashboardProviders = dashboardSummary.providerCounts
   const dashboardTotal = formatTotalsByCurrency(dashboardSummary.totalsByCurrency)
   const courseOptions = courses.map((course) => ({ value: course.slug, label: course.label }))
@@ -159,7 +162,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   ].join("\n")
 
   return (
-    <main className="space-y-8 pb-12">
+    <main className="flex flex-col gap-8 pb-12">
       
       {/* Header & Actions */}
       <div className="flex flex-col gap-6 border-b border-border pb-6 xl:flex-row xl:items-end xl:justify-between">
@@ -183,19 +186,22 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </div>
 
       {/* Enrollment Summary */}
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <section className="order-[-1] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-t-4 border-primary p-6 sm:p-8">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <p className="eyebrow text-primary">Summary</p>
+              <p className="eyebrow text-primary">Filtered Summary</p>
               <h2 className="mt-1 font-heading text-xl font-black text-foreground">
                 {dashboardSummary.courseName} - {dashboardSummary.batchLabel}
               </h2>
               <p className="mt-1 text-sm font-medium text-muted-foreground">
                 Registration: {dashboardSummary.registrationStatus}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The figures below reflect only the course and batch selected here.
+              </p>
             </div>
-            <form method="GET" className="grid gap-3 sm:grid-cols-[minmax(12rem,auto)_minmax(12rem,auto)_auto] sm:items-end">
+            <ScrollPreservingGetForm className="grid gap-3 sm:grid-cols-[minmax(12rem,auto)_minmax(12rem,auto)_auto] sm:items-end">
               <input type="hidden" name="course" value={courseSlug} />
               <input type="hidden" name="status" value={status} />
               <input type="hidden" name="batch" value={batchKey} />
@@ -212,7 +218,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 <PremiumPicker name="summaryBatch" defaultValue={summaryBatchKey} disabled={summaryCourseSlug === "all"} options={summaryBatchOptions} className="sm:w-64" />
               </label>
               <button type="submit" className="btn-secondary justify-center shadow-sm">Update Summary</button>
-            </form>
+            </ScrollPreservingGetForm>
           </div>
 
           <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -252,8 +258,13 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
         </div>
       </section>
 
-      {/* Primary Pulse Metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Global statistics are intentionally independent of every page filter. */}
+      <section className="order-first">
+        <div className="mb-4">
+          <p className="eyebrow text-primary">Global Statistics</p>
+          <p className="mt-1 text-sm font-medium text-muted-foreground">All courses and all batches. These figures never change with the filters below.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/5">
           <div className="flex items-center justify-between gap-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pending Review</p>
@@ -284,7 +295,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             {formatMinorCurrency("NGN", approvedTotal)}
           </p>
         </div>
-      </div>
+        </div>
+      </section>
 
       {/* Add External Student Module */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -447,10 +459,10 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </section>
 
       {/* Communications Grid */}
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
+      <div className="contents">
         
         {/* WhatsApp Campaign */}
-        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <section className="order-2 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-start sm:p-8">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -559,7 +571,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
         </section>
 
         {/* WhatsApp Audience List */}
-        <section className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm xl:h-full">
+        <section className="order-4 flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="border-b border-border bg-muted/20 p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -571,7 +583,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </div>
             </div>
             
-            <form className="mt-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <ScrollPreservingGetForm className="mt-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
               <input type="hidden" name="course" value={courseSlug} />
               <input type="hidden" name="status" value={status} />
               <input type="hidden" name="batch" value={batchKey} />
@@ -584,11 +596,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               <button className="btn-secondary w-full justify-center px-6 py-2.5 text-xs shadow-sm sm:w-auto" type="submit">
                 <Filter className="mr-2 h-3.5 w-3.5" /> Filter
               </button>
-            </form>
+            </ScrollPreservingGetForm>
           </div>
           
-          <div className="relative flex-1 bg-background">
-            <div className="absolute inset-0 overflow-auto">
+          <div className="max-h-[36rem] flex-1 overflow-auto bg-background">
+            <div>
               <table className="w-full min-w-[36rem] text-left text-xs whitespace-nowrap">
                 <thead className="sticky top-0 z-10 border-b border-border bg-muted/90 uppercase tracking-widest text-muted-foreground backdrop-blur-md">
                   <tr>
@@ -627,7 +639,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </div>
 
       {/* Holiday Waitlist Section */}
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <section className="order-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:p-8">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -691,13 +703,16 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
         </div>
       </section>
 
-      {/* Main Ledger: Manual Payments */}
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      {/* Master Ledger: manual submissions and paid online orders */}
+      <section className="order-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
           <p className="eyebrow text-primary">Master Ledger</p>
           <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Enrollment & Payment Registry</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Paid online orders and manual payment submissions, consolidated into one operational ledger.
+          </p>
           
-          <form className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
+          <ScrollPreservingGetForm className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme Filter</span>
               <PremiumPicker name="course" defaultValue={courseSlug} options={courseOptionsWithAll} />
@@ -708,10 +723,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 name="status"
                 defaultValue={status}
                 options={[
+                  { value: "all", label: "All States" },
                   { value: "pending_verification", label: "Pending Review" },
+                  { value: "recovery_required", label: "Recovery Required" },
                   { value: "approved", label: "Approved" },
-                  { value: "rejected", label: "Rejected" },
-                  { value: "all", label: "All States" }
+                  { value: "rejected", label: "Rejected" }
                 ]}
               />
             </label>
@@ -726,7 +742,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             <button className="btn-primary h-[42px] w-full justify-center shadow-sm sm:col-span-2 lg:col-span-1" type="submit">
               Apply Filters
             </button>
-          </form>
+          </ScrollPreservingGetForm>
         </div>
 
         <div className="max-h-[74vh] overflow-auto bg-background scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
@@ -752,6 +768,9 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     </span>
                     <p className="mt-3 font-mono text-[11px] font-semibold text-foreground">{payment.paymentUuid}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{formatDate(payment.createdAt)}</p>
+                    <p className="mt-2 inline-flex rounded bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      {payment.providerLabel}
+                    </p>
                   </td>
                   <td className="px-6 py-5">
                     <p className="font-heading font-bold text-foreground">{payment.firstName || "Unknown Learner"}</p>
@@ -785,7 +804,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     </p>
                   </td>
                   <td className="px-6 py-5">
-                    {payment.proofUrl ? (
+                    {payment.source === "online" ? (
+                      <span className="inline-flex items-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        Provider Verified
+                      </span>
+                    ) : payment.proofUrl ? (
                       <a 
                         className="inline-flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary/10 shadow-sm" 
                         href={payment.proofUrl} 
@@ -806,7 +829,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     )}
                   </td>
                   <td className="px-6 py-5">
-                    {payment.status === "pending_verification" || payment.status === "pending" || payment.status === "submitted" ? (
+                    {payment.status === "recovery_required" ? (
+                      <div className="w-[280px] rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-700 shadow-sm dark:text-amber-300">
+                        <p className="font-bold">Customer details required</p>
+                        <p className="mt-2 leading-relaxed">Complete the recovery form before approving or rejecting this payment.</p>
+                      </div>
+                    ) : payment.source === "manual" && (payment.status === "pending_verification" || payment.status === "pending" || payment.status === "submitted") ? (
                       <form action={reviewManualPaymentAction} className="grid w-[280px] gap-3 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                         <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                         <textarea 
@@ -840,7 +868,18 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     )}
                   </td>
                   <td className="px-6 py-5">
-                    <div className="grid w-[240px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
+                    {payment.status === "recovery_required" ? (
+                      <form action={completeManualPaymentRecoveryAction} className="grid w-[280px] gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-inner">
+                        <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-300">Complete recovery</p>
+                        <input name="firstName" defaultValue={payment.firstName || ""} required placeholder="Customer full name" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
+                        <input name="email" type="email" required placeholder="Customer email" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
+                        <input name="phone" required placeholder="Customer phone" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
+                        <input name="transferReference" defaultValue={payment.transferReference || ""} placeholder="Bank reference (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
+                        <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">Save Details &amp; Approve</button>
+                      </form>
+                    ) : payment.source === "manual" ? (
+                      <div className="grid w-[240px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                       <form action={updateManualPaymentEmailAction} className="grid gap-2.5">
                         <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                         <input 
@@ -862,10 +901,16 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                           </button>
                         </form>
                       )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="w-[240px] whitespace-normal break-words rounded-xl border border-border bg-background p-4 text-xs leading-relaxed text-muted-foreground shadow-sm">
+                        Online order details are provider-verified. Email changes should be made on the linked student account.
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-5">
-                    <form action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
+                    {payment.source === "manual" ? (
+                      <form action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                       <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                       
                       <div className="mb-1 flex items-center justify-between">
@@ -888,7 +933,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                           Last sent: {formatDate(payment.metaPurchaseSentAt)}
                         </p>
                       )}
-                    </form>
+                      </form>
+                    ) : (
+                      <div className="w-[260px] whitespace-normal break-words rounded-xl border border-border bg-background p-4 text-xs leading-relaxed text-muted-foreground shadow-sm">
+                        Purchase tracking is handled automatically during the {payment.providerLabel} checkout.
+                      </div>
+                    )}
                   </td>
                 </tr>
               )) : (
