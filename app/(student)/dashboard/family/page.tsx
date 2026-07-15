@@ -7,6 +7,7 @@ import {
   StudentDashboardShell
 } from "@/components/student-dashboard/StudentDashboardShell"
 import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/student-dashboard/BatchSwitchPanel"
+import { CopyButton } from "@/components/student-dashboard/CopyButton"
 import { GroupEnrollmentPanel } from "@/components/student-dashboard/GroupEnrollmentPanel"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
@@ -264,9 +265,19 @@ export default async function StudentFamilyPage({
                     
                     {/* Footer: Access Code */}
                     {child.accessCode ? (
-                      <div className="mt-5 inline-flex w-full items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm font-bold text-primary sm:w-auto">
-                        <KeyRound className="h-4 w-4 shrink-0" />
-                        <span>Access code: <span className="font-mono tracking-widest">{child.accessCode}</span></span>
+                      <div className="mt-5 flex w-full flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm font-bold text-primary sm:w-fit sm:flex-row sm:items-center">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <KeyRound className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0">
+                            Access code: <span className="font-mono tracking-widest">{child.accessCode}</span>
+                          </span>
+                        </div>
+                        <CopyButton
+                          value={child.accessCode}
+                          label="Copy"
+                          copiedLabel="Copied"
+                          className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/20 bg-background px-3 py-2 text-xs font-black text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                        />
                       </div>
                     ) : null}
                   </div>

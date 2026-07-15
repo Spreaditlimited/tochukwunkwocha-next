@@ -10,6 +10,7 @@ import {
 
 import { getStudentSession } from "@/lib/student-auth"
 import { PasswordField } from "@/components/PasswordField"
+import { SubmitButton } from "@/components/SubmitButton"
 import { GroupCodeLoginForm } from "@/components/student-dashboard/GroupCodeLoginForm"
 import { StudentActionToaster } from "@/components/student-dashboard/StudentActionToaster"
 import { studentLoginAction } from "../actions"
@@ -102,12 +103,12 @@ export default async function StudentLoginPage({
 
             {/* Submit CTA */}
             <div className="mt-2">
-              <button 
+              <SubmitButton
                 className="btn-primary w-full px-8 py-3.5 text-base shadow-lg shadow-primary/20" 
-                type="submit"
+                pendingText="Signing in..."
               >
                 Sign In Securely
-              </button>
+              </SubmitButton>
             </div>
             
           </form>

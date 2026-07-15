@@ -262,6 +262,7 @@ export default async function StudentCertificatesPage({
       <div className="mt-6">
         <CertificateActionsPanel
           certificateNameConfirmedAt={session.account.certificateNameConfirmedAt?.toISOString() || null}
+          certificateName={session.account.fullName}
           courses={activeCourses}
           certificateContent={certificateContent}
         />

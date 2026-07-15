@@ -30,6 +30,7 @@ export default async function StudentDashboardPage() {
   const overview = await getStudentOverview(session.account.id, session.account.email)
   
   const paidCourses = overview.courses.filter((item) => item.isActive)
+  const learningAccess = overview.courses
   const payments = overview.paymentRecords
   const availableSeats = overview.family.seats.reduce((sum, seat) => sum + seat.seatsAvailable, 0)
 
@@ -75,7 +76,7 @@ export default async function StudentDashboardPage() {
             <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:p-8">
               <div>
                 <p className="eyebrow text-primary">Learning access</p>
-                <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Recent Courses & Payments</h2>
+                <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Recent Courses</h2>
               </div>
               <Link href="/dashboard/courses" className="btn-secondary whitespace-nowrap text-xs">
                 View All
@@ -83,9 +84,9 @@ export default async function StudentDashboardPage() {
             </div>
 
             <div className="p-6 sm:p-8">
-              {payments.length ? (
+              {learningAccess.length ? (
                 <div className="grid gap-4">
-                  {payments.slice(0, 5).map((item) => (
+                  {learningAccess.slice(0, 5).map((item) => (
                     <div
                       key={`${item.source}-${item.uuid}`}
                       className="group flex flex-col justify-between gap-4 rounded-xl border border-border bg-background p-5 transition-colors hover:border-primary/20 hover:shadow-sm sm:flex-row sm:items-center"
@@ -98,7 +99,7 @@ export default async function StudentDashboardPage() {
                           <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/50"></span>
                           {item.batchLabel || item.batchKey || "General access"} 
                           <span className="opacity-50">|</span> 
-                          {formatMinorCurrency(item.currency, item.amountMinor)}
+                          {item.source === "family_child" ? "Group seat" : formatMinorCurrency(item.currency, item.amountMinor)}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 sm:justify-end">
@@ -110,11 +111,11 @@ export default async function StudentDashboardPage() {
                     </div>
                   ))}
                 </div>
-              ) : (
+            ) : (
                 <EmptyStudentState
                   icon="book"
                   title="No course access yet"
-                  description="Your paid courses and pending manual verifications will appear here once they are connected to this email address."
+                  description="Your paid courses, group-assigned courses, and pending manual verifications will appear here once they are connected to this account."
                   action={<Link href="/courses" className="btn-primary">Explore Courses</Link>}
                 />
               )}

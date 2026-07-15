@@ -4,6 +4,7 @@ import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrol
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { sendManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { prisma } from "@/lib/prisma"
+import { sendEnrollmentConfirmedWhatsApp } from "@/lib/transactional-whatsapp"
 import {
   assertBatchCapacity,
   findOrCreateStudentAccount,
@@ -246,6 +247,12 @@ export async function reviewManualPayment(input: {
     batchKey: clean(payment.batch_key, 64),
     batchLabel: clean(payment.batch_label, 120),
     source: "manual_payment_approved"
+  }).catch(() => null)
+  await sendEnrollmentConfirmedWhatsApp({
+    phone: account.phoneE164 || clean(payment.phone, 80),
+    fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+    courseSlug: clean(payment.course_slug, 120),
+    dashboardPath: clean(payment.buyer_type, 40).toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
   }).catch(() => null)
 
   await recordCouponRedemption({

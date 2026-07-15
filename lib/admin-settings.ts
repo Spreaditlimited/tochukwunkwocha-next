@@ -153,6 +153,8 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
   { key: "HOLIDAY_WAITLIST_WHATSAPP_WORKFLOW", category: "WhatsApp" },
   { key: "N8N_HOLIDAY_WAITLIST_WEBHOOK_URL", category: "WhatsApp" },
   { key: "N8N_HOLIDAY_WAITLIST_WEBHOOK_SECRET", category: "WhatsApp", secret: true },
+  { key: "N8N_TRANSACTIONAL_WHATSAPP_WEBHOOK_URL", category: "WhatsApp" },
+  { key: "N8N_TRANSACTIONAL_WHATSAPP_WEBHOOK_TOKEN", category: "WhatsApp", secret: true },
 ]
 
 const KNOWN_KEYS = new Set(ADMIN_SETTING_DEFINITIONS.map((item) => item.key))

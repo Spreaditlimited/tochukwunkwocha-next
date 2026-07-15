@@ -3,6 +3,7 @@ import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrol
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { createStudentPasswordResetToken, createStudentSessionForAccount } from "@/lib/student-auth"
 import { findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
+import { sendEnrollmentConfirmedWhatsApp } from "@/lib/transactional-whatsapp"
 
 type PaidOrderRow = {
   order_uuid?: string | null
@@ -39,6 +40,12 @@ export async function provisionStudentForPaidOrder(order: PaidOrderRow | null | 
     batchKey: order?.batch_key || "",
     batchLabel: order?.batch_label || "",
     source: "paid_course_enrollment"
+  }).catch(() => null)
+  await sendEnrollmentConfirmedWhatsApp({
+    phone: account.phoneE164 || String(order?.phone || ""),
+    fullName: account.fullName,
+    courseSlug: order?.course_slug || "",
+    dashboardPath: String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
   }).catch(() => null)
   if (reset?.token) {
     await sendStudentAccountReadyEmail({

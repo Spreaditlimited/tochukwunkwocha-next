@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { AlertTriangle, LockKeyhole, Mail, ShieldCheck } from "lucide-react"
 
 import { PasswordField } from "@/components/PasswordField"
+import { SubmitButton } from "@/components/SubmitButton"
 import { getAdminSession, loginAdmin, setAdminSession } from "@/lib/auth"
 
 async function loginAction(formData: FormData) {
@@ -94,12 +95,12 @@ export default async function LoginPage({
           </div>
 
           <div className="border-t border-border bg-muted/10 p-6 sm:p-8">
-            <button 
+            <SubmitButton
               className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 hover:-translate-y-0.5 active:translate-y-0" 
-              type="submit"
+              pendingText="Signing in..."
             >
               Secure Sign In
-            </button>
+            </SubmitButton>
           </div>
         </form>
 

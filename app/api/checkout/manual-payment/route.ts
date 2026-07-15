@@ -14,6 +14,7 @@ import {
 import { prisma } from "@/lib/prisma"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
 import { createStudentPasswordResetToken, createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
+import { sendManualPaymentSubmittedWhatsApp } from "@/lib/transactional-whatsapp"
 
 function trustedUploadedProof(proofUrl: string, proofPublicId: string) {
   const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim()
@@ -213,6 +214,12 @@ export async function POST(request: Request) {
       courseSlug,
       dashboardPath: isGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
     })
+    await sendManualPaymentSubmittedWhatsApp({
+      phone,
+      fullName: firstName,
+      courseSlug,
+      dashboardPath: isGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
+    }).catch(() => null)
 
     return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing, proofFallback: usedProofFallback, pendingReview: true, ...pendingSession })
   } catch (error) {

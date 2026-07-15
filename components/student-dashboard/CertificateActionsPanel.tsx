@@ -1,7 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { FormEvent, ReactNode, useState } from "react"
-import { AlertTriangle, Award, CheckCircle2, Link2, Loader2, UserCheck } from "lucide-react"
+import { AlertTriangle, Award, CheckCircle2, Link2, Loader2, UserCheck, X } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
@@ -13,14 +14,17 @@ type CourseOption = {
 
 export function CertificateActionsPanel({
   certificateNameConfirmedAt,
+  certificateName,
   courses,
   certificateContent
 }: {
   certificateNameConfirmedAt: string | null
+  certificateName: string
   courses: CourseOption[]
   certificateContent?: ReactNode
 }) {
   const [confirmedAt, setConfirmedAt] = useState(certificateNameConfirmedAt)
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [courseSlug, setCourseSlug] = useState(courses[0]?.courseSlug || "")
   const [websiteUrl, setWebsiteUrl] = useState("")
   const [busy, setBusy] = useState<"name" | "proof" | null>(null)
@@ -45,6 +49,7 @@ export function CertificateActionsPanel({
       showStudentToast({ type: "error", title: "Certificate action failed", message: errorMessage })
     } finally {
       setBusy(null)
+      setConfirmModalOpen(false)
     }
   }
 
@@ -87,28 +92,44 @@ export function CertificateActionsPanel({
           </div>
           
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-            Please verify that your profile name matches your legal identification exactly. This name will be permanently printed on your official academy certificates.
+            Please verify that the name below is exactly how it should appear on your official academy certificates.
           </p>
+          <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Current certificate name</p>
+            <p className="mt-2 font-heading text-2xl font-black leading-tight text-foreground">{certificateName || "Name not set"}</p>
+            {!confirmedAt ? (
+              <p className="mt-3 text-xs font-semibold leading-relaxed text-muted-foreground">
+                If this is not correct, edit your profile name before confirming. Once confirmed, your certificate name is locked.
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-6 border-t border-border pt-6">
-          <button
-            type="button"
-            onClick={confirmName}
-            disabled={Boolean(confirmedAt) || busy !== null}
-            className={`inline-flex w-full items-center justify-center rounded-md px-6 py-3 text-sm font-bold transition-all sm:w-auto ${
-              confirmedAt 
-                ? "cursor-not-allowed border border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400" 
-                : "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:-translate-y-0.5"
-            }`}
-          >
-            {busy === "name" ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : confirmedAt ? (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => setConfirmModalOpen(true)}
+              disabled={Boolean(confirmedAt) || busy !== null || !certificateName}
+              className={`inline-flex w-full items-center justify-center rounded-md px-6 py-3 text-sm font-bold transition-all sm:w-auto ${
+                confirmedAt 
+                  ? "cursor-not-allowed border border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400" 
+                  : "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-60"
+              }`}
+            >
+              {busy === "name" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : confirmedAt ? (
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+              ) : null}
+              {confirmedAt ? "Name Confirmed" : "Confirm This Name"}
+            </button>
+            {!confirmedAt ? (
+              <Link href="/dashboard/profile" className="btn-secondary w-full sm:w-auto">
+                Edit Name First
+              </Link>
             ) : null}
-            {confirmedAt ? "Name Confirmed" : "Confirm Name for Certificates"}
-          </button>
+          </div>
         </div>
       </div>
   )
@@ -193,6 +214,14 @@ export function CertificateActionsPanel({
   if (certificateContent) {
     return (
       <div className="grid gap-6">
+        {confirmModalOpen ? (
+          <CertificateNameConfirmModal
+            name={certificateName}
+            busy={busy === "name"}
+            onCancel={() => setConfirmModalOpen(false)}
+            onConfirm={confirmName}
+          />
+        ) : null}
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)] xl:items-start">
           <div className="min-w-0">{certificateContent}</div>
           {proofCard}
@@ -205,9 +234,82 @@ export function CertificateActionsPanel({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+      {confirmModalOpen ? (
+        <CertificateNameConfirmModal
+          name={certificateName}
+          busy={busy === "name"}
+          onCancel={() => setConfirmModalOpen(false)}
+          onConfirm={confirmName}
+        />
+      ) : null}
       {nameCard}
       {proofCard}
       <div className="lg:col-span-2">{alerts}</div>
+    </div>
+  )
+}
+
+function CertificateNameConfirmModal({
+  name,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  name: string
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm certificate name"
+      onClick={busy ? undefined : onCancel}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border p-5 sm:p-6">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Final confirmation</p>
+            <h2 className="mt-1 font-heading text-lg font-black text-foreground">Confirm certificate name</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="btn-secondary h-9 px-3 text-xs disabled:opacity-60"
+            aria-label="Close confirmation"
+          >
+            <X className="h-4 w-4" />
+            Close
+          </button>
+        </div>
+
+        <div className="p-5 sm:p-6">
+          <div className="rounded-lg border border-input bg-background p-5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">This is the name that will appear</p>
+            <p className="mt-2 font-heading text-3xl font-black leading-tight text-foreground">{name}</p>
+          </div>
+
+          <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
+            Confirm only if this name is correct. After confirmation, your certificate name is locked and cannot be edited from your profile.
+          </p>
+
+          <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary justify-center">
+              Go Back
+            </button>
+            <button type="button" onClick={onConfirm} disabled={busy} className="btn-primary justify-center">
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Yes, Confirm Name
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

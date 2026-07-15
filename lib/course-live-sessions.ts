@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 
 import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import { prisma } from "@/lib/prisma"
+import { sendLiveClassReminderWhatsApp } from "@/lib/transactional-whatsapp"
 import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 import { createNoFixedTimeZoomMeeting } from "@/lib/zoom"
 
@@ -313,9 +314,9 @@ export async function listStudentLiveSessionsForPairs(pairs: Array<{ courseSlug:
 }
 
 async function listSessionRecipients(courseSlug: string, batchKey: string) {
-  return prisma.$queryRaw<Array<{ email: string; fullName: string | null }>>(Prisma.sql`
-    SELECT DISTINCT email, fullName FROM (
-      SELECT LOWER(o.email) AS email, o.first_name AS fullName
+  return prisma.$queryRaw<Array<{ email: string; fullName: string | null; phone: string | null }>>(Prisma.sql`
+    SELECT DISTINCT email, fullName, phone FROM (
+      SELECT LOWER(o.email) AS email, o.first_name AS fullName, o.phone AS phone
       FROM course_orders o
       WHERE o.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
         AND o.batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
@@ -324,7 +325,7 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
 
       UNION
 
-      SELECT LOWER(m.email) AS email, m.first_name AS fullName
+      SELECT LOWER(m.email) AS email, m.first_name AS fullName, m.phone AS phone
       FROM course_manual_payments m
       WHERE m.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
         AND m.batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
@@ -333,7 +334,7 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
 
       UNION
 
-      SELECT LOWER(c.email) AS email, c.full_name AS fullName
+      SELECT LOWER(c.email) AS email, c.full_name AS fullName, f.parent_phone AS phone
       FROM family_child_enrollments e
       JOIN family_children c ON c.id = e.child_id
       JOIN family_accounts f ON f.id = e.family_id
@@ -353,7 +354,7 @@ function dashboardUrl() {
 
 async function sendLiveSessionEmail(input: {
   session: CourseLiveSessionRow
-  recipient: { email: string; fullName: string | null }
+  recipient: { email: string; fullName: string | null; phone?: string | null }
 }) {
   const course = courseName(input.session.courseSlug)
   const name = clean(input.recipient.fullName, 160)
@@ -410,6 +411,12 @@ export async function sendDueLiveSessionReminders() {
     for (const recipient of recipients) {
       try {
         await sendLiveSessionEmail({ session, recipient })
+        await sendLiveClassReminderWhatsApp({
+          phone: recipient.phone,
+          fullName: recipient.fullName,
+          courseSlug: session.courseSlug,
+          sessionTitle: session.sessionTitle
+        }).catch(() => null)
         sessionSent += 1
         sent += 1
       } catch (error) {
