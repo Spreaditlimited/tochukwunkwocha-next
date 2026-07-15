@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { moveEnrollmentBrevoList, sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
+import { watWallDateTimeMs } from "@/lib/utils"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -27,10 +28,20 @@ function normalizeBatchKey(value: unknown) {
 
 function displayBatchDate(value: Date | string | null) {
   if (!value) return ""
-  const date = new Date(value)
+  const raw = value instanceof Date
+    ? [
+        value.getUTCFullYear(),
+        String(value.getUTCMonth() + 1).padStart(2, "0"),
+        String(value.getUTCDate()).padStart(2, "0")
+      ].join("-") + `T${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}:00`
+    : clean(value, 80)
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/)
+  const date = match
+    ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5])))
+    : new Date(raw)
   if (!Number.isFinite(date.getTime())) return clean(value, 40)
   return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Lagos",
+    timeZone: match ? "UTC" : "Africa/Lagos",
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -42,9 +53,8 @@ function displayBatchDate(value: Date | string | null) {
 }
 
 function isFuture(value: Date | string | null) {
-  if (!value) return false
-  const date = new Date(value)
-  return Number.isFinite(date.getTime()) && date.getTime() > Date.now()
+  const ms = watWallDateTimeMs(value)
+  return Number.isFinite(ms) && ms > Date.now()
 }
 
 type SwitchItem = {

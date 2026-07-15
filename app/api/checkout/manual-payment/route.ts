@@ -28,14 +28,14 @@ function trustedUploadedProof(proofUrl: string, proofPublicId: string) {
 
 async function existingPaymentForProof(proofPublicId: string) {
   if (!proofPublicId) return null
-  const rows = await prisma.$queryRaw<Array<{ paymentUuid: string }>>`
-    SELECT payment_uuid AS paymentUuid
+  const rows = await prisma.$queryRaw<Array<{ paymentUuid: string; buyerType: string | null }>>`
+    SELECT payment_uuid AS paymentUuid, buyer_type AS buyerType
     FROM course_manual_payments
     WHERE proof_public_id = ${proofPublicId}
     ORDER BY created_at DESC
     LIMIT 1
   `
-  return rows[0]?.paymentUuid || null
+  return rows[0] || null
 }
 
 async function proofFallbackWithinRateLimit(email: string) {
@@ -53,6 +53,7 @@ async function openPendingStudentSession(input: {
   email: string
   phone: string
   courseSlug: string
+  dashboardPath?: string
 }) {
   const existingAccount = await prisma.studentAccount.findUnique({ where: { email: input.email } })
   const account = existingAccount || await findOrCreateStudentAccount({
@@ -66,7 +67,8 @@ async function openPendingStudentSession(input: {
       email: input.email,
       fullName: input.fullName,
       courseSlug: input.courseSlug,
-      resetToken: reset?.token || null
+      resetToken: reset?.token || null,
+      dashboardPath: input.dashboardPath
     }).catch(() => null)
   }
   const session = await createStudentSessionForAccount(account)
@@ -93,10 +95,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Upload a valid payment proof before submitting." }, { status: 400 })
     }
 
-    const existingPaymentUuid = await existingPaymentForProof(proofPublicId)
-    if (existingPaymentUuid) {
-      const pendingSession = await openPendingStudentSession({ fullName: firstName, email, phone, courseSlug })
-      return NextResponse.json({ ok: true, paymentUuid: existingPaymentUuid, alreadySubmitted: true, pendingReview: true, ...pendingSession })
+    const existingPayment = await existingPaymentForProof(proofPublicId)
+    if (existingPayment?.paymentUuid) {
+      const existingGroupEnrollment = String(existingPayment.buyerType || "").toLowerCase() === "family"
+      const pendingSession = await openPendingStudentSession({
+        fullName: firstName,
+        email,
+        phone,
+        courseSlug,
+        dashboardPath: existingGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
+      })
+      return NextResponse.json({ ok: true, paymentUuid: existingPayment.paymentUuid, alreadySubmitted: true, pendingReview: true, ...pendingSession })
     }
 
     const recaptcha = await verifyRecaptchaToken({
@@ -196,7 +205,14 @@ export async function POST(request: Request) {
       source: "manual_enrollment",
       optedIn: body.whatsappOptIn === true
     })
-    const pendingSession = await openPendingStudentSession({ fullName: firstName, email, phone, courseSlug })
+    const isGroupEnrollment = String(result.buyerType || "").toLowerCase() === "family"
+    const pendingSession = await openPendingStudentSession({
+      fullName: firstName,
+      email,
+      phone,
+      courseSlug,
+      dashboardPath: isGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
+    })
 
     return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing, proofFallback: usedProofFallback, pendingReview: true, ...pendingSession })
   } catch (error) {

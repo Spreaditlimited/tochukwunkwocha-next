@@ -4,7 +4,8 @@ import {
   CheckCircle2, 
   Clock3, 
   ExternalLink,
-  PlayCircle
+  PlayCircle,
+  Video
 } from "lucide-react"
 
 import {
@@ -17,12 +18,13 @@ import { TrademarkText } from "@/components/TrademarkText"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import {
   formatMinorCurrency,
+  hasPendingManualPayment,
   listStudentCourses,
   statusLabel,
   statusTone
 } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
@@ -30,11 +32,20 @@ type StudentCoursesPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+function liveSessionButtonLabel(title: string) {
+  const cleanTitle = String(title || "").trim()
+  const dayMatch = cleanTitle.match(/\bday\s*(\d+)\b/i)
+  if (dayMatch && /\blive\b/i.test(cleanTitle)) return `Day ${dayMatch[1]} Live`
+  return cleanTitle || "Live Class"
+}
+
 export default async function StudentCoursesPage({ searchParams }: StudentCoursesPageProps) {
   const session = await requireStudent()
   const params = searchParams ? await searchParams : {}
-  const manualPaymentPending = String(params.manual_payment || "") === "pending"
-  const courses = await listStudentCourses(session.account.email)
+  const courses = await listStudentCourses(session.account.email, session.account.id)
+  const manualPaymentPending =
+    String(params.manual_payment || "") === "pending" &&
+    (await hasPendingManualPayment(session.account.email))
   const batchSwitchOptions = await getBatchSwitchOptions(session.account)
   const batchSwitchEnrollments: BatchSwitchEnrollment[] = batchSwitchOptions.map((item) => ({
     sourceType: item.sourceType,
@@ -100,6 +111,17 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
           <div className="grid gap-6 xl:grid-cols-2">
             {courses.map((course) => {
               const isActive = course.isActive
+              const isGroupSeat = course.source === "family_child"
+              const courseStartMs = watWallDateTimeMs(course.courseStartAt)
+              const courseStartsInFuture = Boolean(
+                isActive &&
+                Number.isFinite(courseStartMs) &&
+                courseStartMs > Date.now()
+              )
+              const courseStartLabel = course.courseStartAt ? formatDateTimeWAT(course.courseStartAt) : ""
+              const firstLessonLabel = course.firstRecordedLessonAvailableAt
+                ? formatDateTimeWAT(course.firstRecordedLessonAvailableAt)
+                : ""
 
               return (
                 <StudentDashboardCard 
@@ -156,7 +178,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                       <div>
                         <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Amount</p>
                         <p className="mt-2 font-heading text-lg font-black text-foreground">
-                          {formatMinorCurrency(course.currency, course.amountMinor)}
+                          {isGroupSeat ? "Group seat" : formatMinorCurrency(course.currency, course.amountMinor)}
                         </p>
                       </div>
                       <div className="pt-2 sm:border-t sm:border-border">
@@ -168,9 +190,15 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                         </p>
                       </div>
                       <div className="pt-2 sm:border-t sm:border-border">
-                        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Access Expires</p>
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {courseStartsInFuture ? "Starts On" : "Access Expires"}
+                        </p>
                         <p className="mt-2 text-sm font-semibold text-foreground">
-                          {course.accessExpiresAt ? formatDate(course.accessExpiresAt) : "Pending approval"}
+                          {courseStartsInFuture
+                            ? courseStartLabel
+                            : course.accessExpiresAt
+                              ? formatDate(course.accessExpiresAt)
+                              : "Pending approval"}
                         </p>
                       </div>
                     </div>
@@ -178,23 +206,88 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
 
                   {/* Course Actions */}
                   <div className="mt-auto border-t border-border bg-muted/10 p-6 sm:p-8">
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      {isActive ? (
+                    {isActive && course.liveSessions.length ? (
+                      <div className="mb-5 rounded-xl border border-sky-400/30 bg-sky-50 p-4 text-sky-950 dark:bg-sky-500/10 dark:text-sky-100">
+                        <p className="text-[11px] font-black uppercase tracking-widest text-sky-700 dark:text-sky-300">Live classes</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {course.liveSessions.map((session) => {
+                            const sessionStartMs = watWallDateTimeMs(session.startsAt)
+                            const sessionLocked = !Number.isFinite(sessionStartMs) || sessionStartMs > Date.now()
+                            const content = (
+                              <>
+                                <Video className="mr-2 h-4 w-4 shrink-0" />
+                                <span>{liveSessionButtonLabel(session.title)}</span>
+                              </>
+                            )
+
+                            return (
+                              <div key={session.sessionUuid} className="space-y-2">
+                                {sessionLocked ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="btn-primary min-h-12 w-full cursor-not-allowed opacity-60 shadow-sm"
+                                  >
+                                    {content}
+                                  </button>
+                                ) : (
+                                  <a
+                                    href={session.zoomJoinUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn-primary min-h-12 w-full shadow-sm"
+                                  >
+                                    {content}
+                                  </a>
+                                )}
+                                {session.startsAtLabel ? (
+                                  <p className="text-xs font-semibold leading-relaxed text-sky-800 dark:text-sky-200">
+                                    {sessionLocked ? `Unlocks on ${session.startsAtLabel}.` : `Live class scheduled for ${session.startsAtLabel}.`}
+                                  </p>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-3">
+                        {isActive && courseStartsInFuture ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-primary w-full cursor-not-allowed opacity-60 shadow-sm"
+                              disabled
+                              title={`Unlocks on ${courseStartLabel}`}
+                            >
+                              <PlayCircle className="mr-2 h-4 w-4" />
+                              Open Course Player
+                            </button>
+                            <p className="rounded-xl border border-amber-400/30 bg-amber-50 px-4 py-3 text-sm font-semibold leading-relaxed text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
+                              This button unlocks on {courseStartLabel}.
+                              {firstLessonLabel ? ` Your first recorded lesson will become available in the course player on ${firstLessonLabel}.` : null}
+                            </p>
+                          </>
+                        ) : isActive ? (
+                          <Link
+                            href={`/dashboard/courses/player?course=${encodeURIComponent(course.courseSlug)}`}
+                            className="btn-primary w-full shadow-sm"
+                          >
+                            <PlayCircle className="mr-2 h-4 w-4" />
+                            Open Course Player
+                          </Link>
+                        ) : null}
+                      </div>
+                      <div>
                         <Link
-                          href={`/dashboard/courses/player?course=${encodeURIComponent(course.courseSlug)}`}
-                          className="btn-primary flex-1 shadow-sm"
+                          href={`/courses/${encodeURIComponent(course.courseSlug)}`}
+                          className="btn-secondary w-full"
                         >
-                          <PlayCircle className="mr-2 h-4 w-4" />
-                          Open Course Player
+                          View Course Details
+                          <ExternalLink className="ml-2 h-4 w-4 text-muted-foreground" />
                         </Link>
-                      ) : null}
-                      <Link
-                        href={`/courses/${encodeURIComponent(course.courseSlug)}`}
-                        className="btn-secondary flex-1"
-                      >
-                        View Course Details
-                        <ExternalLink className="ml-2 h-4 w-4 text-muted-foreground" />
-                      </Link>
+                      </div>
                     </div>
                   </div>
                 </StudentDashboardCard>

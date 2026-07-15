@@ -13,14 +13,16 @@ import {
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { listVideoLibrary } from "@/lib/admin-video-library"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatDateTimeWAT } from "@/lib/utils"
 import {
   activateCourseBatchAction,
   cloneVideoLibraryModuleAction,
   deleteCourseBatchAction,
+  deleteCourseLiveSessionAction,
   detachVideoLibraryModuleAction,
   importVideoLibraryCsvAction,
   saveCourseBatchAction,
+  saveCourseLiveSessionAction,
   savePublicVideoSlotAction,
   saveVideoLibraryCourseAction,
   saveVideoLibraryModuleAction
@@ -30,6 +32,7 @@ import { CloudflareProgressPanel } from "./CloudflareProgressPanel"
 import { LessonMapperClient } from "./LessonMapperClient"
 import { ModuleBatchRulesClient } from "./ModuleBatchRulesClient"
 import { ModuleDescriptionField } from "./ModuleDescriptionField"
+import { VideoLibraryScrollRestorer } from "./VideoLibraryScrollRestorer"
 
 export const dynamic = "force-dynamic"
 
@@ -47,14 +50,13 @@ function moneyInput(value: number | bigint | null | undefined) {
   return String(Number(value) / 100)
 }
 
-function minorInput(value: number | bigint | null | undefined) {
-  if (value === null || value === undefined) return ""
-  return String(Number(value || 0))
-}
-
 function dateInput(value: Date | null | undefined) {
   if (!value) return ""
-  return value.toISOString().slice(0, 16)
+  return [
+    value.getUTCFullYear(),
+    String(value.getUTCMonth() + 1).padStart(2, "0"),
+    String(value.getUTCDate()).padStart(2, "0")
+  ].join("-") + `T${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}`
 }
 
 function moduleBatchRuleProps(
@@ -65,7 +67,7 @@ function moduleBatchRuleProps(
     batches: batches.map((batch) => ({
       batchKey: batch.batchKey,
       batchLabel: batch.batchLabel || "",
-      batchStartAt: batch.batchStartAt ? batch.batchStartAt.toISOString() : "",
+      batchStartAt: dateInput(batch.batchStartAt),
       status: batch.status || ""
     })),
     schedules: schedules.map((schedule) => ({
@@ -156,7 +158,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
   const selectedModuleCourseSlug = param(params, "moduleCourse") || ""
   const selectedModuleTableCourseSlug = param(params, "moduleTableCourse") || ""
   const selectedModuleTableBatchKey = param(params, "moduleTableBatch") || ""
-  const { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots } = await listVideoLibrary()
+  const { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots, liveSessions } = await listVideoLibrary()
 
   const selectedModule = selectedModuleId > BigInt(0)
     ? modules.find((module) => module.id === selectedModuleId && (!selectedModuleCourseSlug || module.courseSlug === selectedModuleCourseSlug)) || modules.find((module) => module.id === selectedModuleId) || null
@@ -251,7 +253,9 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
         <div className="mt-4 max-h-[34rem] overflow-auto">
           {activeCourse ? (
             <div className="space-y-4">
-              {selectedBatches.length ? selectedBatches.map((batch) => (
+              {selectedBatches.length ? selectedBatches.map((batch) => {
+                const batchLiveSessions = liveSessions.filter((session) => session.courseSlug === activeCourse.courseSlug && session.batchKey === batch.batchKey)
+                return (
                 <div key={batch.batchKey} className="rounded-xl border border-border bg-card p-4">
                   <form action={saveCourseBatchAction} className="grid gap-3 md:grid-cols-2">
                     <input type="hidden" name="courseSlug" value={activeCourse.courseSlug} />
@@ -261,31 +265,101 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                     <PremiumPicker name="status" defaultValue={batch.status || "closed"} options={batchStatusOptions} />
                     <input name="batchStartAt" type="datetime-local" defaultValue={dateInput(batch.batchStartAt)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="paystackReferencePrefix" defaultValue={batch.paystackReferencePrefix || ""} placeholder="Paystack prefix" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                    <input name="paystackAmountMinor" defaultValue={minorInput(batch.paystackAmountMinor)} placeholder="Paystack minor" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                    <input name="paypalAmountMinor" defaultValue={minorInput(batch.paypalAmountMinor)} placeholder="GBP minor" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="brevoListId" defaultValue={batch.brevoListId || ""} placeholder="Brevo list" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                    <label className="flex items-center gap-2 text-sm font-bold">
-                      <input name="activate" type="checkbox" defaultChecked={Number(batch.isActive || 0) === 1} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
-                      Active batch
-                    </label>
+                    <div className="flex items-center gap-2">
+                      {activePill(batch.isActive, "Active batch", "Inactive batch")}
+                    </div>
                     <div className="flex gap-2">
                       <button className="btn-secondary h-10 flex-1 justify-center text-xs" type="submit" data-toast="Saving batch">Save</button>
                     </div>
                   </form>
                   <div className="mt-3 flex gap-2">
-                    <form action={activateCourseBatchAction}>
-                      <input type="hidden" name="courseSlug" value={activeCourse.courseSlug} />
-                      <input type="hidden" name="batchKey" value={batch.batchKey} />
-                      <button className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-black text-muted-foreground hover:border-primary/40 hover:text-primary" type="submit" data-toast="Setting active batch">Set Active</button>
-                    </form>
+                    {Number(batch.isActive || 0) === 1 ? null : (
+                      <form action={activateCourseBatchAction}>
+                        <input type="hidden" name="courseSlug" value={activeCourse.courseSlug} />
+                        <input type="hidden" name="batchKey" value={batch.batchKey} />
+                        <button className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-black text-muted-foreground hover:border-primary/40 hover:text-primary" type="submit" data-toast="Setting active batch">Set Active</button>
+                      </form>
+                    )}
                     <form action={deleteCourseBatchAction}>
                       <input type="hidden" name="courseSlug" value={activeCourse.courseSlug} />
                       <input type="hidden" name="batchKey" value={batch.batchKey} />
                       <button className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-black text-destructive hover:bg-destructive hover:text-destructive-foreground" type="submit" data-toast="Deleting batch">Delete</button>
                     </form>
                   </div>
+                  <div className="mt-5 rounded-xl border border-border bg-background p-4">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Live Classes & Zoom</h4>
+                        <p className="mt-1 text-xs text-muted-foreground">Configure any number of live classes for this batch. Dates can be relative to the batch start.</p>
+                      </div>
+                      <span className="text-xs font-bold text-muted-foreground">{batchLiveSessions.length} configured</span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {batchLiveSessions.map((session) => (
+                        <div key={session.sessionUuid} className="rounded-xl border border-border bg-card p-3">
+                          <form action={saveCourseLiveSessionAction} className="grid gap-3 lg:grid-cols-[1.2fr_0.5fr_0.6fr_0.8fr_0.7fr]">
+                            <input type="hidden" name="sessionUuid" value={session.sessionUuid} />
+                            <input type="hidden" name="courseSlug" value={activeCourse.courseSlug} />
+                            <input type="hidden" name="batchKey" value={batch.batchKey} />
+                            <input name="sessionTitle" defaultValue={session.sessionTitle} placeholder="Day 1 Live Class" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <input name="dayOffset" type="number" min="0" defaultValue={Number(session.dayOffset || 0)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <input name="timeOfDay" type="time" defaultValue={session.timeOfDay || "19:00"} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <input name="startsAt" type="datetime-local" defaultValue={dateInput(session.startsAt)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <input name="reminderMinutesBefore" type="number" min="0" defaultValue={Number(session.reminderMinutesBefore || 720)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <input name="zoomJoinUrl" defaultValue={session.zoomJoinUrl || ""} placeholder="Zoom join URL" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary lg:col-span-3" />
+                            <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                              <input name="isVisible" type="checkbox" defaultChecked={Number(session.isVisible || 0) === 1} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                              Show on student cards
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                              <input name="reminderEnabled" type="checkbox" defaultChecked={Number(session.reminderEnabled || 0) === 1} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                              Brevo reminder
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                              <input name="useSharedZoom" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                              Reuse batch Zoom
+                            </label>
+                            <button className="btn-secondary justify-center text-xs lg:col-span-2" type="submit" data-toast="Saving live session">Save Live Session</button>
+                          </form>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-muted-foreground">
+                              {session.startsAt ? formatDateTimeWAT(session.startsAt) : "No date"} · {session.reminderSentAt ? `Reminder sent ${formatDate(session.reminderSentAt)}` : "Reminder pending"}
+                            </p>
+                            <form action={deleteCourseLiveSessionAction}>
+                              <input type="hidden" name="sessionUuid" value={session.sessionUuid} />
+                              <button className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-black text-destructive hover:bg-destructive hover:text-destructive-foreground" type="submit" data-toast="Deleting live session">Delete</button>
+                            </form>
+                          </div>
+                        </div>
+                      ))}
+                      <form action={saveCourseLiveSessionAction} className="grid gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-3 lg:grid-cols-[1.2fr_0.5fr_0.6fr_0.8fr_0.7fr]">
+                        <input type="hidden" name="courseSlug" value={activeCourse.courseSlug} />
+                        <input type="hidden" name="batchKey" value={batch.batchKey} />
+                        <input name="sessionTitle" placeholder="New live class title" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                        <input name="dayOffset" type="number" min="0" placeholder="Day offset" defaultValue="0" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                        <input name="timeOfDay" type="time" defaultValue="19:00" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                        <input name="startsAt" type="datetime-local" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                        <input name="reminderMinutesBefore" type="number" min="0" defaultValue="720" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                        <input name="zoomJoinUrl" placeholder="Optional Zoom URL; blank creates/reuses batch Zoom" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary lg:col-span-3" />
+                        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                          <input name="isVisible" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                          Show
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                          <input name="reminderEnabled" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                          Brevo
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                          <input name="useSharedZoom" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                          Shared Zoom
+                        </label>
+                        <button className="btn-primary justify-center text-xs lg:col-span-2" type="submit" data-toast="Creating live session">Add Live Session</button>
+                      </form>
+                    </div>
+                  </div>
                 </div>
-              )) : (
+              )}) : (
                 <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm font-semibold text-muted-foreground">No batches created for this course.</p>
               )}
               <form action={saveCourseBatchAction} className="grid gap-3 rounded-xl border border-border bg-muted/20 p-4 md:grid-cols-2">
@@ -293,7 +367,6 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                 <input name="batchLabel" placeholder="New batch label" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                 <input name="batchKey" placeholder="batch-key" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                 <input name="paystackReferencePrefix" placeholder="Prefix" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                <input name="paystackAmountMinor" placeholder="Paystack minor" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                 <button className="btn-primary justify-center md:col-span-2" type="submit" data-toast="Creating batch">Create Batch</button>
               </form>
             </div>
@@ -306,7 +379,8 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
   )
 
   return (
-    <main className="space-y-8 pb-12">
+    <main data-video-library-page className="space-y-8 pb-12">
+      <VideoLibraryScrollRestorer />
       <div className="flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="eyebrow text-primary">Content Engine</p>

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { randomUUID } from "crypto"
 
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
+import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -72,6 +73,7 @@ export interface StudentCourseAccessRow {
   courseSlug: string
   batchKey: string | null
   batchLabel: string | null
+  batchStartAt: Date | null
   currency: string | null
   amountMinor: number
   status: string
@@ -84,6 +86,13 @@ export interface StudentCourseItem extends StudentCourseAccessRow {
   paidAt: Date | null
   submittedAt: Date | null
   accessExpiresAt: Date | null
+  courseStartAt: Date | null
+  firstRecordedLessonAvailableAt: Date | null
+  liveSessions: StudentLiveSession[]
+}
+
+export interface StudentOverviewPaymentRecord extends StudentCourseItem {
+  isGroupPurchase: boolean
 }
 
 export interface FamilySeatRow {
@@ -123,6 +132,51 @@ export interface FamilyDashboardData {
   } | null
   seats: FamilySeatRow[]
   children: FamilyChildRow[]
+}
+
+async function courseItemsFromAccessRows<T extends StudentCourseAccessRow>(rows: T[]): Promise<Array<T & StudentCourseItem>> {
+  const map = new Map<string, T & StudentCourseItem>()
+
+  for (const row of rows) {
+    if (!row.courseSlug) continue
+    if (!isPaidStatus(row.status) && !isPendingStatus(row.status)) continue
+
+    const key = `${row.courseSlug}::${row.batchKey || ""}::${row.source}::${row.uuid}`
+    const paidAt = isPaidStatus(row.status) ? row.createdAt : null
+    const submittedAt = isPendingStatus(row.status) ? row.createdAt : null
+    const item: T & StudentCourseItem = {
+      ...row,
+      courseName: courseName(row.courseSlug),
+      isActive: isPaidStatus(row.status),
+      paidAt,
+      submittedAt,
+      accessExpiresAt: addOneYear(paidAt),
+      courseStartAt: validDate(row.batchStartAt),
+      firstRecordedLessonAvailableAt: null,
+      liveSessions: []
+    }
+    map.set(key, item)
+  }
+
+  const items = await Promise.all(Array.from(map.values()).map(async (item) => ({
+    ...item,
+    firstRecordedLessonAvailableAt: await firstRecordedLessonAvailableAt({
+      courseSlug: item.courseSlug,
+      batchKey: item.batchKey,
+      batchStartAt: item.courseStartAt
+    })
+  })))
+  const liveSessionMap = await listStudentLiveSessionsForPairs(items.map((item) => ({
+    courseSlug: item.courseSlug,
+    batchKey: item.batchKey
+  }))).catch(() => new Map<string, StudentLiveSession[]>())
+  items.forEach((item) => {
+    item.liveSessions = liveSessionMap.get(`${item.courseSlug.toLowerCase()}::${String(item.batchKey || "").toLowerCase()}`) || []
+  })
+
+  return items.sort(
+    (left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime()
+  )
 }
 
 export interface LearningCourseOption {
@@ -312,7 +366,7 @@ export interface StudentAffiliateSummary {
   }[]
 }
 
-export async function listStudentCourseAccess(email: string): Promise<StudentCourseAccessRow[]> {
+export async function listStudentCourseAccess(email: string, accountId?: bigint | number | null): Promise<StudentCourseAccessRow[]> {
   const normalized = String(email || "").trim().toLowerCase()
   if (!normalized) return []
 
@@ -320,42 +374,138 @@ export async function listStudentCourseAccess(email: string): Promise<StudentCou
     Prisma.sql`
       SELECT
         'card_checkout' AS source,
-        COALESCE(order_uuid, CONCAT('order_', id)) AS uuid,
-        COALESCE(course_slug, '') AS courseSlug,
-        batch_key AS batchKey,
-        batch_label AS batchLabel,
-        currency,
-        COALESCE(amount_minor, final_amount_minor, 0) AS amountMinor,
-        COALESCE(status, '') AS status,
-        created_at AS createdAt
-      FROM course_orders
-      WHERE LOWER(email) = ${normalized}
+        COALESCE(o.order_uuid, CONCAT('order_', o.id)) AS uuid,
+        COALESCE(o.course_slug, '') AS courseSlug,
+        o.batch_key AS batchKey,
+        o.batch_label AS batchLabel,
+        b.batch_start_at AS batchStartAt,
+        o.currency,
+        COALESCE(o.amount_minor, o.final_amount_minor, 0) AS amountMinor,
+        COALESCE(o.status, '') AS status,
+        o.created_at AS createdAt
+      FROM course_orders o
+      LEFT JOIN course_batches b
+        ON b.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
+       AND b.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
+      WHERE LOWER(o.email) = ${normalized}
+        AND COALESCE(o.buyer_type, 'student') <> 'family'
     `
   )
   const manualRows = await prisma.$queryRaw<StudentCourseAccessRow[]>(
     Prisma.sql`
       SELECT
         'manual_payment' AS source,
-        payment_uuid AS uuid,
-        course_slug AS courseSlug,
-        batch_key AS batchKey,
-        batch_label AS batchLabel,
-        currency,
-        amount_minor AS amountMinor,
-        status,
-        created_at AS createdAt
-      FROM course_manual_payments
-      WHERE LOWER(email) = ${normalized}
+        m.payment_uuid AS uuid,
+        m.course_slug AS courseSlug,
+        m.batch_key AS batchKey,
+        m.batch_label AS batchLabel,
+        b.batch_start_at AS batchStartAt,
+        m.currency,
+        m.amount_minor AS amountMinor,
+        m.status,
+        m.created_at AS createdAt
+      FROM course_manual_payments m
+      LEFT JOIN course_batches b
+        ON b.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
+       AND b.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
+      WHERE LOWER(m.email) = ${normalized}
+        AND COALESCE(m.buyer_type, 'student') <> 'family'
     `
   )
+  const familyRows = accountId
+    ? await prisma.$queryRaw<StudentCourseAccessRow[]>(
+        Prisma.sql`
+          SELECT
+            'family_child' AS source,
+            COALESCE(e.source_uuid, CONCAT('family_child_', e.id)) AS uuid,
+            e.course_slug AS courseSlug,
+            e.batch_key AS batchKey,
+            COALESCE(e.batch_label, e.batch_key, 'Group access') AS batchLabel,
+            b.batch_start_at AS batchStartAt,
+            NULL AS currency,
+            0 AS amountMinor,
+            CASE WHEN e.status = 'active' THEN 'paid' ELSE COALESCE(e.status, '') END AS status,
+            COALESCE(e.paid_at, e.updated_at, e.created_at) AS createdAt
+          FROM family_child_enrollments e
+          JOIN family_children c ON c.id = e.child_id
+          JOIN family_accounts f ON f.id = e.family_id
+          LEFT JOIN course_batches b
+            ON b.course_slug COLLATE utf8mb4_unicode_ci = e.course_slug COLLATE utf8mb4_unicode_ci
+           AND b.batch_key COLLATE utf8mb4_unicode_ci = e.batch_key COLLATE utf8mb4_unicode_ci
+          WHERE c.account_id = ${accountId}
+            AND c.status = 'active'
+            AND f.status = 'active'
+            AND e.status = 'active'
+        `
+      ).catch(() => [])
+    : []
 
-  return [...cardRows, ...manualRows]
+  return [...cardRows, ...manualRows, ...familyRows]
     .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())
     .slice(0, 50)
     .map((row) => ({
       ...row,
       amountMinor: Number(row.amountMinor || 0)
     }))
+}
+
+export async function listStudentPaymentRecords(email: string): Promise<StudentOverviewPaymentRecord[]> {
+  const normalized = String(email || "").trim().toLowerCase()
+  if (!normalized) return []
+
+  const cardRows = await prisma.$queryRaw<Array<StudentCourseAccessRow & { isGroupPurchase: number | bigint | boolean | null }>>(
+    Prisma.sql`
+      SELECT
+        CASE WHEN COALESCE(o.buyer_type, 'student') = 'family' THEN 'group_card_checkout' ELSE 'card_checkout' END AS source,
+        COALESCE(o.order_uuid, CONCAT('order_', o.id)) AS uuid,
+        COALESCE(o.course_slug, '') AS courseSlug,
+        o.batch_key AS batchKey,
+        o.batch_label AS batchLabel,
+        b.batch_start_at AS batchStartAt,
+        o.currency,
+        COALESCE(o.amount_minor, o.final_amount_minor, 0) AS amountMinor,
+        COALESCE(o.status, '') AS status,
+        o.created_at AS createdAt,
+        CASE WHEN COALESCE(o.buyer_type, 'student') = 'family' THEN 1 ELSE 0 END AS isGroupPurchase
+      FROM course_orders o
+      LEFT JOIN course_batches b
+        ON b.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
+       AND b.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
+      WHERE LOWER(o.email) = ${normalized}
+    `
+  )
+  const manualRows = await prisma.$queryRaw<Array<StudentCourseAccessRow & { isGroupPurchase: number | bigint | boolean | null }>>(
+    Prisma.sql`
+      SELECT
+        CASE WHEN COALESCE(m.buyer_type, 'student') = 'family' THEN 'group_manual_payment' ELSE 'manual_payment' END AS source,
+        m.payment_uuid AS uuid,
+        m.course_slug AS courseSlug,
+        m.batch_key AS batchKey,
+        m.batch_label AS batchLabel,
+        b.batch_start_at AS batchStartAt,
+        m.currency,
+        m.amount_minor AS amountMinor,
+        m.status,
+        m.created_at AS createdAt,
+        CASE WHEN COALESCE(m.buyer_type, 'student') = 'family' THEN 1 ELSE 0 END AS isGroupPurchase
+      FROM course_manual_payments m
+      LEFT JOIN course_batches b
+        ON b.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
+       AND b.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
+      WHERE LOWER(m.email) = ${normalized}
+    `
+  )
+
+  const rows = [...cardRows, ...manualRows]
+    .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())
+    .slice(0, 50)
+    .map((row) => ({
+      ...row,
+      amountMinor: Number(row.amountMinor || 0),
+      isGroupPurchase: Boolean(row.isGroupPurchase)
+    }))
+
+  return courseItemsFromAccessRows(rows)
 }
 
 function isPaidStatus(status: string) {
@@ -374,8 +524,90 @@ function addOneYear(value: Date | null) {
   return date
 }
 
-export async function listStudentCourses(email: string): Promise<StudentCourseItem[]> {
-  const rows = await listStudentCourseAccess(email)
+function validDate(value: unknown): Date | null {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(String(value))
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+function addSeconds(value: Date | null, seconds: number) {
+  if (!value || !Number.isFinite(seconds)) return null
+  return new Date(value.getTime() + Math.max(0, Math.round(seconds)) * 1000)
+}
+
+async function firstRecordedLessonAvailableAt(input: {
+  courseSlug: string
+  batchKey?: string | null
+  batchStartAt?: Date | null
+}) {
+  const courseSlug = cleanText(input.courseSlug, 120).toLowerCase()
+  const batchKey = cleanText(input.batchKey, 64).toLowerCase()
+  if (!courseSlug) return null
+
+  const rows = await prisma.$queryRaw<Array<{
+    moduleId: bigint
+    dripEnabled: number | bigint | boolean | null
+    dripAt: Date | null
+    dripBatchKey: string | null
+    dripOffsetSeconds: number | bigint | null
+    hasSchedules: number | bigint | null
+  }>>(Prisma.sql`
+    SELECT m.id AS moduleId,
+      cm.drip_enabled AS dripEnabled,
+      cm.drip_at AS dripAt,
+      cm.drip_batch_key AS dripBatchKey,
+      cm.drip_offset_seconds AS dripOffsetSeconds,
+      (
+        SELECT COUNT(*)
+        FROM tochukwu_learning_module_batch_drips d
+        WHERE d.module_id = m.id
+      ) AS hasSchedules
+    FROM tochukwu_learning_course_modules cm
+    JOIN tochukwu_learning_modules m ON m.id = cm.module_id
+    JOIN tochukwu_learning_lessons l ON l.module_id = m.id AND l.is_active = 1
+    JOIN tochukwu_learning_video_assets a ON a.id = l.video_asset_id
+    WHERE cm.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
+      AND cm.is_active = 1
+      AND a.ready_to_stream = 1
+      AND a.source_deleted_at IS NULL
+      AND COALESCE(TRIM(a.video_uid), '') <> ''
+    ORDER BY cm.sort_order ASC, cm.id ASC, l.lesson_order ASC, l.id ASC
+  `).catch(() => [])
+  if (!rows.length) return null
+
+  for (const first of rows) {
+    const schedules = await prisma.$queryRaw<Array<{ accessMode: string | null; dripAt: Date | null }>>(Prisma.sql`
+      SELECT access_mode AS accessMode, drip_at AS dripAt
+      FROM tochukwu_learning_module_batch_drips
+      WHERE module_id = ${first.moduleId}
+        AND batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
+      LIMIT 1
+    `).catch(() => [])
+    const schedule = schedules[0]
+    if (schedule) {
+      if (cleanText(schedule.accessMode, 24).toLowerCase() === "immediate") return null
+      return validDate(schedule.dripAt)
+    }
+    if (Number(first.hasSchedules || 0) > 0) continue
+
+    if (Number(first.dripEnabled || 0) === 1) {
+      const targetBatch = cleanText(first.dripBatchKey, 64).toLowerCase()
+      if (targetBatch && batchKey && targetBatch === batchKey) return validDate(first.dripAt)
+      if (targetBatch && batchKey && targetBatch !== batchKey) continue
+      const offset = first.dripOffsetSeconds === null || first.dripOffsetSeconds === undefined
+        ? NaN
+        : Number(first.dripOffsetSeconds)
+      if (Number.isFinite(offset)) return addSeconds(validDate(input.batchStartAt), offset) || validDate(first.dripAt)
+      const dripAt = validDate(first.dripAt)
+      if (dripAt) return dripAt
+    }
+  }
+
+  return null
+}
+
+export async function listStudentCourses(email: string, accountId?: bigint | number | null): Promise<StudentCourseItem[]> {
+  const rows = await listStudentCourseAccess(email, accountId)
   const map = new Map<string, StudentCourseItem>()
 
   for (const row of rows) {
@@ -391,7 +623,10 @@ export async function listStudentCourses(email: string): Promise<StudentCourseIt
       isActive: isPaidStatus(row.status),
       paidAt,
       submittedAt,
-      accessExpiresAt: addOneYear(paidAt)
+      accessExpiresAt: addOneYear(paidAt),
+      courseStartAt: validDate(row.batchStartAt),
+      firstRecordedLessonAvailableAt: null,
+      liveSessions: []
     }
     const existing = map.get(key)
     if (!existing) {
@@ -407,13 +642,59 @@ export async function listStudentCourses(email: string): Promise<StudentCourseIt
     if (itemTime > existingTime) map.set(key, item)
   }
 
-  return Array.from(map.values()).sort(
+  const items = await Promise.all(Array.from(map.values()).map(async (item) => ({
+    ...item,
+    firstRecordedLessonAvailableAt: await firstRecordedLessonAvailableAt({
+      courseSlug: item.courseSlug,
+      batchKey: item.batchKey,
+      batchStartAt: item.courseStartAt
+    })
+  })))
+  const liveSessionMap = await listStudentLiveSessionsForPairs(items.map((item) => ({
+    courseSlug: item.courseSlug,
+    batchKey: item.batchKey
+  }))).catch(() => new Map<string, StudentLiveSession[]>())
+  items.forEach((item) => {
+    item.liveSessions = liveSessionMap.get(`${item.courseSlug.toLowerCase()}::${String(item.batchKey || "").toLowerCase()}`) || []
+  })
+
+  return items.sort(
     (left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime()
   )
 }
 
+export async function hasPendingManualPayment(email: string) {
+  const normalized = String(email || "").trim().toLowerCase()
+  if (!normalized) return false
+
+  const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    SELECT COUNT(*) AS total
+    FROM course_manual_payments
+    WHERE LOWER(email) = ${normalized}
+      AND status IN ('pending', 'pending_verification', 'submitted', 'recovery_required')
+  `
+
+  return Number(rows[0]?.total || 0) > 0
+}
+
+export async function hasPendingGroupManualPayment(email: string) {
+  const normalized = String(email || "").trim().toLowerCase()
+  if (!normalized) return false
+
+  const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    SELECT COUNT(*) AS total
+    FROM course_manual_payments
+    WHERE LOWER(email) = ${normalized}
+      AND COALESCE(buyer_type, 'student') = 'family'
+      AND status IN ('pending', 'pending_verification', 'submitted', 'recovery_required')
+  `
+
+  return Number(rows[0]?.total || 0) > 0
+}
+
 export async function getStudentOverview(accountId: bigint, email: string) {
-  const courses = await listStudentCourses(email)
+  const courses = await listStudentCourses(email, accountId)
+  const paymentRecords = await listStudentPaymentRecords(email)
   const family = await getFamilyDashboard(accountId).catch(() => ({ family: null, seats: [], children: [] }))
   const domains = await listStudentDomains(accountId).catch(() => [])
   const projects = await listStudentProjects(email).catch(() => [])
@@ -421,6 +702,7 @@ export async function getStudentOverview(accountId: bigint, email: string) {
 
   return {
     courses,
+    paymentRecords,
     family,
     domains,
     projects,

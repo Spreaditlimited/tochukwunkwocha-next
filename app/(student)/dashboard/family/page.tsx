@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { KeyRound, ShieldCheck, Ticket, UserRound, Users, UsersRound } from "lucide-react"
+import { Clock3, KeyRound, ShieldCheck, Ticket, UserRound, Users, UsersRound } from "lucide-react"
 
 import {
   EmptyStudentState,
@@ -10,16 +10,26 @@ import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/stude
 import { GroupEnrollmentPanel } from "@/components/student-dashboard/GroupEnrollmentPanel"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
-import { courseName, getFamilyDashboard, listActiveLearningCourseOptions, statusLabel, statusTone } from "@/lib/student-dashboard"
+import { courseName, getFamilyDashboard, hasPendingGroupManualPayment, listActiveLearningCourseOptions, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
+import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
-export default async function StudentFamilyPage() {
+export default async function StudentFamilyPage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const session = await requireStudent()
+  const params = searchParams ? await searchParams : {}
   const data = await getFamilyDashboard(session.account.id)
   const courses = await listActiveLearningCourseOptions()
+  const walkthroughVideo = await getPublicVideoSlot("group-enrollment-dashboard-walkthrough")
+  const manualPaymentPending =
+    String(params.manual_payment || "") === "pending" &&
+    (await hasPendingGroupManualPayment(session.account.email))
   const batchSwitchOptions = await getBatchSwitchOptions(session.account)
   const batchSwitchEnrollments: BatchSwitchEnrollment[] = batchSwitchOptions.map((item) => ({
     sourceType: item.sourceType,
@@ -50,6 +60,53 @@ export default async function StudentFamilyPage() {
       title="Group Workspace"
       eyebrow="Group Management"
     >
+      {manualPaymentPending ? (
+        <StudentDashboardCard className="mb-8 border-amber-400/40 bg-amber-50 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
+          <div className="flex items-start gap-3">
+            <Clock3 className="mt-1 h-5 w-5 shrink-0" />
+            <div>
+              <h2 className="font-heading text-lg font-black">Group payment submitted</h2>
+              <p className="mt-2 text-sm leading-relaxed">
+                Your group seat purchase is awaiting payment verification. After approval, the seats will appear here so you can assign learners.
+              </p>
+            </div>
+          </div>
+        </StudentDashboardCard>
+      ) : null}
+
+      <StudentDashboardCard className="mb-8 overflow-hidden p-0">
+        <div className="grid gap-0 lg:grid-cols-[0.95fr_1.35fr]">
+          <div className="flex flex-col justify-center bg-muted/20 p-6 sm:p-8">
+            <p className="eyebrow text-primary">Walkthrough</p>
+            <h2 className="mt-2 font-heading text-xl font-black tracking-tight text-foreground sm:text-2xl">
+              How to Use Group Enrollment
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              Watch this short guide before assigning learners, sharing access codes, or changing batches for your group.
+            </p>
+          </div>
+          <div className="bg-brand-ink p-4 sm:p-5">
+            {walkthroughVideo ? (
+              <div className="aspect-video overflow-hidden rounded-xl border border-white/10 bg-black shadow-sm">
+                <iframe
+                  src={walkthroughVideo.embedUrl}
+                  title={walkthroughVideo.headline || walkthroughVideo.slotLabel}
+                  className="h-full w-full"
+                  allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <div className="flex aspect-video items-center justify-center rounded-xl border border-white/10 bg-white/5 p-6 text-center">
+                <p className="max-w-sm text-sm font-semibold leading-relaxed text-slate-300">
+                  The walkthrough video will appear here after it is assigned in the internal Video Library.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </StudentDashboardCard>
+
       <GroupEnrollmentPanel seats={data.seats} courses={courses} />
 
       {/* 1. High-Level Metrics */}

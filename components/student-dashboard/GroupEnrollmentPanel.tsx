@@ -103,7 +103,9 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
   const selectedSeat = seats.find((seat) => seat.courseSlug === courseSlug && (seat.batchKey || "") === batchKey)
   const selectedBatchLabel = batchOptions.find((option) => option.value === batchKey)?.label?.split(" · ")[0] || selectedSeat?.batchLabel || ""
   const availableSeats = selectedSeat?.seatsAvailable || 0
+  const purchasedSeats = selectedSeat?.seatsPurchased || 0
   const hasPurchasedSeatsForSelection = Boolean(selectedSeat && availableSeats > 0)
+  const hasUsedUpPurchasedSeatsForSelection = Boolean(selectedSeat && purchasedSeats > 0 && availableSeats <= 0)
   const learnerCount = learners.length
   const willUseExistingSeats = availableSeats >= learnerCount
   const isImmediateAccess = selectedCourse?.enrollmentMode === "immediate"
@@ -247,11 +249,15 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
               <p className="font-bold">
                 {hasPurchasedSeatsForSelection
                   ? `${availableSeats} purchased seat${availableSeats === 1 ? "" : "s"} available`
-                  : "No purchased seats yet"}
+                  : hasUsedUpPurchasedSeatsForSelection
+                    ? "All purchased seats for this batch have been assigned"
+                    : "No purchased seats yet"}
               </p>
               <p className="mt-1 text-sm font-medium opacity-90">
                 {willUseExistingSeats
                   ? "This assignment will use your existing purchased seats. No additional payment is required."
+                  : hasUsedUpPurchasedSeatsForSelection
+                    ? "You can continue to checkout to buy additional group seats for these learners."
                   : hasPurchasedSeatsForSelection
                     ? `You are adding ${learnerCount} learner${learnerCount === 1 ? "" : "s"}, which is more than your available seat balance. Continuing will open checkout for the selected learners.`
                     : "Enter the learner details below. Continuing will open checkout so you can buy the required group seats."}

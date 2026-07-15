@@ -5,6 +5,7 @@ import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/
 import { prisma } from "@/lib/prisma"
 import { plainTextToRichNotes } from "@/lib/rich-notes"
 import { listStudentCourses } from "@/lib/student-dashboard"
+import { watWallDateTimeMs } from "@/lib/utils"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
 
@@ -166,18 +167,14 @@ function normalizeBatchKey(value: unknown) {
 }
 
 function parseDateMs(value: unknown) {
-  if (value instanceof Date) {
-    const ms = value.getTime()
-    return Number.isFinite(ms) ? ms : NaN
-  }
+  if (value instanceof Date) return watWallDateTimeMs(value)
   const raw = String(value || "").trim()
   if (!raw) return NaN
-  const ms = new Date(raw.replace(" ", "T")).getTime()
-  return Number.isFinite(ms) ? ms : NaN
+  return watWallDateTimeMs(raw.replace(" ", "T"))
 }
 
 async function getLearnerBatchContext(accountId: bigint, email: string, courseSlug: string) {
-  const courses = await listStudentCourses(email).catch(() => [])
+  const courses = await listStudentCourses(email, accountId).catch(() => [])
   const activeCourse = courses.find((course) => course.courseSlug === courseSlug && course.isActive && normalizeBatchKey(course.batchKey))
   const familyRows = await prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
     SELECT e.batch_key AS batchKey
@@ -325,7 +322,7 @@ export async function ensureLearningProgressTable() {
 }
 
 export async function studentHasCourseAccess(accountId: bigint, email: string, courseSlug: string) {
-  const courses = await listStudentCourses(email)
+  const courses = await listStudentCourses(email, accountId)
   if (courses.some((course) => course.courseSlug === courseSlug && course.isActive)) return true
 
   const overrides = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`

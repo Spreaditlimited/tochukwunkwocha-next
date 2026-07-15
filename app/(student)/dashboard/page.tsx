@@ -30,7 +30,7 @@ export default async function StudentDashboardPage() {
   const overview = await getStudentOverview(session.account.id, session.account.email)
   
   const paidCourses = overview.courses.filter((item) => item.isActive)
-  const payments = overview.courses
+  const payments = overview.paymentRecords
   const availableSeats = overview.family.seats.reduce((sum, seat) => sum + seat.seatsAvailable, 0)
 
   const stats = [

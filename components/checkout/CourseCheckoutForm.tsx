@@ -441,7 +441,8 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
         if (!result) throw lastError instanceof Error ? lastError : new Error("Could not submit manual payment.")
         setStatusMessage(`Manual payment submitted for review. Reference: ${result.paymentUuid}`)
-        window.location.href = `/dashboard/courses?manual_payment=pending&payment=${encodeURIComponent(result.paymentUuid)}`
+        const pendingPath = buyerType === "family" ? "/dashboard/family" : "/dashboard/courses"
+        window.location.href = `${pendingPath}?manual_payment=pending&payment=${encodeURIComponent(result.paymentUuid)}`
         return
       }
 

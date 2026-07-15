@@ -51,3 +51,59 @@ export function formatDate(value: Date | string | null | undefined) {
     year: "numeric"
   }).format(date)
 }
+
+export function formatDateTimeWAT(value: Date | string | null | undefined) {
+  if (!value) return ""
+  const raw = value instanceof Date
+    ? [
+        value.getUTCFullYear(),
+        String(value.getUTCMonth() + 1).padStart(2, "0"),
+        String(value.getUTCDate()).padStart(2, "0")
+      ].join("-") + `T${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}:00`
+    : String(value || "").trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/)
+  const date = match
+    ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5])))
+    : new Date(raw)
+  if (!Number.isFinite(date.getTime())) return ""
+  return `${new Intl.DateTimeFormat("en-GB", {
+    timeZone: match ? "UTC" : "Africa/Lagos",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(date)} WAT`
+}
+
+export function watWallDateTimeMs(value: Date | string | null | undefined) {
+  if (!value) return NaN
+  if (value instanceof Date) {
+    const ms = Date.UTC(
+      value.getUTCFullYear(),
+      value.getUTCMonth(),
+      value.getUTCDate(),
+      value.getUTCHours() - 1,
+      value.getUTCMinutes(),
+      value.getUTCSeconds()
+    )
+    return Number.isFinite(ms) ? ms : NaN
+  }
+  const raw = String(value || "").trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (match) {
+    const ms = Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]) - 1,
+      Number(match[5]),
+      Number(match[6] || "0")
+    )
+    return Number.isFinite(ms) ? ms : NaN
+  }
+  const ms = new Date(raw).getTime()
+  return Number.isFinite(ms) ? ms : NaN
+}

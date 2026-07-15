@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { requireAdmin } from "@/lib/auth"
+import { deleteCourseLiveSession, saveCourseLiveSession } from "@/lib/course-live-sessions"
 import { setInternalToast } from "@/lib/internal-toast"
 import {
   activateCourseBatch,
@@ -217,14 +218,12 @@ export async function saveCourseBatchAction(formData: FormData) {
     batchLabel: String(formData.get("batchLabel") || ""),
     status: String(formData.get("status") || ""),
     paystackReferencePrefix: String(formData.get("paystackReferencePrefix") || ""),
-    paystackAmountMinor: String(formData.get("paystackAmountMinor") || ""),
-    paypalAmountMinor: String(formData.get("paypalAmountMinor") || ""),
     brevoListId: String(formData.get("brevoListId") || ""),
     seatLimit: String(formData.get("seatLimit") || ""),
     batchStartAt: String(formData.get("batchStartAt") || ""),
     activate: formData.get("activate") === "on"
   })
-  await setInternalToast({ title: "Batch saved", message: "The batch name, start date, payment details, and active status are saved." })
+  await setInternalToast({ title: "Batch saved", message: "The batch name, start date, Brevo list, and active status are saved." })
   revalidatePath(PATH)
 }
 
@@ -239,6 +238,33 @@ export async function deleteCourseBatchAction(formData: FormData) {
   await requireAdmin()
   await deleteCourseBatch(String(formData.get("courseSlug") || ""), String(formData.get("batchKey") || ""))
   await setInternalToast({ title: "Batch deleted", message: "That batch has been removed because it was not active or referenced by module access rules." })
+  revalidatePath(PATH)
+}
+
+export async function saveCourseLiveSessionAction(formData: FormData) {
+  await requireAdmin()
+  await saveCourseLiveSession({
+    sessionUuid: String(formData.get("sessionUuid") || ""),
+    courseSlug: String(formData.get("courseSlug") || ""),
+    batchKey: String(formData.get("batchKey") || ""),
+    sessionTitle: String(formData.get("sessionTitle") || ""),
+    dayOffset: String(formData.get("dayOffset") || "0"),
+    timeOfDay: String(formData.get("timeOfDay") || "19:00"),
+    startsAt: String(formData.get("startsAt") || ""),
+    zoomJoinUrl: String(formData.get("zoomJoinUrl") || ""),
+    reminderMinutesBefore: String(formData.get("reminderMinutesBefore") || "720"),
+    isVisible: formData.get("isVisible") === "on",
+    reminderEnabled: formData.get("reminderEnabled") === "on",
+    useSharedZoom: formData.get("useSharedZoom") === "on"
+  })
+  await setInternalToast({ title: "Live session saved", message: "The Zoom link and reminder settings are now attached to this batch." })
+  revalidatePath(PATH)
+}
+
+export async function deleteCourseLiveSessionAction(formData: FormData) {
+  await requireAdmin()
+  await deleteCourseLiveSession(String(formData.get("sessionUuid") || ""))
+  await setInternalToast({ title: "Live session deleted", message: "The live class entry has been removed from this batch." })
   revalidatePath(PATH)
 }
 

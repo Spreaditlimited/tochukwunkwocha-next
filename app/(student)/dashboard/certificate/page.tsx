@@ -150,7 +150,7 @@ export default async function StudentCertificatesPage({
 
   const session = await requireStudent()
   const certificates = await listStudentCertificates(session.account.id)
-  const courses = await listStudentCourses(session.account.email)
+  const courses = await listStudentCourses(session.account.email, session.account.id)
   const [projectLinks, canAddProjectLinks] = await Promise.all([
     listStudentProjectLinks(session.account.id),
     hasVerifiedStudentProjectProfile(session.account.id)

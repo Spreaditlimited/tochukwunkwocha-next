@@ -5,12 +5,14 @@ import { applyAdminSettingsToProcessEnv, upsertAdminSettings } from "@/lib/admin
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { sanitizeRichNotes } from "@/lib/rich-notes"
+import { ensureCourseLiveSessionTables, listCourseLiveSessions } from "@/lib/course-live-sessions"
 
 export const PUBLIC_VIDEO_SLOTS = [
   { key: "home-introduction", label: "Home introduction", page: "Home" },
   { key: "prompt-to-profit-basic-intro", label: "Prompt to Profit Basic intro", page: "Prompt to Profit Basic" },
   { key: "prompt-to-profit-advanced-intro", label: "Prompt to Profit Advanced intro", page: "Prompt to Profit Advanced" },
-  { key: "about-academy-story", label: "About academy story", page: "About Us" }
+  { key: "about-academy-story", label: "About academy story", page: "About Us" },
+  { key: "group-enrollment-dashboard-walkthrough", label: "Group Enrollment dashboard walkthrough", page: "Student Dashboard" }
 ] as const
 
 export type PublicVideoSlotKey = typeof PUBLIC_VIDEO_SLOTS[number]["key"]
@@ -47,7 +49,17 @@ function toMinorUnit(value: unknown) {
 function toDate(value: unknown) {
   const raw = clean(value, 80)
   if (!raw) return null
-  const date = new Date(raw)
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  const date = match
+    ? new Date(Date.UTC(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        Number(match[4]),
+        Number(match[5]),
+        Number(match[6] || "0")
+      ))
+    : new Date(raw)
   return Number.isFinite(date.getTime()) ? date : null
 }
 
@@ -315,7 +327,8 @@ export async function ensureVideoLibraryTables() {
 
 export async function listVideoLibrary() {
   await ensureVideoLibraryTables()
-  const [courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots] = await Promise.all([
+  await ensureCourseLiveSessionTables()
+  const [courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots, liveSessions] = await Promise.all([
     prisma.$queryRaw<Array<{
       id: bigint
       courseSlug: string
@@ -501,11 +514,13 @@ export async function listVideoLibrary() {
         WHEN 'prompt-to-profit-basic-intro' THEN 2
         WHEN 'prompt-to-profit-advanced-intro' THEN 3
         WHEN 'about-academy-story' THEN 4
+        WHEN 'group-enrollment-dashboard-walkthrough' THEN 5
         ELSE 99
       END, s.slot_label ASC
-    `.catch(() => [])
+    `.catch(() => []),
+    listCourseLiveSessions({})
   ])
-  return { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots }
+  return { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots, liveSessions }
 }
 
 export async function savePublicVideoSlot(input: {
@@ -643,10 +658,10 @@ export async function saveCourseBatch(input: {
   const originalBatchKey = normalizeBatchKey(input.originalBatchKey)
   const batchLabel = clean(input.batchLabel, 120)
   const batchKey = normalizeBatchKey(input.batchKey || batchLabel)
-  const paystackAmountMinor = toMinorUnit(input.paystackAmountMinor)
-  const paypalAmountMinor = toMinorUnit(input.paypalAmountMinor) || 2400
+  const legacyAmounts = await courseLegacyBatchAmounts(courseSlug)
+  const paystackAmountMinor = toMinorUnit(input.paystackAmountMinor) ?? legacyAmounts.paystackAmountMinor
+  const paypalAmountMinor = toMinorUnit(input.paypalAmountMinor) ?? legacyAmounts.paypalAmountMinor
   if (!courseSlug || !batchLabel || !batchKey) throw new Error("Course, batch label, and batch key are required.")
-  if (!paystackAmountMinor || paystackAmountMinor <= 0) throw new Error("Valid Paystack amount in minor units is required.")
   const now = new Date()
   const status = clean(input.status, 32).toLowerCase() === "open" ? "open" : "closed"
   const seatLimit = toInt(input.seatLimit, 0) > 0 ? toInt(input.seatLimit, 0) : null
@@ -802,6 +817,19 @@ async function listCourseBatchKeys(courseSlug: string) {
     WHERE course_slug = ${courseSlug}
   `.catch(() => [])
   return rows.map((row) => normalizeBatchKey(row.batchKey)).filter(Boolean)
+}
+
+async function courseLegacyBatchAmounts(courseSlug: string) {
+  const rows = await prisma.$queryRaw<Array<{ priceNgnMinor: number | bigint | null; priceGbpMinor: number | bigint | null }>>`
+    SELECT price_ngn_minor AS priceNgnMinor, price_gbp_minor AS priceGbpMinor
+    FROM tochukwu_learning_courses
+    WHERE course_slug = ${courseSlug}
+    LIMIT 1
+  `.catch(() => [])
+  return {
+    paystackAmountMinor: Math.max(0, Number(rows[0]?.priceNgnMinor || 0)),
+    paypalAmountMinor: Math.max(0, Number(rows[0]?.priceGbpMinor || 0))
+  }
 }
 
 async function resolveCourseDripAnchor(courseSlug: string) {

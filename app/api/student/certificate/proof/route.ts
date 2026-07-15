@@ -31,7 +31,7 @@ function normalizeUrl(value: unknown) {
   }
 }
 
-async function hasIndividualAccess(email: string, courseSlug: string) {
+async function hasCourseAccess(accountId: bigint, email: string, courseSlug: string) {
   const rows = await prisma.$queryRaw<{ id: bigint }[]>`
     SELECT id
     FROM course_orders
@@ -53,6 +53,20 @@ async function hasIndividualAccess(email: string, courseSlug: string) {
     LIMIT 1
   `
   if (manualRows.length) return true
+
+  const familyRows = await prisma.$queryRaw<{ id: bigint }[]>`
+    SELECT e.id
+    FROM family_child_enrollments e
+    JOIN family_children c ON c.id = e.child_id
+    JOIN family_accounts f ON f.id = e.family_id
+    WHERE c.account_id = ${accountId}
+      AND c.status = 'active'
+      AND f.status = 'active'
+      AND e.status = 'active'
+      AND e.course_slug = ${courseSlug}
+    LIMIT 1
+  `.catch(() => [])
+  if (familyRows.length) return true
 
   const overrideRows = await prisma.$queryRaw<{ id: bigint }[]>`
     SELECT id
@@ -122,8 +136,8 @@ export async function POST(request: Request) {
     if (!session.account.certificateNameConfirmedAt) {
       return NextResponse.json({ ok: false, error: "Confirm your profile name before submitting certificate proof." }, { status: 400 })
     }
-    if (!(await hasIndividualAccess(email, courseSlug))) {
-      return NextResponse.json({ ok: false, error: "You do not have individual access to this course." }, { status: 403 })
+    if (!(await hasCourseAccess(session.account.id, email, courseSlug))) {
+      return NextResponse.json({ ok: false, error: "You do not have active access to this course." }, { status: 403 })
     }
 
     const features = await courseFeatures(courseSlug)

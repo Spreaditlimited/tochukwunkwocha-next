@@ -231,10 +231,12 @@ export async function sendStudentPendingManualPaymentEmail(input: {
   fullName?: string | null
   courseSlug?: string | null
   resetToken?: string | null
+  dashboardPath?: string | null
 }) {
   const email = normalizeEmail(input.email)
   if (!email) return { ok: false, skipped: true }
-  const dashboardUrl = `${siteBaseUrl()}/dashboard/courses?manual_payment=pending`
+  const dashboardPath = clean(input.dashboardPath || "/dashboard/courses?manual_payment=pending", 180)
+  const dashboardUrl = `${siteBaseUrl()}${dashboardPath.startsWith("/") ? dashboardPath : "/dashboard/courses?manual_payment=pending"}`
   const setupUrl = input.resetToken
     ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`
     : dashboardUrl

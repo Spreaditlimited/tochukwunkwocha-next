@@ -7,7 +7,9 @@ import {
 } from "@/components/student-dashboard/StudentDashboardShell"
 import { CoursePlayer } from "@/components/student-dashboard/player/CoursePlayer"
 import { getLearningCourseForStudent } from "@/lib/learning-player"
+import { listStudentCourses } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
+import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
@@ -20,8 +22,33 @@ export default async function StudentCoursePlayerPage({
   const params = searchParams ? await searchParams : {}
   const courseSlug = String(params.course || "").trim().toLowerCase()
   const lessonId = Number(params.lesson || 0)
+  const enrolledCourses = courseSlug
+    ? await listStudentCourses(session.account.email, session.account.id)
+    : []
+  const activeEnrollments = enrolledCourses.filter((course) => course.courseSlug === courseSlug && course.isActive)
+  const lockedEnrollment = activeEnrollments
+    .filter((course) => {
+      if (!course.courseStartAt) return false
+      const startMs = watWallDateTimeMs(course.courseStartAt)
+      return Number.isFinite(startMs) && startMs > Date.now()
+    })
+    .sort((left, right) => {
+      const leftTime = watWallDateTimeMs(left.courseStartAt)
+      const rightTime = watWallDateTimeMs(right.courseStartAt)
+      return leftTime - rightTime
+    })[0] || null
+  const hasStartedActiveEnrollment = activeEnrollments.some((course) => {
+    if (!course.courseStartAt) return true
+    const startMs = watWallDateTimeMs(course.courseStartAt)
+    return Number.isFinite(startMs) && startMs <= Date.now()
+  })
+  const shouldLockPlayer = Boolean(courseSlug && lockedEnrollment && !hasStartedActiveEnrollment)
+  const lockedStartLabel = lockedEnrollment?.courseStartAt ? formatDateTimeWAT(lockedEnrollment.courseStartAt) : ""
+  const lockedFirstLessonLabel = lockedEnrollment?.firstRecordedLessonAvailableAt
+    ? formatDateTimeWAT(lockedEnrollment.firstRecordedLessonAvailableAt)
+    : ""
 
-  const payload = courseSlug
+  const payload = courseSlug && !shouldLockPlayer
     ? await getLearningCourseForStudent({
         accountId: session.account.id,
         email: session.account.email,
@@ -66,8 +93,14 @@ export default async function StudentCoursePlayerPage({
           <div className="mt-4">
             <EmptyStudentState
               icon="lock"
-              title={courseSlug ? "Course access not found" : "Choose a course"}
-              description={payload && !payload.ok ? payload.error : "Open a course from your courses page to launch the interactive player."}
+              title={shouldLockPlayer ? "Course starts soon" : courseSlug ? "Course access not found" : "Choose a course"}
+              description={
+                shouldLockPlayer
+                  ? `This button unlocks on ${lockedStartLabel}.${lockedFirstLessonLabel ? ` Your first recorded lesson will become available in the course player on ${lockedFirstLessonLabel}.` : ""}`
+                  : payload && !payload.ok
+                    ? payload.error
+                    : "Open a course from your courses page to launch the interactive player."
+              }
               action={
                 <Link href="/dashboard/courses" className="btn-primary">
                   Return to Courses
