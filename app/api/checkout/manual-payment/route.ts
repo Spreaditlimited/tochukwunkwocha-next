@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 
+import { sendStudentPendingManualPaymentEmail } from "@/lib/enrollment-notifications"
 import {
   checkoutContext,
   createManualPayment,
+  findOrCreateStudentAccount,
   manualTransferAllowedForCountry,
   normalizeCourse,
   normalizeEmail,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
+import { createStudentPasswordResetToken, createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
 
 function trustedUploadedProof(proofUrl: string, proofPublicId: string) {
   const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim()
@@ -45,6 +48,32 @@ async function proofFallbackWithinRateLimit(email: string) {
   return Number(rows[0]?.total || 0) < 3
 }
 
+async function openPendingStudentSession(input: {
+  fullName: string
+  email: string
+  phone: string
+  courseSlug: string
+}) {
+  const existingAccount = await prisma.studentAccount.findUnique({ where: { email: input.email } })
+  const account = existingAccount || await findOrCreateStudentAccount({
+    fullName: input.fullName,
+    email: input.email,
+    phone: input.phone
+  })
+  const reset = existingAccount ? null : await createStudentPasswordResetToken(input.email, { neverExpires: true }).catch(() => null)
+  if (!existingAccount) {
+    await sendStudentPendingManualPaymentEmail({
+      email: input.email,
+      fullName: input.fullName,
+      courseSlug: input.courseSlug,
+      resetToken: reset?.token || null
+    }).catch(() => null)
+  }
+  const session = await createStudentSessionForAccount(account)
+  await setStudentSessionCookie(session.token)
+  return { accountCreated: !existingAccount, resetTokenCreated: Boolean(reset?.token) }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -66,7 +95,8 @@ export async function POST(request: Request) {
 
     const existingPaymentUuid = await existingPaymentForProof(proofPublicId)
     if (existingPaymentUuid) {
-      return NextResponse.json({ ok: true, paymentUuid: existingPaymentUuid, alreadySubmitted: true })
+      const pendingSession = await openPendingStudentSession({ fullName: firstName, email, phone, courseSlug })
+      return NextResponse.json({ ok: true, paymentUuid: existingPaymentUuid, alreadySubmitted: true, pendingReview: true, ...pendingSession })
     }
 
     const recaptcha = await verifyRecaptchaToken({
@@ -133,7 +163,12 @@ export async function POST(request: Request) {
       proofPublicId,
       batch: result.batch,
       buyerType: result.buyerType,
-      seatCount: result.seatCount
+      seatCount: result.seatCount,
+      fbp: String(body.fbp || ""),
+      fbc: String(body.fbc || ""),
+      fbclid: String(body.fbclid || ""),
+      clientIp: clientIpFromRequest(request),
+      userAgent: request.headers.get("user-agent") || ""
     })
     if (usedProofFallback) {
       await prisma.$executeRaw`
@@ -161,8 +196,9 @@ export async function POST(request: Request) {
       source: "manual_enrollment",
       optedIn: body.whatsappOptIn === true
     })
+    const pendingSession = await openPendingStudentSession({ fullName: firstName, email, phone, courseSlug })
 
-    return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing, proofFallback: usedProofFallback })
+    return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing, proofFallback: usedProofFallback, pendingReview: true, ...pendingSession })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not submit manual payment" }, { status: 500 })
   }

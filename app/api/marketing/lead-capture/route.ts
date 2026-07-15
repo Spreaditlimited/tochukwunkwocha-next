@@ -21,7 +21,11 @@ export async function POST(request: Request) {
     if (!recaptcha.ok) {
       return NextResponse.json({ ok: false, error: "Captcha verification failed. Please try again." }, { status: 400 })
     }
-    const result = await subscribeMarketingLead(body)
+    const result = await subscribeMarketingLead({
+      ...body,
+      clientIp: clientIpFromRequest(request),
+      userAgent: request.headers.get("user-agent") || ""
+    })
     return NextResponse.json({ ok: true, ...result }, { status: 200 })
   } catch (error) {
     return NextResponse.json(

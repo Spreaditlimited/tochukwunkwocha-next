@@ -5,6 +5,12 @@ import { Download, Loader2 } from "lucide-react"
 
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
+function cookieValue(name: string) {
+  if (typeof document === "undefined") return ""
+  const parts = `; ${document.cookie}`.split(`; ${name}=`)
+  return parts.length === 2 ? parts.pop()?.split(";").shift() || "" : ""
+}
+
 export function ResourceLeadForm({
   resourceUuid
 }: {
@@ -18,6 +24,7 @@ export function ResourceLeadForm({
     setStatus("loading")
     setMessage("")
     const recaptchaToken = await getRecaptchaToken("resource_gate")
+    const url = new URL(window.location.href)
     const response = await fetch("/api/resources/lead", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -27,6 +34,9 @@ export function ResourceLeadForm({
         email: String(formData.get("email") || ""),
         pageUrl: window.location.href,
         pathname: window.location.pathname,
+        fbclid: url.searchParams.get("fbclid") || "",
+        fbp: cookieValue("_fbp"),
+        fbc: cookieValue("_fbc"),
         recaptchaToken
       })
     })

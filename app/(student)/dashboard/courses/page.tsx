@@ -26,8 +26,14 @@ import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
-export default async function StudentCoursesPage() {
+type StudentCoursesPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function StudentCoursesPage({ searchParams }: StudentCoursesPageProps) {
   const session = await requireStudent()
+  const params = searchParams ? await searchParams : {}
+  const manualPaymentPending = String(params.manual_payment || "") === "pending"
   const courses = await listStudentCourses(session.account.email)
   const batchSwitchOptions = await getBatchSwitchOptions(session.account)
   const batchSwitchEnrollments: BatchSwitchEnrollment[] = batchSwitchOptions.map((item) => ({
@@ -73,6 +79,20 @@ export default async function StudentCoursesPage() {
           </Link>
         </div>
       </StudentDashboardCard>
+
+      {manualPaymentPending ? (
+        <StudentDashboardCard className="mt-6 border-amber-400/40 bg-amber-50 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
+          <div className="flex items-start gap-3">
+            <Clock3 className="mt-1 h-5 w-5 shrink-0" />
+            <div>
+              <h2 className="font-heading text-lg font-black">Manual payment submitted</h2>
+              <p className="mt-2 text-sm leading-relaxed">
+                Your student account is active, but this enrollment is awaiting payment verification. Course access will open here after approval.
+              </p>
+            </div>
+          </div>
+        </StudentDashboardCard>
+      ) : null}
 
       {/* Courses Grid */}
       <div className="mt-8">

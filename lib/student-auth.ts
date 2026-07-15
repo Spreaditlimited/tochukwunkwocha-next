@@ -629,10 +629,16 @@ export async function revokeOtherStudentSessions(accountId: bigint, currentToken
 
 export async function setStudentSessionCookie(token: string) {
   const cookieStore = await cookies()
+  const headerStore = await headers()
+  const host = (headerStore.get("host") || "").toLowerCase()
+  const isLocalHost =
+    host.startsWith("localhost") ||
+    host.startsWith("127.0.0.1") ||
+    host.startsWith("[::1]")
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" && !isLocalHost,
     path: "/",
     maxAge: SESSION_MAX_AGE
   })

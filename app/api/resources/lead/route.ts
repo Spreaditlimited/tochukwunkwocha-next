@@ -36,7 +36,12 @@ export async function POST(request: Request) {
       source: "resource_gate",
       pageType: "resource",
       pageUrl: String(body.pageUrl || ""),
-      pathname: String(body.pathname || "")
+      pathname: String(body.pathname || ""),
+      fbclid: String(body.fbclid || ""),
+      fbp: String(body.fbp || ""),
+      fbc: String(body.fbc || ""),
+      clientIp: clientIpFromRequest(request),
+      userAgent: request.headers.get("user-agent") || ""
     }).catch(() => null)
     return NextResponse.json({ ok: true, ...result }, { status: 200 })
   } catch (error) {

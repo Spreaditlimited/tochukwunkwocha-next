@@ -17,8 +17,46 @@ function toMinor(value: unknown) {
 function toSqlDate(value: unknown) {
   const raw = String(value || "").trim()
   if (!raw) return null
-  const date = new Date(raw)
-  return Number.isFinite(date.getTime()) ? date : null
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/)
+  return match ? `${match[1]} ${match[2]}:${match[3] || "00"}` : null
+}
+
+function wallClockMs(value: Date | string | null) {
+  if (!value) return null
+  const raw = value instanceof Date
+    ? `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")} ${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}:${String(value.getUTCSeconds()).padStart(2, "0")}`
+    : String(value || "").trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!match) return null
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6] || "0"))
+}
+
+function lagosNowWallClockMs() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(new Date())
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return Date.UTC(
+    Number(lookup.year || "0"),
+    Number(lookup.month || "1") - 1,
+    Number(lookup.day || "1"),
+    Number(lookup.hour || "0"),
+    Number(lookup.minute || "0"),
+    Number(lookup.second || "0")
+  )
+}
+
+function sqlFromWallClockMs(ms: number) {
+  const date = new Date(ms)
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
 }
 
 export async function saveCouponAction(formData: FormData) {
@@ -97,5 +135,33 @@ export async function toggleCouponAction(formData: FormData) {
     LIMIT 1
   `
   await setInternalToast({ title: isActive ? "Coupon activated" : "Coupon paused", message: `${code} has been ${isActive ? "enabled" : "disabled"}.` })
+  revalidatePath("/internal/coupons")
+}
+
+export async function extendCouponAction(formData: FormData) {
+  const code = normalizeCode(formData.get("code"))
+  const minutes = Number(formData.get("minutes") || 0)
+  if (!code) throw new Error("Coupon code is required.")
+  if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("Enter a valid extension duration.")
+
+  const rows = await prisma.$queryRaw<Array<{ endsAt: Date | string | null }>>`
+    SELECT ends_at AS endsAt
+    FROM course_coupons
+    WHERE code = ${code}
+    LIMIT 1
+  `
+  if (!rows.length) throw new Error("Coupon not found.")
+  const nowMs = lagosNowWallClockMs()
+  const currentEndMs = wallClockMs(rows[0]?.endsAt)
+  const baseMs = currentEndMs !== null && currentEndMs > nowMs ? currentEndMs : nowMs
+  const nextEndsAt = sqlFromWallClockMs(baseMs + Math.round(minutes) * 60000)
+
+  await prisma.$executeRaw`
+    UPDATE course_coupons
+    SET ends_at = ${nextEndsAt}, updated_at = ${new Date()}
+    WHERE code = ${code}
+    LIMIT 1
+  `
+  await setInternalToast({ title: "Coupon extended", message: `${code} now ends at ${nextEndsAt} Lagos time.` })
   revalidatePath("/internal/coupons")
 }

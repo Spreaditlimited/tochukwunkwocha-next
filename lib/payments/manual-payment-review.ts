@@ -2,13 +2,15 @@ import crypto from "crypto"
 
 import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
+import { sendManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { prisma } from "@/lib/prisma"
 import {
   assertBatchCapacity,
   findOrCreateStudentAccount,
   normalizeEmail,
   recordCouponRedemption,
-  resolveCheckoutBatch
+  resolveCheckoutBatch,
+  siteBaseUrl
 } from "@/lib/payments/course-checkout"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 
@@ -271,6 +273,10 @@ export async function reviewManualPayment(input: {
   }
 
   await createAffiliateCommissionForOrder(paymentUuid)
+  await sendManualPaymentMetaPurchase({
+    paymentUuid,
+    eventSourceUrl: `${siteBaseUrl()}/checkout/${clean(payment.course_slug, 120) || "prompt-to-profit"}`
+  }).catch(() => null)
 
   return {
     ok: true as const,

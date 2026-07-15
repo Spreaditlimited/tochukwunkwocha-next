@@ -476,6 +476,45 @@ function resolveDiscountMinor(coupon: CouponRow, currency: string, baseAmountMin
   return Math.min(baseAmountMinor, Math.max(0, fixed))
 }
 
+function couponWallClockMs(value: Date | string | null) {
+  if (!value) return null
+  const raw = value instanceof Date
+    ? `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")} ${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}:${String(value.getUTCSeconds()).padStart(2, "0")}`
+    : String(value || "").trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!match) return null
+  return Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6] || "0")
+  )
+}
+
+function lagosNowWallClockMs() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(new Date())
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return Date.UTC(
+    Number(lookup.year || "0"),
+    Number(lookup.month || "1") - 1,
+    Number(lookup.day || "1"),
+    Number(lookup.hour || "0"),
+    Number(lookup.minute || "0"),
+    Number(lookup.second || "0")
+  )
+}
+
 export async function evaluateCoupon(input: {
   couponCode: string
   courseSlug: string
@@ -498,9 +537,11 @@ export async function evaluateCoupon(input: {
   if (!coupon) throw new Error("Coupon not found.")
   if (!Number(coupon.is_active || 0)) throw new Error("This coupon is not active.")
 
-  const now = Date.now()
-  if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) throw new Error("This coupon is not active yet.")
-  if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) throw new Error("This coupon has expired.")
+  const now = lagosNowWallClockMs()
+  const startsAt = couponWallClockMs(coupon.starts_at)
+  const endsAt = couponWallClockMs(coupon.ends_at)
+  if (startsAt !== null && startsAt > now) throw new Error("This coupon is not active yet.")
+  if (endsAt !== null && endsAt < now) throw new Error("This coupon has expired.")
 
   const scopedCourse = String(coupon.course_slug || "").trim().toLowerCase()
   if (scopedCourse && scopedCourse !== input.courseSlug) throw new Error("This coupon is not valid for this course.")
@@ -672,6 +713,8 @@ export async function createCourseOrder(input: {
   fbp?: string
   fbc?: string
   fbclid?: string
+  clientIp?: string
+  userAgent?: string
 }) {
   const orderUuid = randomUUID()
   const now = new Date()
@@ -679,19 +722,23 @@ export async function createCourseOrder(input: {
   await addColumnIfMissing("course_orders", "fbp", "VARCHAR(190) NULL")
   await addColumnIfMissing("course_orders", "fbc", "VARCHAR(190) NULL")
   await addColumnIfMissing("course_orders", "fbclid", "TEXT NULL")
+  await addColumnIfMissing("course_orders", "client_ip", "VARCHAR(80) NULL")
+  await addColumnIfMissing("course_orders", "user_agent", "VARCHAR(500) NULL")
 
   await prisma.$executeRaw`
     INSERT INTO course_orders
       (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
        discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, status, batch_key, batch_label,
-       fbp, fbc, fbclid, created_at, updated_at)
+       fbp, fbc, fbclid, client_ip, user_agent, created_at, updated_at)
     VALUES
       (${orderUuid}, ${input.courseSlug}, ${input.firstName}, ${input.email}, ${input.phone || null}, ${input.country || null},
        ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor}, ${input.pricing.discountMinor},
        ${input.pricing.finalAmountMinor}, ${input.pricing.couponCode || null}, ${input.pricing.couponId || null}, ${input.provider},
        ${input.buyerType || "student"}, ${input.seatCount || 1}, 'pending', ${input.batch?.batchKey || null}, ${input.batch?.batchLabel || null},
        ${String(input.fbp || "").trim().slice(0, 190) || null}, ${String(input.fbc || "").trim().slice(0, 190) || null},
-       ${String(input.fbclid || "").trim().slice(0, 2000) || null}, ${now}, ${now})
+       ${String(input.fbclid || "").trim().slice(0, 2000) || null},
+       ${String(input.clientIp || "").trim().slice(0, 80) || null}, ${String(input.userAgent || "").trim().slice(0, 500) || null},
+       ${now}, ${now})
   `
 
   return orderUuid
@@ -795,20 +842,34 @@ export async function createManualPayment(input: {
   batch?: CheckoutBatch | null
   buyerType?: "student" | "family"
   seatCount?: number
+  fbp?: string
+  fbc?: string
+  fbclid?: string
+  clientIp?: string
+  userAgent?: string
 }) {
   const paymentUuid = `mp_${randomUUID().replace(/-/g, "")}`
   const now = new Date()
+
+  await addColumnIfMissing("course_manual_payments", "fbp", "VARCHAR(190) NULL")
+  await addColumnIfMissing("course_manual_payments", "fbc", "VARCHAR(190) NULL")
+  await addColumnIfMissing("course_manual_payments", "fbclid", "TEXT NULL")
+  await addColumnIfMissing("course_manual_payments", "client_ip", "VARCHAR(80) NULL")
+  await addColumnIfMissing("course_manual_payments", "user_agent", "VARCHAR(500) NULL")
 
   await prisma.$executeRaw`
     INSERT INTO course_manual_payments
       (payment_uuid, course_slug, batch_key, batch_label, first_name, email, phone, country, currency, amount_minor,
        base_amount_minor, discount_minor, final_amount_minor, coupon_code, coupon_id, transfer_reference, proof_url,
-       proof_public_id, buyer_type, seat_count, status, created_at, updated_at)
+       proof_public_id, buyer_type, seat_count, status, fbp, fbc, fbclid, client_ip, user_agent, created_at, updated_at)
     VALUES
       (${paymentUuid}, ${input.courseSlug}, ${input.batch?.batchKey || null}, ${input.batch?.batchLabel || null}, ${input.firstName}, ${input.email}, ${input.phone || null}, ${input.country || null},
        ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor}, ${input.pricing.discountMinor},
        ${input.pricing.finalAmountMinor}, ${input.pricing.couponCode || null}, ${input.pricing.couponId || null},
-       ${input.transferReference || null}, ${input.proofUrl}, ${input.proofPublicId || null}, ${input.buyerType || "student"}, ${input.seatCount || 1}, 'pending_verification', ${now}, ${now})
+       ${input.transferReference || null}, ${input.proofUrl}, ${input.proofPublicId || null}, ${input.buyerType || "student"}, ${input.seatCount || 1}, 'pending_verification',
+       ${String(input.fbp || "").trim().slice(0, 190) || null}, ${String(input.fbc || "").trim().slice(0, 190) || null},
+       ${String(input.fbclid || "").trim().slice(0, 2000) || null}, ${String(input.clientIp || "").trim().slice(0, 80) || null},
+       ${String(input.userAgent || "").trim().slice(0, 500) || null}, ${now}, ${now})
   `
 
   return paymentUuid
@@ -1196,6 +1257,13 @@ export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | 
        'wallet', ${buyerType}, ${seatCount}, ${familyAccountId}, 'paid', ${plan.batch_key || null}, ${plan.batch_label || null},
        ${timestamp}, ${timestamp}, ${timestamp})
   `
+  await recordCouponRedemption({
+    couponId: plan.coupon_id ? Number(plan.coupon_id) : null,
+    orderUuid,
+    email: String(plan.email || ""),
+    currency: String(plan.currency || "NGN"),
+    discountMinor: Number(plan.discount_minor || 0)
+  })
   await prisma.$executeRaw`
     UPDATE student_installment_plans
     SET status = 'enrolled', enrolled_order_uuid = ${orderUuid}, family_account_id = COALESCE(${familyAccountId}, family_account_id), updated_at = ${timestamp}

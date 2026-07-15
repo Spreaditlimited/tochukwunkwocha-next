@@ -1210,10 +1210,32 @@ function sha256(value: string) {
   return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex")
 }
 
+function normalizeMetaPhone(value: unknown, country?: unknown) {
+  let digits = clean(value, 80).replace(/\D/g, "")
+  if (!digits) return ""
+  const countryText = clean(country, 80).toLowerCase()
+  if ((countryText === "ng" || countryText === "nga" || countryText === "nigeria") && digits.startsWith("0")) digits = `234${digits.slice(1)}`
+  return digits
+}
+
+function normalizeMetaCountry(value: unknown) {
+  const country = clean(value, 80).toLowerCase()
+  if (country === "nigeria" || country === "nga" || country === "ng") return "ng"
+  if (country === "united kingdom" || country === "uk" || country === "gb") return "gb"
+  if (country === "united states" || country === "united states of america" || country === "usa" || country === "us") return "us"
+  return /^[a-z]{2}$/.test(country) ? country : ""
+}
+
+function metaFbcFromFbclid(value: unknown) {
+  const fbclid = clean(value, 2000)
+  return fbclid ? `fb.1.${Date.now()}.${fbclid}` : ""
+}
+
 export async function sendManualPaymentMetaPurchase(input: {
   paymentUuid: string
   fbp?: string
   fbc?: string
+  fbclid?: string
   eventSourceUrl?: string
 }) {
   const pixelId = clean(process.env.META_PIXEL_ID, 120)
@@ -1222,12 +1244,15 @@ export async function sendManualPaymentMetaPurchase(input: {
   const paymentUuid = clean(input.paymentUuid, 80)
   const rows = await prisma.$queryRaw<Array<{
     courseSlug: string | null
+    firstName: string | null
     email: string | null
+    phone: string | null
+    country: string | null
     amountMinor: number | bigint | null
     currency: string | null
     status: string | null
   }>>`
-    SELECT course_slug AS courseSlug, email, amount_minor AS amountMinor, currency, status
+    SELECT course_slug AS courseSlug, first_name AS firstName, email, phone, country, amount_minor AS amountMinor, currency, status
     FROM course_manual_payments
     WHERE payment_uuid = ${paymentUuid}
     LIMIT 1
@@ -1245,8 +1270,12 @@ export async function sendManualPaymentMetaPurchase(input: {
       event_source_url: clean(input.eventSourceUrl, 1200) || siteBaseUrl(),
       user_data: {
         em: normalizeEmail(payment.email) ? [sha256(normalizeEmail(payment.email))] : undefined,
+        ph: normalizeMetaPhone(payment.phone, payment.country) ? [sha256(normalizeMetaPhone(payment.phone, payment.country))] : undefined,
+        fn: clean(payment.firstName, 120) ? [sha256(clean(payment.firstName, 120))] : undefined,
+        country: normalizeMetaCountry(payment.country) ? [sha256(normalizeMetaCountry(payment.country))] : undefined,
+        external_id: paymentUuid ? [sha256(paymentUuid)] : undefined,
         fbp: clean(input.fbp, 300) || undefined,
-        fbc: clean(input.fbc, 300) || undefined
+        fbc: clean(input.fbc, 300) || metaFbcFromFbclid(input.fbclid) || undefined
       },
       custom_data: {
         currency: clean(payment.currency, 10).toUpperCase() || "NGN",

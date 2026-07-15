@@ -106,6 +106,7 @@ type ManualDetails = {
   note: string
   amountLabel: string
   pricing: PricingPayload
+  coupon?: { code: string } | null
 }
 
 type CheckoutBatch = {
@@ -187,6 +188,7 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: "same-origin",
     body: JSON.stringify(body)
   })
   const json = await response.json().catch(() => null)
@@ -326,6 +328,22 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
       return
     }
     try {
+      if (provider === "manual_transfer") {
+        const result = await postJson<{ details: ManualDetails }>("/api/checkout/manual-config", {
+          courseSlug: checkoutCourseSlug,
+          returnSlug: publicCourseSlug,
+          country,
+          email,
+          couponCode,
+          buyerType,
+          seatCount: buyerType === "family" ? seatCount : 1,
+          batchKey
+        })
+        setManualDetails(result.details)
+        setPricing(result.details.pricing)
+        setCouponMessage(`${result.details.coupon?.code || couponCode.toUpperCase()} applied.`)
+        return
+      }
       const result = await postJson<{ pricing: PricingPayload; coupon: { code: string } }>("/api/checkout/coupon", {
         courseSlug: checkoutCourseSlug,
         returnSlug: publicCourseSlug,
@@ -381,7 +399,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
     try {
       if (provider === "manual_transfer") {
-        let result: { paymentUuid: string } | null = null
+        let result: { paymentUuid: string; pendingReview?: boolean } | null = null
         let lastError: unknown = null
 
         for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -394,7 +412,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
           }
 
           try {
-            result = await postJson<{ paymentUuid: string }>("/api/checkout/manual-payment", {
+            result = await postJson<{ paymentUuid: string; pendingReview?: boolean }>("/api/checkout/manual-payment", {
               courseSlug: checkoutCourseSlug,
               returnSlug: publicCourseSlug,
               firstName,
@@ -410,6 +428,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               seatCount: buyerType === "family" ? seatCount : 1,
               affiliateCode,
               whatsappOptIn,
+              ...metaAttribution(),
               recaptchaToken,
               allowProofFallback: attempt === 2
             })
@@ -422,6 +441,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
         if (!result) throw lastError instanceof Error ? lastError : new Error("Could not submit manual payment.")
         setStatusMessage(`Manual payment submitted for review. Reference: ${result.paymentUuid}`)
+        window.location.href = `/dashboard/courses?manual_payment=pending&payment=${encodeURIComponent(result.paymentUuid)}`
         return
       }
 

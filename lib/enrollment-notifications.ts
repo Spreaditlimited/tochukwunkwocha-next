@@ -226,6 +226,45 @@ export async function sendStudentAccountReadyEmail(input: {
   return { ok: true }
 }
 
+export async function sendStudentPendingManualPaymentEmail(input: {
+  email: string
+  fullName?: string | null
+  courseSlug?: string | null
+  resetToken?: string | null
+}) {
+  const email = normalizeEmail(input.email)
+  if (!email) return { ok: false, skipped: true }
+  const dashboardUrl = `${siteBaseUrl()}/dashboard/courses?manual_payment=pending`
+  const setupUrl = input.resetToken
+    ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`
+    : dashboardUrl
+  const subject = "Your manual payment is awaiting verification"
+  await sendEmail({
+    to: email,
+    subject,
+    text: [
+      `Hello ${clean(input.fullName, 120) || "there"},`,
+      "",
+      `Your manual payment${input.courseSlug ? ` for ${clean(input.courseSlug, 120)}` : ""} has been submitted and is awaiting verification.`,
+      "Your student account has been created so you can track the enrollment status from your dashboard.",
+      input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      "",
+      "Course access will open after your payment has been approved.",
+      "",
+      "Tochukwu Tech and AI Academy"
+    ].join("\n"),
+    html: `
+      <p>Hello ${clean(input.fullName, 120) || "there"},</p>
+      <p>Your manual payment${input.courseSlug ? ` for <strong>${clean(input.courseSlug, 120)}</strong>` : ""} has been submitted and is awaiting verification.</p>
+      <p>Your student account has been created so you can track the enrollment status from your dashboard.</p>
+      <p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>
+      <p>Course access will open after your payment has been approved.</p>
+      <p>Tochukwu Tech and AI Academy</p>
+    `
+  })
+  return { ok: true }
+}
+
 export async function sendInstallmentStartedEmail(input: {
   email: string
   fullName?: string | null

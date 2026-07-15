@@ -5,6 +5,12 @@ import { Loader2, Mail } from "lucide-react"
 
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
+function cookieValue(name: string) {
+  if (typeof document === "undefined") return ""
+  const parts = `; ${document.cookie}`.split(`; ${name}=`)
+  return parts.length === 2 ? parts.pop()?.split(";").shift() || "" : ""
+}
+
 function attribution() {
   if (typeof window === "undefined") return {}
   const url = new URL(window.location.href)
@@ -19,7 +25,9 @@ function attribution() {
     utmCampaign: url.searchParams.get("utm_campaign") || "",
     utmContent: url.searchParams.get("utm_content") || "",
     utmTerm: url.searchParams.get("utm_term") || "",
-    fbclid: url.searchParams.get("fbclid") || ""
+    fbclid: url.searchParams.get("fbclid") || "",
+    fbp: cookieValue("_fbp"),
+    fbc: cookieValue("_fbc")
   }
 }
 

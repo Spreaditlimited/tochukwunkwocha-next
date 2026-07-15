@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
-import { saveCouponAction, toggleCouponAction } from "./actions"
+import { extendCouponAction, saveCouponAction, toggleCouponAction } from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -180,6 +180,22 @@ export default async function InternalCouponsPage() {
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Fixed GBP Limit</span>
               <input name="fixedGbp" type="number" min="0" step="1" placeholder="£" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
             </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Starts At</span>
+              <input name="startsAt" type="datetime-local" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Ends At</span>
+              <input name="endsAt" type="datetime-local" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Usage Limit</span>
+              <input name="maxUses" type="number" min="1" step="1" placeholder="Optional" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Per-Email Limit</span>
+              <input name="maxUsesPerEmail" type="number" min="1" step="1" placeholder="Optional" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+            </label>
             
             <div className="flex items-end justify-between gap-4 lg:col-span-4">
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/40">
@@ -265,6 +281,22 @@ export default async function InternalCouponsPage() {
 
                   {/* Actions */}
                   <div className="shrink-0 lg:w-40">
+                    <div className="mb-2 grid grid-cols-2 gap-2">
+                      <form action={extendCouponAction}>
+                        <input type="hidden" name="code" value={coupon.code} />
+                        <input type="hidden" name="minutes" value="1440" />
+                        <button className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary" type="submit">
+                          +24h
+                        </button>
+                      </form>
+                      <form action={extendCouponAction}>
+                        <input type="hidden" name="code" value={coupon.code} />
+                        <input type="hidden" name="minutes" value="10080" />
+                        <button className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary" type="submit">
+                          +7d
+                        </button>
+                      </form>
+                    </div>
                     <form action={toggleCouponAction}>
                       <input type="hidden" name="code" value={coupon.code} />
                       <input type="hidden" name="isActive" value={active ? "0" : "1"} />

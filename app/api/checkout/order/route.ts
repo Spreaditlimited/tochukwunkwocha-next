@@ -63,7 +63,9 @@ export async function POST(request: Request) {
       seatCount: result.seatCount,
       fbp: String(body.fbp || ""),
       fbc: String(body.fbc || ""),
-      fbclid: String(body.fbclid || "")
+      fbclid: String(body.fbclid || ""),
+      clientIp: clientIpFromRequest(request),
+      userAgent: request.headers.get("user-agent") || ""
     })
     const metadata = { order_uuid: orderUuid, course_slug: returnSlug, checkout_course_slug: courseSlug, first_name: firstName }
     const payment =

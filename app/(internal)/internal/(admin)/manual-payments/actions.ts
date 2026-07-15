@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache"
 
 import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
+import { sendManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import {
   addExternalStudentPayment,
   completeManualPaymentRecovery,
   deleteHolidayWaitlistContact,
   resendBatchActivationEmails,
   resendManualPaymentActivationEmail,
-  sendManualPaymentMetaPurchase,
   sendWhatsAppCampaign,
   updateManualPaymentEmail
 } from "@/lib/admin-enrollments"
@@ -109,6 +109,7 @@ export async function sendManualPaymentMetaPurchaseAction(formData: FormData) {
     paymentUuid: String(formData.get("paymentUuid") || ""),
     fbp: String(formData.get("fbp") || ""),
     fbc: String(formData.get("fbc") || ""),
+    fbclid: String(formData.get("fbclid") || ""),
     eventSourceUrl: String(formData.get("eventSourceUrl") || "")
   })
   await setInternalToast({ title: "Meta purchase event sent", message: "The manual payment conversion event has been submitted." })

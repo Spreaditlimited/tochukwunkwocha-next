@@ -490,6 +490,10 @@ export async function subscribeMarketingLead(body: Record<string, unknown>) {
     eventSourceUrl: clean(body.pageUrl || body.page_url, 2000),
     fbp: clean(body.fbp, 190),
     fbc: clean(body.fbc, 190),
+    fbclid: clean(body.fbclid, 2000),
+    externalId: marketingLead.leadUuid,
+    clientIp: clean(body.clientIp || body.client_ip, 80),
+    userAgent: clean(body.userAgent || body.user_agent, 500),
     contentName: leadMagnet ? leadMagnet.title : "Tochukwu Website Lead Capture Popup",
     contentCategory: pageType || "site"
   }).catch(() => null)

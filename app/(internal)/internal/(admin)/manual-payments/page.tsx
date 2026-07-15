@@ -922,6 +922,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       
                       <input name="fbp" placeholder="fbp (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       <input name="fbc" placeholder="fbc (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+                      <input name="fbclid" placeholder="fbclid (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       <input name="eventSourceUrl" placeholder="Event Source URL (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       
                       <button className="btn-secondary mt-1 w-full justify-center py-2 text-xs shadow-sm" type="submit">
