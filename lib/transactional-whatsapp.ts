@@ -80,7 +80,7 @@ export function sendManualPaymentSubmittedWhatsApp(input: {
   return sendTransactionalWhatsApp({
     event: "manual_payment_submitted",
     phone: clean(input.phone, 80),
-    templateName: "tochukwu_manual_payments",
+    templateName: "tochukwu_manual_payment_received",
     languageCode: "en",
     parameters: [
       firstName(input.fullName),
