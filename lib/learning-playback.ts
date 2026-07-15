@@ -1,6 +1,6 @@
 import crypto from "crypto"
 
-import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+import { getAdminSettingValue } from "@/lib/admin-settings"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -78,19 +78,29 @@ function replaceVideoUidWithToken(baseUrl: string, videoUid: string, token: stri
 const MIN_LESSON_TOKEN_TTL_SECONDS = 60 * 60 * 6
 const DEFAULT_LESSON_TOKEN_TTL_SECONDS = 60 * 60 * 12
 
-export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: string | null }) {
-  const keyId = clean(process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID, 120)
-  const privateKey = normalizePrivateKeyPem(String(process.env.CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY || ""))
+type SigningConfig = {
+  keyId: string
+  privateKey: string
+  ttlSeconds: number
+}
+
+function resolveTtlSeconds(value: unknown) {
+  const ttlInput = Number(value || DEFAULT_LESSON_TOKEN_TTL_SECONDS)
+  return Math.max(
+    MIN_LESSON_TOKEN_TTL_SECONDS,
+    Math.min(Number.isFinite(ttlInput) ? ttlInput : DEFAULT_LESSON_TOKEN_TTL_SECONDS, DEFAULT_LESSON_TOKEN_TTL_SECONDS)
+  )
+}
+
+function buildSignedLessonEmbedUrlWithConfig(input: { videoUid: string; hlsUrl?: string | null }, config: SigningConfig) {
+  const keyId = clean(config.keyId, 120)
+  const privateKey = normalizePrivateKeyPem(config.privateKey)
   const uid = clean(input.videoUid, 140)
   if (!keyId) throw new Error("Missing CLOUDFLARE_STREAM_SIGNING_KEY_ID")
   if (!privateKey) throw new Error("Missing CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY")
   if (!uid) throw new Error("video_uid is required")
 
-  const ttlInput = Number(process.env.CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS || DEFAULT_LESSON_TOKEN_TTL_SECONDS)
-  const ttlSeconds = Math.max(
-    MIN_LESSON_TOKEN_TTL_SECONDS,
-    Math.min(Number.isFinite(ttlInput) ? ttlInput : DEFAULT_LESSON_TOKEN_TTL_SECONDS, DEFAULT_LESSON_TOKEN_TTL_SECONDS)
-  )
+  const ttlSeconds = resolveTtlSeconds(config.ttlSeconds)
   const nowSec = Math.floor(Date.now() / 1000)
   const exp = nowSec + ttlSeconds
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: keyId }))
@@ -108,7 +118,23 @@ export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: st
   }
 }
 
+export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: string | null }) {
+  return buildSignedLessonEmbedUrlWithConfig(input, {
+    keyId: process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID || "",
+    privateKey: process.env.CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY || "",
+    ttlSeconds: resolveTtlSeconds(process.env.CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS)
+  })
+}
+
 export async function buildSignedLessonEmbedUrlFromRuntimeSettings(input: { videoUid: string; hlsUrl?: string | null }) {
-  await applyAdminSettingsToProcessEnv()
-  return buildSignedLessonEmbedUrl(input)
+  const [keyId, privateKey, ttlSeconds] = await Promise.all([
+    getAdminSettingValue("CLOUDFLARE_STREAM_SIGNING_KEY_ID"),
+    getAdminSettingValue("CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY"),
+    getAdminSettingValue("CLOUDFLARE_STREAM_TOKEN_TTL_SECONDS")
+  ])
+  return buildSignedLessonEmbedUrlWithConfig(input, {
+    keyId,
+    privateKey,
+    ttlSeconds: resolveTtlSeconds(ttlSeconds)
+  })
 }
