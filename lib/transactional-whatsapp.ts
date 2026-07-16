@@ -99,6 +99,7 @@ export function sendEnrollmentConfirmedWhatsApp(input: {
   courseSlug?: string | null
   dashboardPath?: string | null
 }) {
+  // Keep this in sync with the approved Meta WhatsApp template name.
   return sendTransactionalWhatsApp({
     event: "enrollment_confirmed",
     phone: clean(input.phone, 80),
