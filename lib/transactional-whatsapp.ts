@@ -102,7 +102,7 @@ export function sendEnrollmentConfirmedWhatsApp(input: {
   return sendTransactionalWhatsApp({
     event: "enrollment_confirmed",
     phone: clean(input.phone, 80),
-    templateName: "tochukwu_enrollment",
+    templateName: "tochukwu_enrollment_confirmed",
     languageCode: "en_GB",
     parameters: [
       firstName(input.fullName),
