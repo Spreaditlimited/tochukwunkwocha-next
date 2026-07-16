@@ -1,6 +1,7 @@
 import crypto from "crypto"
 import { Prisma } from "@prisma/client"
 
+import { sendEmail } from "@/lib/email"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { plainTextToRichNotes } from "@/lib/rich-notes"
@@ -140,6 +141,19 @@ type LessonRow = {
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
+}
+
+function escapeHtml(value: unknown) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function siteBaseUrl() {
+  return String(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com").replace(/\/+$/, "")
 }
 
 function parseCaptionsLanguages(value: string | null) {
@@ -1058,6 +1072,56 @@ export async function createLearningThread(input: {
   `
 }
 
+async function sendCommunityReplyNotification(input: {
+  courseSlug: string
+  threadId: number
+  threadTitle: string
+  actorName: string
+  actorEmail: string
+  replyBody: string
+  recipients: Array<{ email?: string | null; fullName?: string | null } | null>
+}) {
+  const actorEmail = clean(input.actorEmail, 220).toLowerCase()
+  const recipients = new Map<string, { email: string; fullName: string }>()
+  input.recipients.forEach((recipient) => {
+    const email = clean(recipient?.email, 220).toLowerCase()
+    if (!email || email === actorEmail) return
+    recipients.set(email, { email, fullName: clean(recipient?.fullName, 180) })
+  })
+  if (!recipients.size) return
+
+  const actorName = clean(input.actorName, 180) || "A classmate"
+  const threadTitle = clean(input.threadTitle, 220) || "Course Community"
+  const threadUrl = `${siteBaseUrl()}/dashboard/courses/player?course=${encodeURIComponent(input.courseSlug)}`
+  const replyPreview = clean(input.replyBody, 700)
+  await Promise.all(Array.from(recipients.values()).map((recipient) => {
+    const firstName = clean(recipient.fullName.split(" ")[0], 80)
+    return sendEmail({
+      to: recipient.email,
+      subject: `${actorName} replied to your message in ${threadTitle}`,
+      text: [
+        `Hello${firstName ? ` ${firstName}` : ""},`,
+        "",
+        `${actorName} replied to your message in the course discussion board.`,
+        `Thread: ${threadTitle}`,
+        replyPreview ? `Reply: ${replyPreview}` : "",
+        "",
+        `Open discussion board: ${threadUrl}`,
+        "",
+        "Tochukwu Tech and AI Academy"
+      ].filter(Boolean).join("\n"),
+      html: [
+        `<p>Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},</p>`,
+        `<p><strong>${escapeHtml(actorName)}</strong> replied to your message in the course discussion board.</p>`,
+        `<p><strong>Thread:</strong> ${escapeHtml(threadTitle)}</p>`,
+        replyPreview ? `<p><strong>Reply:</strong><br/>${escapeHtml(replyPreview)}</p>` : "",
+        `<p><a href="${escapeHtml(threadUrl)}">Open discussion board</a></p>`,
+        `<p>Tochukwu Tech and AI Academy</p>`
+      ].filter(Boolean).join("\n")
+    })
+  }))
+}
+
 export async function createLearningReply(input: {
   accountId: bigint
   email: string
@@ -1073,8 +1137,8 @@ export async function createLearningReply(input: {
   if (!allowed) throw new Error("You do not currently have access to this course.")
   const body = clean(input.body, 20000)
   if (body.length < 2) throw new Error("Reply is too short.")
-  const threadRows = await prisma.$queryRaw<Array<{ id: bigint; status: string }>>(Prisma.sql`
-    SELECT id, status
+  const threadRows = await prisma.$queryRaw<Array<{ id: bigint; status: string; title: string | null; authorEmail: string | null; authorName: string | null }>>(Prisma.sql`
+    SELECT id, status, title, author_email AS authorEmail, author_name AS authorName
     FROM tochukwu_learning_community_threads
     WHERE id = ${input.threadId}
       AND course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
@@ -1084,9 +1148,10 @@ export async function createLearningReply(input: {
   if (!thread) throw new Error("Thread not found.")
   if (clean(thread.status, 24).toLowerCase() === "closed") throw new Error("This thread is closed.")
   const parentReplyId = Number(input.parentReplyId || 0)
+  let parentReply: { id: bigint; authorEmail: string | null; authorName: string | null } | null = null
   if (parentReplyId > 0) {
-    const parentRows = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
-      SELECT id
+    const parentRows = await prisma.$queryRaw<Array<{ id: bigint; authorEmail: string | null; authorName: string | null }>>(Prisma.sql`
+      SELECT id, author_email AS authorEmail, author_name AS authorName
       FROM tochukwu_learning_community_replies
       WHERE id = ${parentReplyId}
         AND thread_id = ${input.threadId}
@@ -1094,6 +1159,7 @@ export async function createLearningReply(input: {
       LIMIT 1
     `)
     if (!parentRows[0]) throw new Error("Parent reply not found.")
+    parentReply = parentRows[0]
   }
   const now = new Date()
   await prisma.$transaction([
@@ -1110,6 +1176,24 @@ export async function createLearningReply(input: {
       LIMIT 1
     `
   ])
+  await sendCommunityReplyNotification({
+    courseSlug,
+    threadId: input.threadId,
+    threadTitle: clean(thread.title, 220) || "Course Community",
+    actorName: input.fullName,
+    actorEmail: input.email,
+    replyBody: body,
+    recipients: [
+      { email: thread.authorEmail, fullName: thread.authorName },
+      parentReply ? { email: parentReply.authorEmail, fullName: parentReply.authorName } : null
+    ]
+  }).catch((error) => {
+    console.warn("community_reply_notification_failed", {
+      threadId: input.threadId,
+      parentReplyId,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  })
 }
 
 export async function updateLearningThread(input: { accountId: bigint; email: string; courseSlug: string; threadId: number; title: string; body: string }) {

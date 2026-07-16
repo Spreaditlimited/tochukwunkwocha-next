@@ -4,7 +4,6 @@ import {
   CreditCard, 
   ExternalLink, 
   Filter, 
-  ListChecks, 
   Mail, 
   MessageCircle, 
   MonitorPlay, 
@@ -178,9 +177,6 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
         <div className="flex shrink-0 flex-wrap gap-3">
           <Link href="/internal/video-library" className="btn-secondary shadow-sm">
             <MonitorPlay className="mr-2 h-4 w-4" /> Course Manager
-          </Link>
-          <Link href="/internal/learning" className="btn-secondary shadow-sm">
-            <ListChecks className="mr-2 h-4 w-4" /> Transcript Requests
           </Link>
         </div>
       </div>

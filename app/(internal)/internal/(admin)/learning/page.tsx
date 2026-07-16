@@ -2,7 +2,6 @@ import {
   AlertCircle,
   Award,
   BookOpen,
-  Captions, 
   CheckCircle2, 
   Clock, 
   FileCheck2, 
@@ -16,7 +15,6 @@ import {
   Settings2,
   ShieldAlert,
   Smartphone,
-  User,
   Users
 } from "lucide-react"
 
@@ -27,7 +25,6 @@ import {
   resendCertificateApprovalEmailAction,
   resetStudentDevicesAction,
   reviewAssignmentAction,
-  reviewTranscriptAccessAction,
   saveCourseFeaturesAction
 } from "./actions"
 import { PremiumPicker } from "@/components/PremiumPicker"
@@ -68,12 +65,7 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 export default async function InternalLearningSupportPage() {
-  const { courses, features, assignments, attachments, transcriptRequests, students } = await listLearningSupportData()
-  const transcriptStatusOptions = [
-    { value: "pending", label: "Mark as Pending" },
-    { value: "approved", label: "Approve Access" },
-    { value: "denied", label: "Deny Request" }
-  ]
+  const { courses, features, assignments, attachments, students } = await listLearningSupportData()
   const alumniParticipationOptions = [
     { value: "none", label: "None (Hidden)" },
     { value: "read_only", label: "Read Only" },
@@ -153,81 +145,6 @@ export default async function InternalLearningSupportPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
-        
-        {/* Transcript Access Requests */}
-        <section className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm xl:h-[600px]">
-          <div className="flex items-center justify-between border-b border-border bg-muted/20 p-6 sm:p-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Captions className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="font-heading text-xl font-black text-foreground">Transcript Requests</h2>
-                <p className="mt-1 text-sm font-medium text-muted-foreground">Manage learner access to text transcripts.</p>
-              </div>
-            </div>
-            <div className="shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 text-center shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Queue</p>
-              <p className="font-heading text-lg font-black text-foreground">{transcriptRequests.length}</p>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-auto bg-background p-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20 sm:p-8">
-            <div className="grid gap-4">
-              {transcriptRequests.length ? transcriptRequests.map((request) => (
-                <form key={String(request.id)} action={reviewTranscriptAccessAction} className="rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/20">
-                  <input type="hidden" name="accountId" value={String(request.accountId)} />
-                  <input type="hidden" name="courseSlug" value={request.courseSlug} />
-                  
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill status={request.status} />
-                        <span className="inline-flex rounded bg-muted/50 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                          {request.courseSlug}
-                        </span>
-                      </div>
-                      
-                      <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        {request.fullName || "Unknown Student"}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <Mail className="h-3.5 w-3.5" />
-                        {request.email || "No email provided"}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        Req: {formatDate(request.requestedAt)}
-                      </div>
-                      
-                      {request.requestReason && (
-                        <div className="mt-4 rounded-lg border border-border bg-muted/10 p-3 text-sm italic text-muted-foreground">
-                          "{request.requestReason}"
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="w-full shrink-0 space-y-3 lg:w-[260px]">
-                      <PremiumPicker name="status" defaultValue={request.status || "pending"} options={transcriptStatusOptions} />
-                      <input name="expiresAt" type="datetime-local" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" title="Expiration Date" />
-                      <input name="notes" defaultValue={request.notes || ""} placeholder="Internal admin notes..." className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-                      <button className="btn-primary w-full justify-center shadow-sm" type="submit">
-                        Update Access
-                      </button>
-                    </div>
-                  </div>
-                </form>
-              )) : (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 py-12 text-center text-sm font-semibold text-muted-foreground">
-                  <Captions className="mb-2 h-6 w-6" />
-                  No transcript requests found.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
         {/* Student Support Actions */}
         <section className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm xl:h-[600px]">
           <div className="flex items-center justify-between border-b border-border bg-muted/20 p-6 sm:p-8">

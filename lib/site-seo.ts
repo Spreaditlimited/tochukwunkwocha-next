@@ -27,7 +27,7 @@ export function absoluteUrl(path: string) {
 
 export function buildMetadata({ title, description, path, image, type = "website", noIndex = false }: MetadataInput): Metadata {
   const url = absoluteUrl(path)
-  const previewImage = absoluteUrl(image || brand.assets.logo)
+  const previewImage = absoluteUrl(image || brand.assets.ogDefault)
 
   return {
     title,

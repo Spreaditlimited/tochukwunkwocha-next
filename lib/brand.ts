@@ -12,7 +12,8 @@ export const brand = {
     icon: "/brand/tochukwu-tech-logo-icon.png",
     iconWebp: "/brand/tochukwu-tech-logo-icon.webp",
     reverseIcon: "/brand/tn-icon-reverse.png",
-    faviconSource: "/brand/favicon-source.png"
+    faviconSource: "/brand/favicon-source.png",
+    ogDefault: "/brand/tochukwu-tech-og-default.png"
   },
   colors: {
     navy: "#06162d",

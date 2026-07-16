@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { BookOpen, Captions, CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, Pencil, Play, ScrollText, Trash2, Upload, X } from "lucide-react"
+import { BookOpen, Captions, CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, Pencil, Play, RefreshCw, Search, ScrollText, Trash2, Upload, X } from "lucide-react"
 
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 import type { LearningCoursePayload, LearningLesson } from "@/lib/learning-player"
@@ -59,6 +59,14 @@ type SupportData = {
     }[]
   }[]
 }
+
+type DiscussionEditTarget =
+  | { kind: "thread"; id: number; title: string; body: string }
+  | { kind: "reply"; id: number; title: string; body: string }
+
+type DiscussionDeleteTarget =
+  | { kind: "thread"; id: number; title: string }
+  | { kind: "reply"; id: number; title: string }
 
 function fmtSeconds(value: number | null | undefined) {
   const seconds = Number(value || 0)
@@ -213,6 +221,95 @@ function RichNoteModal({
   )
 }
 
+function DiscussionEditModal({
+  target,
+  busy,
+  onClose,
+  onSave
+}: {
+  target: DiscussionEditTarget
+  busy: boolean
+  onClose: () => void
+  onSave: (value: { title: string; body: string }) => void
+}) {
+  const [title, setTitle] = useState(target.title)
+  const [body, setBody] = useState(target.body)
+  const isThread = target.kind === "thread"
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={isThread ? "Edit discussion thread" : "Edit discussion reply"} onClick={busy ? undefined : onClose}>
+      <div className="mx-auto mt-10 max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-border p-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Course Discussion</p>
+            <h2 className="mt-1 font-heading text-lg font-black text-foreground">{isThread ? "Edit Thread" : "Edit Reply"}</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary h-9 px-3 text-xs disabled:opacity-50">
+            <X className="h-4 w-4" />
+            Close
+          </button>
+        </div>
+        <div className="grid gap-4 p-4">
+          {isThread ? (
+            <label className="grid gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">Title</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} className="field" />
+            </label>
+          ) : null}
+          <label className="grid gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">{isThread ? "Body" : "Reply"}</span>
+            <textarea value={body} onChange={(event) => setBody(event.target.value)} className="field min-h-40" />
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={onClose} disabled={busy} className="btn-secondary justify-center disabled:opacity-50">
+              Cancel
+            </button>
+            <button type="button" onClick={() => onSave({ title, body })} disabled={busy || (isThread && !title.trim()) || !body.trim()} className="btn-primary justify-center disabled:opacity-50">
+              {busy ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DiscussionDeleteModal({
+  target,
+  busy,
+  onClose,
+  onConfirm
+}: {
+  target: DiscussionDeleteTarget
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Delete discussion item" onClick={busy ? undefined : onClose}>
+      <div className="mx-auto mt-16 max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="border-b border-border p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Course Discussion</p>
+          <h2 className="mt-1 font-heading text-lg font-black text-foreground">Delete {target.kind === "thread" ? "Thread" : "Reply"}</h2>
+        </div>
+        <div className="grid gap-4 p-4">
+          <p className="text-sm leading-6 text-muted-foreground">
+            This will permanently remove <span className="font-bold text-foreground">{target.title}</span>{target.kind === "thread" ? " and its replies" : ""}.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={onClose} disabled={busy} className="btn-secondary justify-center disabled:opacity-50">
+              Cancel
+            </button>
+            <button type="button" onClick={onConfirm} disabled={busy} className="btn-primary justify-center bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
+              {busy ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerProps) {
   const lessons = useMemo(() => course.modules.flatMap((moduleRow) => moduleRow.lessons), [course.modules])
   const firstIncomplete = lessons.find((lesson) => !lesson.progress.isCompleted) || lessons[0] || null
@@ -234,9 +331,12 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   const [threadTitle, setThreadTitle] = useState("")
   const [threadBody, setThreadBody] = useState("")
   const [replyBodies, setReplyBodies] = useState<Record<number, string>>({})
-  const [transcriptRequestMessage, setTranscriptRequestMessage] = useState("")
+  const [communitySearch, setCommunitySearch] = useState("")
   const [submittingSupport, setSubmittingSupport] = useState(false)
   const [openNote, setOpenNote] = useState<null | { label: string; title: string; html: string }>(null)
+  const [discussionEdit, setDiscussionEdit] = useState<DiscussionEditTarget | null>(null)
+  const [discussionDelete, setDiscussionDelete] = useState<DiscussionDeleteTarget | null>(null)
+  const [discussionBusy, setDiscussionBusy] = useState(false)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playerRef = useRef<HTMLDivElement | null>(null)
 
@@ -248,6 +348,26 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   const completedCount = completedIds.size
   const completionPercent = lessons.length ? Math.round((completedCount / lessons.length) * 100) : 0
   const playbackState = playbackMessage(playbackError)
+  const captionLanguages = activeLesson?.accessibility.captionsLanguages
+    .map((item) => item.label || item.srclang)
+    .filter(Boolean) || []
+  const captionsLabel = activeLesson?.accessibility.captionsVttUrl
+    ? `Captions available${captionLanguages.length ? ` (${captionLanguages.join(", ")})` : ""}`
+    : ""
+  const visibleThreads = useMemo(() => {
+    const query = communitySearch.trim().toLowerCase()
+    const threads = support?.threads || []
+    if (!query) return threads
+    return threads.filter((thread) => {
+      const haystack = [
+        thread.title,
+        thread.body,
+        thread.authorName,
+        ...(thread.replies || []).flatMap((reply) => [reply.authorName, reply.authorEmail, reply.body])
+      ].join(" ").toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [communitySearch, support?.threads])
 
   useEffect(() => {
     if (!activeLesson) return
@@ -342,6 +462,10 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
 
   async function loadTranscript() {
     if (!activeLesson) return
+    if (showTranscript) {
+      setShowTranscript(false)
+      return
+    }
     setShowTranscript(true)
     setTranscriptError("")
     if (transcript) return
@@ -381,9 +505,11 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   }
 
   async function refreshSupport() {
+    setSupportError("")
     const response = await fetch(`/api/student/learning/support?course=${encodeURIComponent(course.courseSlug)}`)
     const json = await response.json().catch(() => null)
     if (response.ok && json?.ok) setSupport(json.support)
+    else setSupportError(json?.error || "Could not load learning support.")
   }
 
   async function uploadAssignmentFiles(files: File[]) {
@@ -448,28 +574,6 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
     }
   }
 
-  async function requestTranscriptAccess() {
-    if (!activeLesson) return
-    setTranscriptRequestMessage("")
-    const reason = window.prompt("Why do you need transcript access for this course?") || ""
-    if (!reason.trim()) return
-    const response = await fetch("/api/student/learning/transcript-request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseSlug: course.courseSlug, lessonId: activeLesson.id, reason })
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok || !json?.ok) {
-      const errorMessage = json?.error || "Could not request transcript access."
-      setTranscriptRequestMessage(errorMessage)
-      showStudentToast({ type: "error", title: "Transcript request failed", message: errorMessage })
-      return
-    }
-    const successMessage = json.message || "Transcript access request submitted for review."
-    setTranscriptRequestMessage(successMessage)
-    showStudentToast({ type: "success", title: "Transcript request submitted", message: successMessage })
-  }
-
   async function submitReply(threadId: number) {
     const body = replyBodies[threadId] || ""
     if (!body.trim()) return
@@ -493,71 +597,82 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   }
 
   async function updateThread(thread: SupportData["threads"][number]) {
-    const title = window.prompt("Edit thread title", thread.title)
-    if (title === null) return
-    const body = window.prompt("Edit thread body", thread.body)
-    if (body === null) return
-    const response = await fetch("/api/student/learning/thread/update", {
+    setDiscussionEdit({ kind: "thread", id: thread.id, title: thread.title, body: thread.body })
+  }
+
+  async function saveDiscussionEdit(value: { title: string; body: string }) {
+    if (!discussionEdit) return
+    setDiscussionBusy(true)
+    const endpoint = discussionEdit.kind === "thread" ? "/api/student/learning/thread/update" : "/api/student/learning/reply/update"
+    const payload = discussionEdit.kind === "thread"
+      ? { courseSlug: course.courseSlug, threadId: discussionEdit.id, title: value.title, body: value.body }
+      : { courseSlug: course.courseSlug, replyId: discussionEdit.id, body: value.body }
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseSlug: course.courseSlug, threadId: thread.id, title, body })
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok || !json?.ok) {
-      showStudentToast({ type: "error", title: "Thread update failed", message: json?.error || "Could not update thread." })
+      body: JSON.stringify(payload)
+    }).catch(() => null)
+    const json = response ? await response.json().catch(() => null) : null
+    setDiscussionBusy(false)
+    if (!response?.ok || !json?.ok) {
+      showStudentToast({
+        type: "error",
+        title: discussionEdit.kind === "thread" ? "Thread update failed" : "Reply update failed",
+        message: json?.error || "Could not update discussion."
+      })
       return
     }
-    showStudentToast({ type: "success", title: "Thread updated", message: "Your discussion thread has been updated." })
+    showStudentToast({
+      type: "success",
+      title: discussionEdit.kind === "thread" ? "Thread updated" : "Reply updated",
+      message: discussionEdit.kind === "thread" ? "Your discussion thread has been updated." : "Your discussion reply has been updated."
+    })
+    setDiscussionEdit(null)
     await refreshSupport()
   }
 
   async function deleteThread(threadId: number) {
-    if (!window.confirm("Delete this thread and its replies?")) return
-    const response = await fetch("/api/student/learning/thread/delete", {
+    const thread = support?.threads.find((item) => item.id === threadId)
+    setDiscussionDelete({ kind: "thread", id: threadId, title: thread?.title || "this thread" })
+  }
+
+  async function confirmDiscussionDelete() {
+    if (!discussionDelete) return
+    setDiscussionBusy(true)
+    const endpoint = discussionDelete.kind === "thread" ? "/api/student/learning/thread/delete" : "/api/student/learning/reply/delete"
+    const payload = discussionDelete.kind === "thread"
+      ? { courseSlug: course.courseSlug, threadId: discussionDelete.id }
+      : { courseSlug: course.courseSlug, replyId: discussionDelete.id }
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseSlug: course.courseSlug, threadId })
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok || !json?.ok) {
-      showStudentToast({ type: "error", title: "Thread delete failed", message: json?.error || "Could not delete thread." })
+      body: JSON.stringify(payload)
+    }).catch(() => null)
+    const json = response ? await response.json().catch(() => null) : null
+    setDiscussionBusy(false)
+    if (!response?.ok || !json?.ok) {
+      showStudentToast({
+        type: "error",
+        title: discussionDelete.kind === "thread" ? "Thread delete failed" : "Reply delete failed",
+        message: json?.error || "Could not delete discussion item."
+      })
       return
     }
-    showStudentToast({ type: "success", title: "Thread deleted", message: "Your discussion thread has been removed." })
+    showStudentToast({
+      type: "success",
+      title: discussionDelete.kind === "thread" ? "Thread deleted" : "Reply deleted",
+      message: discussionDelete.kind === "thread" ? "Your discussion thread has been removed." : "Your discussion reply has been removed."
+    })
+    setDiscussionDelete(null)
     await refreshSupport()
   }
 
   async function updateReply(reply: NonNullable<SupportData["threads"][number]["replies"]>[number]) {
-    const body = window.prompt("Edit reply", reply.body)
-    if (body === null) return
-    const response = await fetch("/api/student/learning/reply/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseSlug: course.courseSlug, replyId: reply.id, body })
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok || !json?.ok) {
-      showStudentToast({ type: "error", title: "Reply update failed", message: json?.error || "Could not update reply." })
-      return
-    }
-    showStudentToast({ type: "success", title: "Reply updated", message: "Your discussion reply has been updated." })
-    await refreshSupport()
+    setDiscussionEdit({ kind: "reply", id: reply.id, title: "Reply", body: reply.body })
   }
 
   async function deleteReply(replyId: number) {
-    if (!window.confirm("Delete this reply?")) return
-    const response = await fetch("/api/student/learning/reply/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseSlug: course.courseSlug, replyId })
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok || !json?.ok) {
-      showStudentToast({ type: "error", title: "Reply delete failed", message: json?.error || "Could not delete reply." })
-      return
-    }
-    showStudentToast({ type: "success", title: "Reply deleted", message: "Your discussion reply has been removed." })
-    await refreshSupport()
+    setDiscussionDelete({ kind: "reply", id: replyId, title: "this reply" })
   }
 
   async function submitThread(event: FormEvent<HTMLFormElement>) {
@@ -751,16 +866,16 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
               ) : null}
 
               <div className="mt-6 flex flex-wrap gap-3">
-                {activeLesson.accessibility.captionsVttUrl ? (
-                  <a href={activeLesson.accessibility.captionsVttUrl} className="btn-secondary gap-2" target="_blank" rel="noreferrer">
+                {captionsLabel ? (
+                  <span className="btn-secondary cursor-default gap-2" aria-label={captionsLabel}>
                     <Captions className="h-4 w-4" />
-                    Captions
-                  </a>
+                    {captionsLabel}
+                  </span>
                 ) : null}
                 {activeLesson.accessibility.transcriptAvailable ? (
                   <button type="button" onClick={loadTranscript} className="btn-secondary gap-2">
                     <ScrollText className="h-4 w-4" />
-                    Transcript
+                    {showTranscript ? "Close transcript" : "Transcript"}
                   </button>
                 ) : null}
                 {activeLesson.accessibility.signLanguageVideoUrl ? (
@@ -773,27 +888,27 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
 
               {showTranscript ? (
                 <div className="mt-5 rounded-lg border border-[var(--sd-border)] bg-[var(--sd-soft)] p-4">
-                  <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Transcript</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Transcript</p>
+                    <button type="button" onClick={() => setShowTranscript(false)} className="btn-secondary h-8 px-3 text-xs">
+                      <X className="h-3.5 w-3.5" />
+                      Close
+                    </button>
+                  </div>
                   {transcriptError ? (
                     <div className="mt-2 grid gap-3">
                       <p className="text-sm font-semibold text-destructive">{transcriptError}</p>
-                      <button type="button" onClick={requestTranscriptAccess} className="btn-secondary w-fit text-sm">
-                        Request transcript access
-                      </button>
-                      {transcriptRequestMessage ? (
-                        <p className="text-sm font-semibold text-primary">{transcriptRequestMessage}</p>
-                      ) : null}
                     </div>
                   ) : (
-                    <p
-                      className="mt-2 max-h-96 select-none overflow-auto whitespace-pre-line text-sm leading-6 text-foreground/85"
+                    <pre
+                      className="mt-3 max-h-96 select-none overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--sd-border)] bg-background p-4 font-sans text-sm leading-6 text-foreground/85"
                       draggable={false}
                       onCopy={(event) => event.preventDefault()}
                       onCut={(event) => event.preventDefault()}
                       onContextMenu={(event) => event.preventDefault()}
                     >
                       {transcript || "Loading transcript..."}
-                    </p>
+                    </pre>
                   )}
                 </div>
               ) : null}
@@ -873,7 +988,16 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
 
               {support?.features.courseCommunityEnabled ? (
                 <div className="mt-6 rounded-lg border border-[var(--sd-border)] bg-[var(--sd-soft)] p-4">
-                  <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Community</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Community</p>
+                      <p className="mt-1 text-sm font-semibold text-muted-foreground">Ask questions, reply to classmates, and search previous discussions.</p>
+                    </div>
+                    <button type="button" onClick={() => refreshSupport()} className="btn-secondary h-10 gap-2 text-sm">
+                      <RefreshCw className="h-4 w-4" />
+                      Refresh
+                    </button>
+                  </div>
                   <form onSubmit={submitThread} className="mt-3 grid gap-3">
                     <input
                       value={threadTitle}
@@ -891,9 +1015,19 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
                       Post question
                     </button>
                   </form>
-                  {support.threads.length ? (
+                  <label className="mt-4 flex min-h-11 items-center gap-2 rounded-lg border border-[var(--sd-border)] bg-card px-3">
+                    <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <input
+                      value={communitySearch}
+                      onChange={(event) => setCommunitySearch(event.target.value)}
+                      className="min-w-0 flex-1 bg-transparent py-2.5 text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/70"
+                      placeholder="Search threads and replies"
+                      type="search"
+                    />
+                  </label>
+                  {visibleThreads.length ? (
                     <div className="mt-4 grid gap-2">
-                      {support.threads.slice(0, 5).map((thread) => (
+                      {visibleThreads.map((thread) => (
                         <div key={thread.id} className="rounded-md border border-[var(--sd-border)] bg-card p-3 text-sm">
                           <div className="flex items-center justify-between gap-3">
                             <p className="font-bold text-foreground">{thread.title}</p>
@@ -914,7 +1048,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
                           <p className="mt-1 line-clamp-2 text-muted-foreground">{thread.body}</p>
                           {thread.replies?.length ? (
                             <div className="mt-3 grid gap-2 border-t border-[var(--sd-border)] pt-3">
-                              {thread.replies.slice(0, 6).map((reply) => (
+                              {thread.replies.map((reply) => (
                                 <div key={reply.id} className="rounded-md bg-[var(--sd-soft)] p-3">
                                   <div className="flex items-start justify-between gap-3">
                                     <p className="text-xs font-bold text-foreground">{reply.authorName || reply.authorEmail}</p>
@@ -948,7 +1082,11 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
                         </div>
                       ))}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="mt-4 rounded-md border border-dashed border-[var(--sd-border)] bg-card p-6 text-center text-sm font-semibold text-muted-foreground">
+                      {communitySearch.trim() ? "No discussion matched your search." : "No discussion has been posted yet."}
+                    </div>
+                  )}
                 </div>
               ) : null}
 
@@ -973,6 +1111,22 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
         title={openNote.title}
         html={openNote.html}
         onClose={() => setOpenNote(null)}
+      />
+    ) : null}
+    {discussionEdit ? (
+      <DiscussionEditModal
+        target={discussionEdit}
+        busy={discussionBusy}
+        onClose={() => setDiscussionEdit(null)}
+        onSave={saveDiscussionEdit}
+      />
+    ) : null}
+    {discussionDelete ? (
+      <DiscussionDeleteModal
+        target={discussionDelete}
+        busy={discussionBusy}
+        onClose={() => setDiscussionDelete(null)}
+        onConfirm={confirmDiscussionDelete}
       />
     ) : null}
     </>

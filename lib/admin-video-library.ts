@@ -1417,23 +1417,10 @@ export async function autofillModuleAccessibility(input: {
           cloudflare,
           { method: "POST", body: JSON.stringify({ language: "en", waitForReady: false }) }
         )
-        captionsUrl = `https://videodelivery.net/${encodeURIComponent(videoUid)}/captions/en.vtt`
-        captionsLanguagesJson = captionsLanguagesJson || JSON.stringify(["en"])
         status = "in_progress"
         reason = "caption_generation_started"
         captionGenerationStarted += 1
       } catch (_error) {}
-    }
-
-    if (!captionsUrl && videoUid) {
-      const guessed = `https://videodelivery.net/${encodeURIComponent(videoUid)}/captions/en.vtt`
-      const vtt = await fetchTextUrl(guessed)
-      if (vtt) {
-        captionsUrl = guessed
-        captionsLanguagesJson = captionsLanguagesJson || JSON.stringify(["en"])
-        transcript = transcript || stripVttToPlainText(vtt)
-        reason = reason || "captions_found"
-      }
     }
 
     if (!transcript && captionsUrl) {
@@ -2117,6 +2104,8 @@ export async function countCloudflareVideosForSigning(input?: { scope?: "all" | 
     SELECT COUNT(DISTINCT a.video_uid) AS total
     FROM tochukwu_learning_video_assets a
     WHERE COALESCE(TRIM(a.video_uid), '') <> ''
+      AND a.source_deleted_at IS NULL
+      AND a.ready_to_stream = 1
       AND (${scope} = 'all' OR a.updated_at >= ${Number.isNaN(since.getTime()) ? new Date(Date.now() - 24 * 60 * 60 * 1000) : since})
   `
   return toInt(rows[0]?.total)
@@ -2141,6 +2130,8 @@ export async function enforceSignedCloudflareVideosBatch(updatedBy: string, inpu
     SELECT DISTINCT a.video_uid AS videoUid
     FROM tochukwu_learning_video_assets a
     WHERE COALESCE(TRIM(a.video_uid), '') <> ''
+      AND a.source_deleted_at IS NULL
+      AND a.ready_to_stream = 1
       AND (${scope} = 'all' OR a.updated_at >= ${safeSince})
     ORDER BY a.video_uid ASC
     LIMIT ${limit}
@@ -2179,6 +2170,8 @@ export async function enforceSignedCloudflareVideos(updatedBy: string, forceRota
     FROM tochukwu_learning_video_assets a
     LEFT JOIN tochukwu_learning_lessons l ON l.video_asset_id = a.id
     WHERE COALESCE(TRIM(a.video_uid), '') <> ''
+      AND a.source_deleted_at IS NULL
+      AND a.ready_to_stream = 1
     ORDER BY a.video_uid ASC
   `
   let protectedVideos = 0

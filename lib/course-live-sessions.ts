@@ -142,6 +142,22 @@ export async function ensureCourseLiveSessionTables() {
       KEY idx_tochukwu_course_live_session_reminder (reminder_enabled, reminder_sent_at, reminder_send_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_course_live_session_reminder_log (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      session_uuid VARCHAR(64) NOT NULL,
+      reminder_stage VARCHAR(32) NOT NULL,
+      due_at DATETIME NOT NULL,
+      recipient_count INT NOT NULL DEFAULT 0,
+      sent_count INT NOT NULL DEFAULT 0,
+      last_error VARCHAR(500) NULL,
+      created_at DATETIME NOT NULL,
+      sent_at DATETIME NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_tochukwu_live_reminder_stage (session_uuid, reminder_stage),
+      KEY idx_tochukwu_live_reminder_due (reminder_stage, due_at, sent_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
 }
 
 async function batchStart(courseSlug: string, batchKey: string) {
@@ -355,32 +371,84 @@ function dashboardUrl() {
 async function sendLiveSessionEmail(input: {
   session: CourseLiveSessionRow
   recipient: { email: string; fullName: string | null; phone?: string | null }
+  stage: "day_before" | "morning_of"
 }) {
   const course = courseName(input.session.courseSlug)
   const name = clean(input.recipient.fullName, 160)
   const sessionTime = input.session.startsAt ? formatDateTimeWAT(input.session.startsAt) : ""
   const zoomUrl = clean(input.session.zoomJoinUrl, 1200)
-  const subject = `${course}: ${input.session.sessionTitle} is today`
+  const isTomorrow = input.stage === "day_before"
+  const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : "is today"}`
   const html = [
     `<p>Hello${name ? ` ${escapeHtml(name.split(" ")[0])}` : ""},</p>`,
-    `<p>Your live class for <strong>${escapeHtml(course)}</strong> is scheduled for today.</p>`,
+    `<p>Your live class for <strong>${escapeHtml(course)}</strong> is scheduled for ${isTomorrow ? "tomorrow" : "today"}.</p>`,
     `<p><strong>Session:</strong> ${escapeHtml(input.session.sessionTitle)}<br/><strong>Time:</strong> ${escapeHtml(sessionTime)}<br/><strong>Batch:</strong> ${escapeHtml(input.session.batchLabel || input.session.batchKey)}</p>`,
-    `<p><a href="${escapeHtml(zoomUrl)}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Join Zoom Class</a></p>`,
-    `<p>You can also find this Zoom button inside your student dashboard course card.</p>`,
-    `<p><a href="${escapeHtml(dashboardUrl())}" style="color:#0d4f9a;font-weight:700;">Open student dashboard</a></p>`
-  ].join("")
+    `<p>Please log into your student dashboard, open Courses, and use the live class button on your course card.</p>`,
+    `<p><a href="${escapeHtml(dashboardUrl())}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Open student dashboard</a></p>`,
+    zoomUrl ? `<p style="font-size:13px;color:#64748b;">The Zoom access button is also available inside your dashboard.</p>` : ""
+  ].filter(Boolean).join("")
   const text = [
     `Hello${name ? ` ${name.split(" ")[0]}` : ""},`,
     "",
-    `Your live class for ${course} is scheduled for today.`,
+    `Your live class for ${course} is scheduled for ${isTomorrow ? "tomorrow" : "today"}.`,
     `Session: ${input.session.sessionTitle}`,
     `Time: ${sessionTime}`,
     `Batch: ${input.session.batchLabel || input.session.batchKey}`,
-    `Zoom: ${zoomUrl}`,
     "",
+    "Please log into your student dashboard, open Courses, and use the live class button on your course card.",
     `Dashboard: ${dashboardUrl()}`
   ].join("\n")
   return sendBrevoTransactionalEmail({ to: input.recipient.email, name, subject, html, text })
+}
+
+function liveReminderDueAt(session: CourseLiveSessionRow, stage: "day_before" | "morning_of") {
+  if (!session.startsAt) return null
+  if (stage === "day_before") {
+    return new Date(watWallDateTimeMs(session.startsAt) - 24 * 60 * 60 * 1000)
+  }
+  return new Date(Date.UTC(
+    session.startsAt.getUTCFullYear(),
+    session.startsAt.getUTCMonth(),
+    session.startsAt.getUTCDate(),
+    5,
+    0,
+    0
+  ))
+}
+
+async function reminderAlreadySent(sessionUuid: string, stage: "day_before" | "morning_of") {
+  const rows = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+    SELECT id
+    FROM tochukwu_course_live_session_reminder_log
+    WHERE session_uuid = ${sessionUuid}
+      AND reminder_stage = ${stage}
+      AND sent_at IS NOT NULL
+    LIMIT 1
+  `)
+  return Boolean(rows[0])
+}
+
+async function recordReminderStage(input: {
+  sessionUuid: string
+  stage: "day_before" | "morning_of"
+  dueAt: Date
+  recipientCount: number
+  sentCount: number
+  lastError?: string
+}) {
+  const now = new Date()
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_course_live_session_reminder_log
+      (session_uuid, reminder_stage, due_at, recipient_count, sent_count, last_error, created_at, sent_at)
+    VALUES
+      (${input.sessionUuid}, ${input.stage}, ${input.dueAt}, ${input.recipientCount}, ${input.sentCount}, ${clean(input.lastError, 500) || null}, ${now}, ${now})
+    ON DUPLICATE KEY UPDATE
+      due_at = VALUES(due_at),
+      recipient_count = VALUES(recipient_count),
+      sent_count = VALUES(sent_count),
+      last_error = VALUES(last_error),
+      sent_at = VALUES(sent_at)
+  `
 }
 
 export async function sendDueLiveSessionReminders() {
@@ -393,7 +461,6 @@ export async function sendDueLiveSessionReminders() {
       reminder_send_at AS reminderSendAt, reminder_sent_at AS reminderSentAt, reminder_last_error AS reminderLastError
     FROM tochukwu_course_batch_live_sessions
     WHERE reminder_enabled = 1
-      AND reminder_sent_at IS NULL
       AND COALESCE(TRIM(zoom_join_url), '') <> ''
     ORDER BY reminder_send_at ASC, starts_at ASC
     LIMIT 25
@@ -401,36 +468,43 @@ export async function sendDueLiveSessionReminders() {
   const now = Date.now()
   let sent = 0
   let attemptedSessions = 0
+  let attemptedStages = 0
   for (const session of sessions) {
-    const dueAt = session.reminderSendAt || session.startsAt
-    if (!dueAt || watWallDateTimeMs(dueAt) > now) continue
-    attemptedSessions += 1
-    const recipients = await listSessionRecipients(normalizeSlug(session.courseSlug), normalizeBatchKey(session.batchKey))
-    let sessionSent = 0
-    let lastError = ""
-    for (const recipient of recipients) {
-      try {
-        await sendLiveSessionEmail({ session, recipient })
-        await sendLiveClassReminderWhatsApp({
-          phone: recipient.phone,
-          fullName: recipient.fullName,
-          courseSlug: session.courseSlug,
-          sessionTitle: session.sessionTitle
-        }).catch(() => null)
-        sessionSent += 1
-        sent += 1
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error)
+    const stages: Array<"day_before" | "morning_of"> = ["day_before", "morning_of"]
+    let sessionAttempted = false
+    for (const stage of stages) {
+      const dueAt = liveReminderDueAt(session, stage)
+      if (!dueAt || dueAt.getTime() > now || await reminderAlreadySent(session.sessionUuid, stage)) continue
+      attemptedStages += 1
+      sessionAttempted = true
+      const recipients = await listSessionRecipients(normalizeSlug(session.courseSlug), normalizeBatchKey(session.batchKey))
+      let stageSent = 0
+      let lastError = ""
+      for (const recipient of recipients) {
+        try {
+          await sendLiveSessionEmail({ session, recipient, stage })
+          await sendLiveClassReminderWhatsApp({
+            phone: recipient.phone,
+            fullName: recipient.fullName,
+            courseSlug: session.courseSlug,
+            sessionTitle: session.sessionTitle
+          }).catch(() => null)
+          stageSent += 1
+          sent += 1
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error)
+        }
       }
+      await recordReminderStage({
+        sessionUuid: session.sessionUuid,
+        stage,
+        dueAt,
+        recipientCount: recipients.length,
+        sentCount: stageSent,
+        lastError
+      })
     }
-    await prisma.$executeRaw`
-      UPDATE tochukwu_course_batch_live_sessions
-      SET reminder_sent_at = ${new Date()},
-          reminder_last_error = ${lastError || null},
-          updated_at = ${new Date()}
-      WHERE id = ${session.id}
-      LIMIT 1
-    `
+    if (sessionAttempted) attemptedSessions += 1
   }
-  return { ok: true, attemptedSessions, sent }
+  return { ok: true, attemptedSessions, attemptedStages, sent }
 }

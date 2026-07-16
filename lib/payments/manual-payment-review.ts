@@ -226,18 +226,15 @@ export async function reviewManualPayment(input: {
       phone: clean(payment.phone, 80) || undefined
     }))
 
-  let resetToken: string | null = null
-  if (!existingAccount) {
-    const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
-    resetToken = reset?.token || null
-    if (resetToken) {
-      await sendStudentAccountReadyEmail({
-        email,
-        fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-        courseSlug: clean(payment.course_slug, 120),
-        resetToken
-      })
-    }
+  const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
+  const resetToken = reset?.token || null
+  if (resetToken) {
+    await sendStudentAccountReadyEmail({
+      email,
+      fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+      courseSlug: clean(payment.course_slug, 120),
+      resetToken
+    })
   }
   await syncEnrollmentToBrevo({
     fullName: account.fullName || clean(payment.first_name, 180) || "Student",
