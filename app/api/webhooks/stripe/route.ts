@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
+import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
 import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
@@ -33,7 +34,11 @@ export async function POST(request: Request) {
   const rawBody = await request.text()
   const signature = request.headers.get("stripe-signature") || ""
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-  if (!webhookSecret || !signature) return NextResponse.json({ ok: false, error: "Missing webhook signature." }, { status: 401 })
+  if (!webhookSecret) {
+    await reportPaymentProviderIssue({ provider: "stripe", operation: "webhook processing", summary: "STRIPE_WEBHOOK_SECRET is missing.", errorCode: "missing_webhook_secret" })
+    return NextResponse.json({ ok: false, error: "Webhook processing is unavailable." }, { status: 503 })
+  }
+  if (!signature) return NextResponse.json({ ok: false, error: "Missing webhook signature." }, { status: 401 })
   if (!verifyStripeSignature(rawBody, signature, webhookSecret)) return NextResponse.json({ ok: false, error: "Invalid webhook signature." }, { status: 401 })
 
   const payload = JSON.parse(rawBody || "{}")

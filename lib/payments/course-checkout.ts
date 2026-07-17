@@ -6,6 +6,7 @@ import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/
 import { prisma } from "@/lib/prisma"
 import { getCourse } from "@/lib/public-offers"
 import { addColumnIfMissing } from "@/lib/schema-guards"
+import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 
 export type CheckoutProvider = "paystack" | "stripe"
 
@@ -1378,26 +1379,59 @@ export async function initializePaystack(input: {
   metadata: Record<string, unknown>
   callbackUrl?: string
 }) {
-  const secret = process.env.PAYSTACK_SECRET_KEY
-  if (!secret) throw new Error("Missing PAYSTACK_SECRET_KEY")
-  const response = await fetch("https://api.paystack.co/transaction/initialize", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${secret}`,
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
-    body: JSON.stringify({
-      email: input.email,
-      amount: input.amountMinor,
+  const customerMessage = "Card checkout is temporarily unavailable. Please try again shortly."
+  const secret = String(process.env.PAYSTACK_SECRET_KEY || "").trim()
+  if (!secret) {
+    await reportPaymentProviderIssue({
+      provider: "paystack",
+      operation: "checkout initialization",
+      summary: "PAYSTACK_SECRET_KEY is missing.",
       reference: input.reference,
-      callback_url: input.callbackUrl || `${siteBaseUrl()}/api/payments/paystack/return`,
-      metadata: input.metadata
+      errorCode: "missing_secret_key"
     })
-  })
+    throw new Error(customerMessage)
+  }
+  let response: Response
+  try {
+    response = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        email: input.email,
+        amount: input.amountMinor,
+        reference: input.reference,
+        callback_url: input.callbackUrl || `${siteBaseUrl()}/api/payments/paystack/return`,
+        metadata: input.metadata
+      })
+    })
+  } catch (error) {
+    await reportPaymentProviderIssue({
+      provider: "paystack",
+      operation: "checkout initialization",
+      summary: "The request to Paystack failed.",
+      reference: input.reference,
+      errorType: "network_error",
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
+    throw new Error(customerMessage)
+  }
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.status || !json?.data?.authorization_url) {
-    throw new Error(json?.message || `Paystack initialize failed (${response.status})`)
+    await reportPaymentProviderIssue({
+      provider: "paystack",
+      operation: "checkout initialization",
+      summary: "Paystack rejected the checkout initialization request.",
+      reference: input.reference,
+      status: response.status,
+      requestId: response.headers.get("x-request-id") || response.headers.get("request-id"),
+      errorCode: json?.code || null,
+      errorMessage: json?.message || `Paystack initialize failed (${response.status})`
+    })
+    throw new Error(customerMessage)
   }
   return {
     checkoutUrl: String(json.data.authorization_url),
@@ -1417,8 +1451,18 @@ export async function initializeStripe(input: {
   cancelUrl?: string
   metadata?: Record<string, string>
 }) {
-  const secret = process.env.STRIPE_SECRET_KEY
-  if (!secret) throw new Error("Missing STRIPE_SECRET_KEY")
+  const customerMessage = "Card checkout is temporarily unavailable. Please try again shortly."
+  const secret = String(process.env.STRIPE_SECRET_KEY || "").trim()
+  if (!secret) {
+    await reportPaymentProviderIssue({
+      provider: "stripe",
+      operation: "checkout initialization",
+      summary: "STRIPE_SECRET_KEY is missing.",
+      reference: input.orderUuid,
+      errorCode: "missing_secret_key"
+    })
+    throw new Error(customerMessage)
+  }
   const params = new URLSearchParams()
   params.set("mode", "payment")
   params.set("customer_email", input.email)
@@ -1438,17 +1482,41 @@ export async function initializeStripe(input: {
     params.set(`payment_intent_data[metadata][${key}]`, value)
   }
 
-  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${secret}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: params.toString()
-  })
+  let response: Response
+  try {
+    response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    })
+  } catch (error) {
+    await reportPaymentProviderIssue({
+      provider: "stripe",
+      operation: "checkout initialization",
+      summary: "The request to Stripe failed.",
+      reference: input.orderUuid,
+      errorType: "network_error",
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
+    throw new Error(customerMessage)
+  }
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.id || !json?.url) {
-    throw new Error(json?.error?.message || `Stripe Checkout failed (${response.status})`)
+    await reportPaymentProviderIssue({
+      provider: "stripe",
+      operation: "checkout initialization",
+      summary: "Stripe rejected the checkout initialization request.",
+      reference: input.orderUuid,
+      status: response.status,
+      requestId: response.headers.get("request-id"),
+      errorType: json?.error?.type || null,
+      errorCode: json?.error?.code || null,
+      errorMessage: json?.error?.message || `Stripe Checkout failed (${response.status})`
+    })
+    throw new Error(customerMessage)
   }
   return {
     checkoutUrl: String(json.url),
@@ -1458,21 +1526,54 @@ export async function initializeStripe(input: {
 }
 
 export async function verifyPaystackTransaction(reference: string) {
-  const secret = process.env.PAYSTACK_SECRET_KEY
-  if (!secret) throw new Error("Missing PAYSTACK_SECRET_KEY")
-  const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${secret}`,
-      Accept: "application/json"
-    }
-  })
+  const customerMessage = "We could not verify your card payment. Please contact support if you were charged."
+  const secret = String(process.env.PAYSTACK_SECRET_KEY || "").trim()
+  if (!secret) {
+    await reportPaymentProviderIssue({
+      provider: "paystack",
+      operation: "payment verification",
+      summary: "PAYSTACK_SECRET_KEY is missing.",
+      reference,
+      errorCode: "missing_secret_key"
+    })
+    throw new Error(customerMessage)
+  }
+  let response: Response
+  try {
+    response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        Accept: "application/json"
+      }
+    })
+  } catch (error) {
+    await reportPaymentProviderIssue({
+      provider: "paystack",
+      operation: "payment verification",
+      summary: "The verification request to Paystack failed.",
+      reference,
+      errorType: "network_error",
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
+    throw new Error(customerMessage)
+  }
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.status || !json?.data) {
-    throw new Error(json?.message || `Paystack verify failed (${response.status})`)
+    await reportPaymentProviderIssue({
+      provider: "paystack",
+      operation: "payment verification",
+      summary: "Paystack rejected the payment verification request.",
+      reference,
+      status: response.status,
+      requestId: response.headers.get("x-request-id") || response.headers.get("request-id"),
+      errorCode: json?.code || null,
+      errorMessage: json?.message || `Paystack verify failed (${response.status})`
+    })
+    throw new Error(customerMessage)
   }
   if (String(json.data.status || "").toLowerCase() !== "success") {
-    throw new Error("Paystack payment was not successful.")
+    throw new Error("The payment has not been completed.")
   }
   return {
     reference: String(json.data.reference || reference),
@@ -1484,20 +1585,54 @@ export async function verifyPaystackTransaction(reference: string) {
 }
 
 export async function retrieveStripeSession(sessionId: string) {
-  const secret = process.env.STRIPE_SECRET_KEY
-  if (!secret) throw new Error("Missing STRIPE_SECRET_KEY")
-  const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${secret}`
-    }
-  })
+  const customerMessage = "We could not verify your card payment. Please contact support if you were charged."
+  const secret = String(process.env.STRIPE_SECRET_KEY || "").trim()
+  if (!secret) {
+    await reportPaymentProviderIssue({
+      provider: "stripe",
+      operation: "payment verification",
+      summary: "STRIPE_SECRET_KEY is missing.",
+      reference: sessionId,
+      errorCode: "missing_secret_key"
+    })
+    throw new Error(customerMessage)
+  }
+  let response: Response
+  try {
+    response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${secret}`
+      }
+    })
+  } catch (error) {
+    await reportPaymentProviderIssue({
+      provider: "stripe",
+      operation: "payment verification",
+      summary: "The verification request to Stripe failed.",
+      reference: sessionId,
+      errorType: "network_error",
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
+    throw new Error(customerMessage)
+  }
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.id) {
-    throw new Error(json?.error?.message || `Stripe session lookup failed (${response.status})`)
+    await reportPaymentProviderIssue({
+      provider: "stripe",
+      operation: "payment verification",
+      summary: "Stripe rejected the payment verification request.",
+      reference: sessionId,
+      status: response.status,
+      requestId: response.headers.get("request-id"),
+      errorType: json?.error?.type || null,
+      errorCode: json?.error?.code || null,
+      errorMessage: json?.error?.message || `Stripe session lookup failed (${response.status})`
+    })
+    throw new Error(customerMessage)
   }
   if (String(json.payment_status || "").toLowerCase() !== "paid") {
-    throw new Error("Stripe payment has not been marked paid.")
+    throw new Error("The payment has not been completed.")
   }
   return {
     id: String(json.id),

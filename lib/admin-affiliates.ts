@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
+import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { prisma } from "@/lib/prisma"
 
 function clean(value: unknown, max = 500) {
@@ -53,20 +54,32 @@ function paystackSecretKey() {
 
 async function paystackCreateTransfer(input: { amountMinor: number; recipient: string; reason: string; reference: string }) {
   const secret = paystackSecretKey()
-  if (!secret) throw new Error("Paystack secret key is not configured.")
-  const response = await fetch("https://api.paystack.co/transfer", {
-    method: "POST",
-    headers: { authorization: `Bearer ${secret}`, accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify({
-      source: "balance",
-      amount: input.amountMinor,
-      recipient: input.recipient,
-      reason: input.reason,
-      reference: input.reference
+  if (!secret) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout transfer", summary: "PAYSTACK_SECRET_KEY is missing.", reference: input.reference, errorCode: "missing_secret_key" })
+    throw new Error("Paystack payout transfer is temporarily unavailable.")
+  }
+  let response: Response
+  try {
+    response = await fetch("https://api.paystack.co/transfer", {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}`, accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "balance",
+        amount: input.amountMinor,
+        recipient: input.recipient,
+        reason: input.reason,
+        reference: input.reference
+      })
     })
-  })
+  } catch (error) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout transfer", summary: "The transfer request to Paystack failed.", reference: input.reference, errorType: "network_error", errorMessage: error instanceof Error ? error.message : String(error) })
+    throw new Error("Paystack payout transfer is temporarily unavailable.")
+  }
   const json = await response.json().catch(() => null)
-  if (!response.ok || json?.status === false) throw new Error(json?.message || `Paystack transfer failed (${response.status})`)
+  if (!response.ok || json?.status === false) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout transfer", summary: "Paystack rejected the payout transfer.", reference: input.reference, status: response.status, requestId: response.headers.get("x-request-id") || response.headers.get("request-id"), errorCode: json?.code || null, errorMessage: json?.message || `Paystack transfer failed (${response.status})` })
+    throw new Error("Paystack payout transfer is temporarily unavailable.")
+  }
   return {
     transferId: clean(json?.data?.id, 190),
     transferCode: clean(json?.data?.transfer_code, 120),

@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
+import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
 import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
@@ -18,7 +19,11 @@ export async function POST(request: Request) {
   const rawBody = await request.text()
   const secret = process.env.PAYSTACK_SECRET_KEY
   const signature = request.headers.get("x-paystack-signature") || ""
-  if (!secret || !signature) return NextResponse.json({ ok: false, error: "Missing webhook signature." }, { status: 401 })
+  if (!secret) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "webhook processing", summary: "PAYSTACK_SECRET_KEY is missing.", errorCode: "missing_secret_key" })
+    return NextResponse.json({ ok: false, error: "Webhook processing is unavailable." }, { status: 503 })
+  }
+  if (!signature) return NextResponse.json({ ok: false, error: "Missing webhook signature." }, { status: 401 })
   const expected = crypto.createHmac("sha512", secret).update(rawBody).digest("hex")
   if (!timingSafeEqual(signature, expected)) return NextResponse.json({ ok: false, error: "Invalid webhook signature." }, { status: 401 })
 

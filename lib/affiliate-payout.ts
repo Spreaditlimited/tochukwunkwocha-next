@@ -2,6 +2,7 @@ import crypto, { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
 import { sendEmail } from "@/lib/email"
+import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { prisma } from "@/lib/prisma"
 
 const NIGERIAN_BANKS_FALLBACK = [
@@ -56,25 +57,49 @@ function paystackSecretKey() {
 
 async function paystackGet(path: string) {
   const secret = paystackSecretKey()
-  if (!secret) throw new Error("Paystack secret key is not configured.")
-  const response = await fetch(`https://api.paystack.co${path}`, {
-    headers: { authorization: `Bearer ${secret}`, accept: "application/json" }
-  })
+  if (!secret) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout lookup", summary: "PAYSTACK_SECRET_KEY is missing.", reference: path, errorCode: "missing_secret_key" })
+    throw new Error("The payout service is temporarily unavailable. Please try again shortly.")
+  }
+  let response: Response
+  try {
+    response = await fetch(`https://api.paystack.co${path}`, {
+      headers: { authorization: `Bearer ${secret}`, accept: "application/json" }
+    })
+  } catch (error) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout lookup", summary: "The request to Paystack failed.", reference: path, errorType: "network_error", errorMessage: error instanceof Error ? error.message : String(error) })
+    throw new Error("The payout service is temporarily unavailable. Please try again shortly.")
+  }
   const json = await response.json().catch(() => null)
-  if (!response.ok || json?.status === false) throw new Error(json?.message || `Paystack request failed (${response.status})`)
+  if (!response.ok || json?.status === false) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout lookup", summary: "Paystack rejected the payout lookup request.", reference: path, status: response.status, requestId: response.headers.get("x-request-id") || response.headers.get("request-id"), errorCode: json?.code || null, errorMessage: json?.message || `Paystack request failed (${response.status})` })
+    throw new Error("The payout service is temporarily unavailable. Please try again shortly.")
+  }
   return json
 }
 
 async function paystackPost(path: string, body: Record<string, unknown>) {
   const secret = paystackSecretKey()
-  if (!secret) throw new Error("Paystack secret key is not configured.")
-  const response = await fetch(`https://api.paystack.co${path}`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${secret}`, accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify(body)
-  })
+  if (!secret) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout setup", summary: "PAYSTACK_SECRET_KEY is missing.", reference: path, errorCode: "missing_secret_key" })
+    throw new Error("The payout service is temporarily unavailable. Please try again shortly.")
+  }
+  let response: Response
+  try {
+    response = await fetch(`https://api.paystack.co${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}`, accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  } catch (error) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout setup", summary: "The request to Paystack failed.", reference: path, errorType: "network_error", errorMessage: error instanceof Error ? error.message : String(error) })
+    throw new Error("The payout service is temporarily unavailable. Please try again shortly.")
+  }
   const json = await response.json().catch(() => null)
-  if (!response.ok || json?.status === false) throw new Error(json?.message || `Paystack request failed (${response.status})`)
+  if (!response.ok || json?.status === false) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout setup", summary: "Paystack rejected the payout setup request.", reference: path, status: response.status, requestId: response.headers.get("x-request-id") || response.headers.get("request-id"), errorCode: json?.code || null, errorMessage: json?.message || `Paystack request failed (${response.status})` })
+    throw new Error("The payout service is temporarily unavailable. Please try again shortly.")
+  }
   return json
 }
 
