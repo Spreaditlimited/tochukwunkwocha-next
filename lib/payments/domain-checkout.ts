@@ -231,7 +231,7 @@ export async function createDomainCheckout(input: {
           orderUuid,
           courseSlug: "domain-registration",
           successUrl: `${siteBaseUrl()}/api/domains/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${siteBaseUrl()}/services/domain-registration?domain=${encodeURIComponent(domainName)}&payment=cancelled`,
+          cancelUrl: `${siteBaseUrl()}/dashboard/domains?domain=${encodeURIComponent(domainName)}&payment=cancelled#domainRegisterSection`,
           metadata
         })
       : await initializePaystack({

@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server"
 
-import { saveDnsUpdateRequest } from "@/lib/student-domain-actions"
+import { loadStudentDomainDns, saveDnsUpdateRequest } from "@/lib/student-domain-actions"
 import { requireStudent } from "@/lib/student-auth"
+
+export async function GET(request: Request) {
+  const session = await requireStudent()
+  try {
+    const domainName = new URL(request.url).searchParams.get("domainName") || ""
+    const result = await loadStudentDomainDns(session.account.id, domainName)
+    return NextResponse.json({ ok: true, ...result })
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load DNS zone." }, { status: 400 })
+  }
+}
 
 export async function POST(request: Request) {
   const session = await requireStudent()

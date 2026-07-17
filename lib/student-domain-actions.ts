@@ -301,21 +301,6 @@ export async function createDomainRegistrationRequest(input: { accountId: bigint
   return { orderUuid, domainName: result.domainName || domainName, years, status: "registered" }
 }
 
-export async function createDomainRenewalRequest(input: { accountId: bigint; email: string; domainName: string; years?: number }) {
-  const domain = await assertStudentDomain(input.accountId, input.domainName)
-  if (domain.status.toLowerCase() !== "registered") throw new Error("Only registered domains can be renewed.")
-  const years = Math.max(1, Math.min(10, Math.trunc(Number(input.years || 1))))
-  const now = new Date()
-  await ensureDomainRequestTables()
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO tochukwu_user_domain_dns_requests
-      (request_uuid, account_id, email, domain_name, request_type, payload_json, status, created_at, updated_at)
-    VALUES
-      (${`ddr_${randomUUID().replace(/-/g, "")}`}, ${input.accountId}, ${input.email.toLowerCase()}, ${domain.domainName}, 'renewal', ${JSON.stringify({ years })}, 'submitted', ${now}, ${now})
-  `)
-  return { domainName: domain.domainName, years, status: "submitted" }
-}
-
 export async function saveDnsUpdateRequest(input: { accountId: bigint; email: string; domainName: string; records: unknown[] }) {
   const domain = await assertStudentDomain(input.accountId, input.domainName)
   const now = new Date()
@@ -334,6 +319,25 @@ export async function saveDnsUpdateRequest(input: { accountId: bigint; email: st
       (${`ddr_${randomUUID().replace(/-/g, "")}`}, ${input.accountId}, ${input.email.toLowerCase()}, ${domain.domainName}, 'dns_records', ${JSON.stringify({ records: input.records || [], providerResult: providerPayload })}, ${providerStatus}, ${now}, ${now})
   `)
   return { domainName: domain.domainName, status: providerStatus }
+}
+
+export async function loadStudentDomainDns(accountId: bigint, domainNameInput: unknown) {
+  const domain = await assertStudentDomain(accountId, domainNameInput)
+  if (domain.status.toLowerCase() !== "registered") {
+    throw new Error("Domain registration is not complete yet. DNS management will be available after registration is completed.")
+  }
+  if (domain.provider.toLowerCase() === "mock") {
+    throw new Error("This domain was created in mock mode and was not registered with a live registrar. DNS records are unavailable for mock registrations.")
+  }
+  if (typeof domainClient.getDnsZone !== "function") throw new Error("DNS management is not supported by the configured registrar.")
+  await applyAdminSettingsToProcessEnv()
+  const zone = await domainClient.getDnsZone({ domainName: domain.domainName }) as Record<string, unknown>
+  return {
+    domainName: domain.domainName,
+    provider: clean(zone.provider || domain.provider, 40),
+    nameservers: Array.isArray(zone.nameservers) ? zone.nameservers.map((item) => clean(item, 190)).filter(Boolean) : [],
+    records: Array.isArray(zone.records) ? zone.records : []
+  }
 }
 
 export async function saveNameserverUpdateRequest(input: { accountId: bigint; email: string; domainName: string; nameservers: string[] }) {
@@ -394,4 +398,40 @@ export async function saveNetlifyAccess(input: {
       updated_at = VALUES(updated_at)
   `)
   return { domainName: domain.domainName, status: "submitted" }
+}
+
+export async function loadNetlifyAccess(accountId: bigint, domainNameInput: unknown) {
+  const domain = await assertStudentDomain(accountId, domainNameInput)
+  await ensureDomainRequestTables()
+  const rows = await prisma.$queryRaw<Array<{
+    netlifyEmail: string | null
+    netlifyWorkspace: string | null
+    netlifySiteName: string | null
+    connectionMethod: string | null
+    accessDetails: string | null
+    status: string | null
+    updatedAt: Date | null
+    createdAt: Date | null
+  }>>(Prisma.sql`
+    SELECT netlify_email AS netlifyEmail, netlify_workspace AS netlifyWorkspace,
+           netlify_site_name AS netlifySiteName, connection_method AS connectionMethod,
+           access_details AS accessDetails, status, updated_at AS updatedAt, created_at AS createdAt
+    FROM tochukwu_user_domain_netlify_access
+    WHERE account_id = ${accountId}
+      AND domain_name COLLATE utf8mb4_unicode_ci = ${domain.domainName} COLLATE utf8mb4_unicode_ci
+    LIMIT 1
+  `)
+  const row = rows[0]
+  return {
+    domainName: domain.domainName,
+    details: row ? {
+      netlifyEmail: row.netlifyEmail || "",
+      netlifyWorkspace: row.netlifyWorkspace || "",
+      netlifySiteName: row.netlifySiteName || "",
+      connectionMethod: row.connectionMethod || "collaborator_invite",
+      accessDetails: row.accessDetails || "",
+      status: row.status || "submitted",
+      updatedAt: row.updatedAt || row.createdAt
+    } : null
+  }
 }
