@@ -4,6 +4,7 @@ import { getAdminSettingValue } from "@/lib/admin-settings"
 import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
+import { getConfiguredStripeFee, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { getCourse } from "@/lib/public-offers"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
@@ -353,20 +354,9 @@ async function vatPercent(provider: CheckoutProvider) {
   return Number.isFinite(raw) && raw >= 0 ? raw : provider === "stripe" ? 20 : 7.5
 }
 
-async function stripeFixedFeeMinor(currency: string) {
-  const raw = Number(await getAdminSettingValue(`STRIPE_FEE_FIXED_${currency}_MINOR`))
-  if (Number.isFinite(raw) && raw >= 0) return Math.round(raw)
-  if (currency === "GBP") return 20
-  if (currency === "EUR") return 25
-  return 30
-}
-
 async function grossUpStripeAmount(netMinor: number, currency: string) {
-  const bpsRaw = Number(await getAdminSettingValue("STRIPE_FEE_BPS"))
-  const bps = Number.isFinite(bpsRaw) && bpsRaw >= 0 ? Math.round(bpsRaw) : 150
-  const fixed = await stripeFixedFeeMinor(currency)
-  if (bps >= 10000) return netMinor + fixed
-  return Math.ceil((netMinor + fixed) / (1 - bps / 10000) + 1)
+  const { bps, fixedMinor } = await getConfiguredStripeFee(currency)
+  return calculateStripeGrossAmount(netMinor, bps, fixedMinor)
 }
 
 function grossUpPaystackAmount(netMinor: number) {

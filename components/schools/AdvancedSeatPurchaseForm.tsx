@@ -5,6 +5,7 @@ import { X } from "lucide-react"
 
 import { createSchoolAdvancedSeatCheckoutAction } from "@/app/schools/dashboard/actions"
 import { AFFILIATE_REF_STORAGE_KEY } from "@/components/AffiliateReferralCapture"
+import { SeatCountStepper } from "@/components/SeatCountStepper"
 
 export function AdvancedSeatPurchaseForm({ minSeats = 5 }: { minSeats?: number }) {
   const [seatCount, setSeatCount] = useState(minSeats)
@@ -21,17 +22,17 @@ export function AdvancedSeatPurchaseForm({ minSeats = 5 }: { minSeats?: number }
 
   return (
     <div className="mt-6 rounded-lg border border-border bg-muted/20 p-4">
-      <div className="grid gap-4 sm:grid-cols-[220px_1fr_auto] sm:items-end">
-        <label className="block">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-[220px_minmax(0,1fr)_auto] sm:items-end">
+        <div className="min-w-0 max-w-full">
           <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-muted-foreground">Seats to buy</span>
-          <input
-            type="number"
+          <SeatCountStepper
             min={minSeats}
+            max={500}
             value={seatCount}
-            onChange={(event) => setSeatCount(Math.max(minSeats, Number(event.target.value) || minSeats))}
-            className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
+            onChange={setSeatCount}
+            className="mt-0 bg-background"
           />
-        </label>
+        </div>
         <p className="text-sm leading-6 text-muted-foreground">
           Purchase discounted Prompt to Profit Advanced seats for eligible school learners, then upgrade selected students below.
         </p>

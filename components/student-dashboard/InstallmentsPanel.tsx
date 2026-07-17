@@ -5,6 +5,7 @@ import Link from "next/link"
 import { CheckCircle2, CreditCard, ShieldCheck, WalletCards } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { SeatCountStepper } from "@/components/SeatCountStepper"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 import type { LearningCourseOption } from "@/lib/student-dashboard"
 import type { StudentInstallmentPlan } from "@/lib/student-installments"
@@ -155,7 +156,7 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
           </div>
         </div>
 
-        <form onSubmit={startPlan} className="mt-7 grid gap-5 lg:grid-cols-2">
+        <form onSubmit={startPlan} className="mt-7 grid min-w-0 gap-5 lg:grid-cols-2">
           <label className="block">
             <span className="label">Select Course</span>
             <PremiumPicker className="mt-2" value={courseSlug} onChange={(event) => setCourseSlug(event.target.value)} options={courses.map((course) => ({ value: course.courseSlug, label: course.courseTitle }))} required />
@@ -181,10 +182,10 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
             />
           </label>
           {buyerType === "family" ? (
-            <label className="block">
+            <div className="min-w-0 max-w-full">
               <span className="label">Number of Seats</span>
-              <input className="field mt-2" type="number" min={2} value={seatCount} onChange={(event) => setSeatCount(Math.max(2, Number(event.target.value || 2)))} />
-            </label>
+              <SeatCountStepper min={2} max={500} value={seatCount} onChange={setSeatCount} />
+            </div>
           ) : null}
           <label className="block">
             <span className="label">Coupon Code (Optional)</span>

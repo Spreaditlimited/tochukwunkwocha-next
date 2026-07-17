@@ -5,6 +5,7 @@ import { bindSchoolReferralAfterPayment, captureSchoolOrderReferral } from "@/li
 import { getAdminSettingValue } from "@/lib/admin-settings"
 import { initializePaystack, initializeStripe, isNigeriaCountry, retrieveStripeSession, siteBaseUrl, stripeCurrencyForCountry, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
+import { getConfiguredStripeFee, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
 const DEFAULT_ADVANCED_MIN_SEATS = 5
@@ -24,20 +25,10 @@ async function vatBps(provider: "paystack" | "stripe") {
   return Math.round(percent * 100)
 }
 
-async function stripeFixedFeeMinor(currency: string) {
-  const cur = currency.toUpperCase()
-  const raw = Number(await getAdminSettingValue(`STRIPE_FEE_FIXED_${cur}_MINOR`))
-  if (Number.isFinite(raw) && raw >= 0) return Math.round(raw)
-  return 0
-}
-
 async function grossUpStripeAmount(netMinor: number, currency: string) {
   const net = Math.max(0, Math.round(netMinor))
-  const bpsRaw = Number(await getAdminSettingValue("STRIPE_FEE_BPS"))
-  const bps = Number.isFinite(bpsRaw) && bpsRaw >= 0 ? Math.round(bpsRaw) : 0
-  const fixed = await stripeFixedFeeMinor(currency)
-  if (bps >= 10000) return net + fixed
-  return Math.ceil((net + fixed) / (1 - bps / 10000) + 1)
+  const { bps, fixedMinor } = await getConfiguredStripeFee(currency)
+  return calculateStripeGrossAmount(net, bps, fixedMinor)
 }
 
 async function ensureSchoolPaymentTables() {

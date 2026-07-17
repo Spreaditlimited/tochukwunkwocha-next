@@ -13,6 +13,7 @@ import {
   type CheckoutProvider
 } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
+import { getConfiguredStripeFee, grossUpStripeAmount } from "@/lib/payments/processing-fees"
 import {
   checkStudentDomainAvailability,
   domainProvider,
@@ -97,21 +98,9 @@ async function exchangeRate(currency: string) {
   return rate
 }
 
-async function stripeFeeConfig(currency: string) {
-  const bpsText = await getAdminSettingValue("STRIPE_FEE_BPS")
-  const bpsSetting = bpsText === "" ? Number.NaN : Number(bpsText)
-  const bps = Number.isFinite(bpsSetting) && bpsSetting >= 0 ? Math.min(Math.round(bpsSetting), 9999) : 150
-  const fixedText = await getAdminSettingValue(`STRIPE_FEE_FIXED_${currency}_MINOR`)
-  const fixedSetting = fixedText === "" ? Number.NaN : Number(fixedText)
-  const fixed = Number.isFinite(fixedSetting) && fixedSetting >= 0
-    ? Math.round(fixedSetting)
-    : currency === "GBP" ? 20 : currency === "EUR" ? 25 : 30
-  return { bps, fixed }
-}
-
 async function grossUpForStripe(netMinor: number, currency: string) {
-  const { bps, fixed } = await stripeFeeConfig(currency)
-  const total = Math.ceil((netMinor + fixed) / (1 - bps / 10000) + 1)
+  const { bps, fixedMinor } = await getConfiguredStripeFee(currency)
+  const total = grossUpStripeAmount(netMinor, bps, fixedMinor)
   return { total, fee: Math.max(0, total - netMinor) }
 }
 

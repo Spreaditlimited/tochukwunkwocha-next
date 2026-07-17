@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { SeatCountStepper } from "@/components/SeatCountStepper"
 import { AFFILIATE_REF_STORAGE_KEY } from "@/components/AffiliateReferralCapture"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
@@ -537,7 +538,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
             <form onSubmit={submitCheckout} className="grid gap-8">
               <div className="surface-raised bg-card p-6 sm:p-8">
                 <h2 className="font-heading text-lg font-bold">Personal Information</h2>
-                <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                <div className="mt-6 grid min-w-0 gap-5 sm:grid-cols-2">
                   <label className="block">
                     <span className="label flex items-center gap-2"><User className="h-3.5 w-3.5" /> Full name</span>
                     <input className="field mt-2" name="firstName" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Your full name" required />
@@ -619,17 +620,15 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                   </label>
                   {buyerType === "family" ? (
                     <>
-                      <label className="block">
+                      <div className="min-w-0 max-w-full">
                         <span className="label">Number of seats</span>
-                        <input
-                          className="field mt-2"
-                          type="number"
+                        <SeatCountStepper
                           min={2}
                           max={500}
                           value={seatCount}
-                          onChange={(event) => setSeatCount(Math.max(2, Math.min(500, Number(event.target.value || 2))))}
+                          onChange={setSeatCount}
                         />
-                      </label>
+                      </div>
                       <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground sm:col-span-2">
                         <p className="font-bold text-foreground">
                           {selectedSeatCount} seats selected • Total: {displayPrice}
