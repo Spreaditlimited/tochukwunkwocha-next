@@ -466,15 +466,15 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
               <PasswordField
                 inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                 name="newPassword" 
-                minLength={8} 
-                placeholder="New password (min 8 characters)" 
+                minLength={12}
+                placeholder="New password (min 12 characters)"
                 required 
                 autoComplete="new-password" 
               />
               <PasswordField
                 inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                 name="confirmPassword" 
-                minLength={8} 
+                minLength={12}
                 placeholder="Confirm new password" 
                 required 
                 autoComplete="new-password" 

@@ -5,7 +5,7 @@ import { syncCloudflareVideosPage } from "@/lib/admin-video-library"
 import { requireAdmin } from "@/lib/auth"
 
 export async function POST(request: Request) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   const body = await request.json().catch(() => ({}))
   const page = Number(body.page || 1)
   const maxPages = Number(body.maxPages || 20)

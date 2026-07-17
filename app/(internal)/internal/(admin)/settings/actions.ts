@@ -7,7 +7,7 @@ import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
 
 export async function saveAdminSettingsAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/settings")
   if (!session.isOwner) throw new Error("Only the owner can edit settings.")
   const entries: Array<{ key: string; value: string }> = []
   for (const [key, value] of formData.entries()) {

@@ -81,11 +81,11 @@ export function PasswordResetForm({ token = "" }: Props) {
               </span>
               <PasswordField
                 inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
-                minLength={8}
+                minLength={12}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
-                placeholder="•••••••• (min 8 characters)"
+                placeholder="•••••••••••• (min 12 characters)"
                 autoComplete="new-password"
               />
             </label>
@@ -95,7 +95,7 @@ export function PasswordResetForm({ token = "" }: Props) {
               </span>
               <PasswordField
                 inputClassName="w-full rounded-md border border-input bg-background px-4 py-3 pr-12 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
-                minLength={8}
+                minLength={12}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 required

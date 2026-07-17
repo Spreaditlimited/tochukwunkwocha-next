@@ -26,7 +26,7 @@ export async function logoutAction() {
 }
 
 export async function saveBlogPostAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/blog")
 
   const blogTitle = String(formData.get("blogTitle") || "").trim()
   const blogContent = String(formData.get("blogContent") || "").trim()
@@ -59,7 +59,7 @@ export async function saveBlogPostAction(formData: FormData) {
 }
 
 export async function generateBlogImageAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/blog")
   const pidBlog = String(formData.get("pidBlog") || "").trim()
   if (!pidBlog) redirect("/internal/blog?error=missing-blog")
   await generateBlogImageForPost(pidBlog)
@@ -71,7 +71,7 @@ export async function generateBlogImageAction(formData: FormData) {
 }
 
 export async function generateBlogLeadMagnetAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/blog")
   const pidBlog = String(formData.get("pidBlog") || "").trim()
   if (!pidBlog) redirect("/internal/blog?error=missing-blog")
   await generateLeadMagnetForPost(pidBlog)

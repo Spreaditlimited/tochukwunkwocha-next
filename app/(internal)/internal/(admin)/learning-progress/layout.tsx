@@ -1,0 +1,3 @@
+import type { ReactNode } from "react"
+import { InternalSectionGuard } from "@/components/internal/InternalSectionGuard"
+export default function Layout({ children }: { children: ReactNode }) { return <InternalSectionGuard path="/internal/learning-progress">{children}</InternalSectionGuard> }

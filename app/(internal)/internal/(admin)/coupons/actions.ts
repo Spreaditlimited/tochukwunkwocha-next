@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
+import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
 import { prisma } from "@/lib/prisma"
 
@@ -60,6 +61,7 @@ function sqlFromWallClockMs(ms: number) {
 }
 
 export async function saveCouponAction(formData: FormData) {
+  await requireAdmin("/internal/coupons")
   const code = normalizeCode(formData.get("code"))
   const discountType = String(formData.get("discountType") || "percent").trim().toLowerCase() === "fixed" ? "fixed" : "percent"
   const description = String(formData.get("description") || "").trim().slice(0, 240) || null
@@ -125,6 +127,7 @@ export async function saveCouponAction(formData: FormData) {
 }
 
 export async function toggleCouponAction(formData: FormData) {
+  await requireAdmin("/internal/coupons")
   const code = normalizeCode(formData.get("code"))
   const isActive = formData.get("isActive") === "1"
   if (!code) throw new Error("Coupon code is required.")
@@ -139,6 +142,7 @@ export async function toggleCouponAction(formData: FormData) {
 }
 
 export async function extendCouponAction(formData: FormData) {
+  await requireAdmin("/internal/coupons")
   const code = normalizeCode(formData.get("code"))
   const minutes = Number(formData.get("minutes") || 0)
   if (!code) throw new Error("Coupon code is required.")

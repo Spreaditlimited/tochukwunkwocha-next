@@ -8,7 +8,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export async function GET() {
-  await requireAdmin()
+  await requireAdmin("/internal/whatsapp")
 
   try {
     const contacts = await listAdminWhatsAppContacts(true)
@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/whatsapp")
 
   try {
     const body = await request.json()

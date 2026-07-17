@@ -11,7 +11,7 @@ function selectedPages(formData: FormData) {
 }
 
 export async function createAdminAccountAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/admin-accounts")
   if (!session.isOwner) throw new Error("Only owner can create admin accounts.")
   await createAdminAccount({
     fullName: String(formData.get("fullName") || ""),
@@ -25,7 +25,7 @@ export async function createAdminAccountAction(formData: FormData) {
 }
 
 export async function updateAdminAccountAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/admin-accounts")
   if (!session.isOwner) throw new Error("Only owner can update admin accounts.")
   await updateAdminAccount({
     adminUuid: String(formData.get("adminUuid") || ""),

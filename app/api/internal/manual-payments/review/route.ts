@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server"
 
-import { getAdminSession } from "@/lib/auth"
+import { canAccessDashboardPath, getAdminSession } from "@/lib/auth"
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
 
 export async function POST(request: Request) {
   const admin = await getAdminSession()
   if (!admin) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  }
+  if (!canAccessDashboardPath(admin, "/internal/manual-payments")) {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 })
   }
 
   try {

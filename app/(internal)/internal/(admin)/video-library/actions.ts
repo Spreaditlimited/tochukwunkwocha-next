@@ -45,7 +45,7 @@ function moduleToast(input: { intent: string; isActive: boolean }) {
 }
 
 export async function saveVideoLibraryCourseAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await saveVideoLibraryCourse({
     courseSlug: String(formData.get("courseSlug") || ""),
     courseTitle: String(formData.get("courseTitle") || ""),
@@ -70,7 +70,7 @@ export async function saveVideoLibraryCourseAction(formData: FormData) {
 }
 
 export async function savePublicVideoSlotAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await savePublicVideoSlot({
     slotKey: String(formData.get("slotKey") || ""),
     videoAssetId: String(formData.get("videoAssetId") || ""),
@@ -84,7 +84,7 @@ export async function savePublicVideoSlotAction(formData: FormData) {
 }
 
 export async function saveVideoLibraryModuleAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   const batchKeys = formData.getAll("dripBatchKey").map(String)
   const accessModes = formData.getAll("dripAccessMode").map(String)
   const dripDates = formData.getAll("dripAt").map(String)
@@ -111,7 +111,7 @@ export async function saveVideoLibraryModuleAction(formData: FormData) {
 }
 
 export async function saveVideoLibraryLessonAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await saveVideoLibraryLesson({
     lessonId: String(formData.get("lessonId") || ""),
     moduleId: String(formData.get("moduleId") || ""),
@@ -134,7 +134,7 @@ export async function saveVideoLibraryLessonAction(formData: FormData) {
 }
 
 export async function saveVideoLibraryLessonsAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   const rows = JSON.parse(String(formData.get("lessonsJson") || "[]"))
   if (!Array.isArray(rows)) throw new Error("Lesson rows are invalid.")
   await saveVideoLibraryLessons({
@@ -165,7 +165,7 @@ export async function saveVideoLibraryLessonsAction(formData: FormData) {
 }
 
 export async function deleteVideoLibraryLessonAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await deleteVideoLibraryLesson({
     lessonId: String(formData.get("lessonId") || ""),
     moduleId: String(formData.get("moduleId") || "")
@@ -176,7 +176,7 @@ export async function deleteVideoLibraryLessonAction(formData: FormData) {
 }
 
 export async function cloneVideoLibraryModuleAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await cloneVideoLibraryModule({
     sourceModuleId: String(formData.get("sourceModuleId") || ""),
     targetCourseSlug: String(formData.get("targetCourseSlug") || ""),
@@ -188,7 +188,7 @@ export async function cloneVideoLibraryModuleAction(formData: FormData) {
 }
 
 export async function detachVideoLibraryModuleAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await detachVideoLibraryModule({
     moduleId: String(formData.get("moduleId") || ""),
     courseSlug: String(formData.get("courseSlug") || "")
@@ -199,7 +199,7 @@ export async function detachVideoLibraryModuleAction(formData: FormData) {
 }
 
 export async function autofillModuleAccessibilityAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await autofillModuleAccessibility({
     moduleId: String(formData.get("moduleId") || ""),
     includeAudioDescription: formData.get("includeAudioDescription") === "on"
@@ -210,7 +210,7 @@ export async function autofillModuleAccessibilityAction(formData: FormData) {
 }
 
 export async function saveCourseBatchAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await saveCourseBatch({
     courseSlug: String(formData.get("courseSlug") || ""),
     originalBatchKey: String(formData.get("originalBatchKey") || ""),
@@ -228,21 +228,21 @@ export async function saveCourseBatchAction(formData: FormData) {
 }
 
 export async function activateCourseBatchAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await activateCourseBatch(String(formData.get("courseSlug") || ""), String(formData.get("batchKey") || ""))
   await setInternalToast({ title: "Batch set active", message: "New learners for this course will use this batch where the course flow requires an active batch." })
   revalidatePath(PATH)
 }
 
 export async function deleteCourseBatchAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await deleteCourseBatch(String(formData.get("courseSlug") || ""), String(formData.get("batchKey") || ""))
   await setInternalToast({ title: "Batch deleted", message: "That batch has been removed because it was not active or referenced by module access rules." })
   revalidatePath(PATH)
 }
 
 export async function saveCourseLiveSessionAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await saveCourseLiveSession({
     sessionUuid: String(formData.get("sessionUuid") || ""),
     courseSlug: String(formData.get("courseSlug") || ""),
@@ -262,14 +262,14 @@ export async function saveCourseLiveSessionAction(formData: FormData) {
 }
 
 export async function deleteCourseLiveSessionAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   await deleteCourseLiveSession(String(formData.get("sessionUuid") || ""))
   await setInternalToast({ title: "Live session deleted", message: "The live class entry has been removed from this batch." })
   revalidatePath(PATH)
 }
 
 export async function syncCloudflareVideosAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   const pages = Number(formData.get("maxPages") || 20)
   const result = await syncCloudflareVideos(Number.isFinite(pages) ? pages : 20)
   await setInternalToast({
@@ -280,7 +280,7 @@ export async function syncCloudflareVideosAction(formData: FormData) {
 }
 
 export async function enforceSignedCloudflareVideosAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/video-library")
   const result = await enforceSignedCloudflareVideos(session.email || session.adminUuid || "admin", formData.get("forceRotate") === "on")
   const failed = Number(result.failedVideos || 0)
   await setInternalToast({
@@ -295,7 +295,7 @@ export async function enforceSignedCloudflareVideosAction(formData: FormData) {
 }
 
 export async function importVideoLibraryCsvAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/video-library")
   const apply = formData.get("apply") === "on"
   const result = await importVideoLibraryCsv(String(formData.get("csvText") || ""), apply)
   await setInternalToast(apply

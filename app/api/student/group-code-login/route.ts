@@ -30,7 +30,10 @@ function maskName(name: unknown) {
 }
 
 function signingSecret() {
-  return String(process.env.FAMILY_CHILD_LOGIN_SECRET || process.env.AUTH_SECRET || "family_child_login_secret")
+  const secret = String(process.env.FAMILY_CHILD_LOGIN_SECRET || process.env.AUTH_SECRET || "").trim()
+  if (secret) return secret
+  if (process.env.NODE_ENV === "production") throw new Error("Group learner authentication is not configured.")
+  return "local-development-family-child-login-secret"
 }
 
 function signChallenge(payload: Record<string, unknown>) {
@@ -43,7 +46,9 @@ function verifyChallenge(token: unknown) {
   const parts = String(token || "").split(".")
   if (parts.length !== 2) return null
   const expected = crypto.createHmac("sha256", signingSecret()).update(parts[0]).digest("base64url")
-  if (parts[1] !== expected) return null
+  const providedBuffer = Buffer.from(parts[1])
+  const expectedBuffer = Buffer.from(expected)
+  if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) return null
   try {
     const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as Record<string, unknown>
     if (Number(payload.exp || 0) < Date.now()) return null
@@ -225,8 +230,9 @@ export async function POST(request: Request) {
       }
     })
   } catch (error) {
+    console.error("Group learner sign-in failed", error)
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not sign in with group code." },
+      { ok: false, error: "Could not sign in with group code." },
       { status: 500 }
     )
   }

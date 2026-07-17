@@ -13,6 +13,10 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 30
 const DEFAULT_MAX_DEVICES_PER_ACCOUNT = 2
 const DEFAULT_MAX_CONCURRENT_SESSIONS_PER_ACCOUNT = 2
 const DEVICE_ALERT_IP_SPREAD_THRESHOLD = 3
+const MAX_AUTH_ATTEMPTS = 5
+const MAX_LOGIN_ATTEMPTS_PER_IP = 25
+const MAX_RESET_REQUESTS_PER_IP = 10
+const AUTH_LOCK_MINUTES = 15
 
 export interface StudentSessionAccount {
   id: bigint
@@ -142,6 +146,84 @@ async function ensureStudentSecurityTables() {
       KEY idx_student_alert_seen (last_seen_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS student_auth_attempts (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      purpose VARCHAR(40) NOT NULL,
+      identity_hash VARCHAR(128) NOT NULL,
+      ip_hash VARCHAR(128) NOT NULL,
+      attempts INT NOT NULL DEFAULT 0,
+      locked_until DATETIME NULL,
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_student_auth_purpose_identity_ip (purpose, identity_hash, ip_hash),
+      KEY idx_student_auth_ip_lock (ip_hash, locked_until)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+}
+
+async function studentAuthIdentity(purpose: string, emailInput: string) {
+  const headerStore = await headers()
+  const forwarded = clean(headerStore.get("x-forwarded-for"), 180)
+  const ip = clean(forwarded.split(",")[0] || headerStore.get("cf-connecting-ip") || headerStore.get("x-real-ip") || "unknown", 90)
+  return {
+    purpose,
+    identityHash: shaValue(`student-auth:${purpose}:${normalizeEmail(emailInput) || "invalid"}`),
+    ipHash: shaValue(`student-auth-ip:${ip}`)
+  }
+}
+
+async function getStudentAuthAttempt(identity: Awaited<ReturnType<typeof studentAuthIdentity>>) {
+  const rows = await prisma.$queryRaw<Array<{ attempts: number | bigint; lockedUntil: Date | null }>>(Prisma.sql`
+    SELECT attempts, locked_until AS lockedUntil
+    FROM student_auth_attempts
+    WHERE purpose = ${identity.purpose}
+      AND identity_hash = ${identity.identityHash}
+      AND ip_hash = ${identity.ipHash}
+    LIMIT 1
+  `)
+  return rows[0] || null
+}
+
+async function recentStudentAuthAttemptsForIp(identity: Awaited<ReturnType<typeof studentAuthIdentity>>) {
+  const rows = await prisma.$queryRaw<Array<{ total: number | bigint | null }>>(Prisma.sql`
+    SELECT COALESCE(SUM(attempts), 0) AS total
+    FROM student_auth_attempts
+    WHERE purpose = ${identity.purpose}
+      AND ip_hash = ${identity.ipHash}
+      AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+  `)
+  return Number(rows[0]?.total || 0)
+}
+
+async function recordStudentAuthFailure(identity: Awaited<ReturnType<typeof studentAuthIdentity>>, current: Awaited<ReturnType<typeof getStudentAuthAttempt>>) {
+  const now = new Date()
+  const attempts = current?.lockedUntil && current.lockedUntil.getTime() <= now.getTime() ? 1 : Number(current?.attempts || 0) + 1
+  const lockedUntil = attempts >= MAX_AUTH_ATTEMPTS ? new Date(now.getTime() + AUTH_LOCK_MINUTES * 60 * 1000) : null
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO student_auth_attempts (purpose, identity_hash, ip_hash, attempts, locked_until, updated_at)
+    VALUES (${identity.purpose}, ${identity.identityHash}, ${identity.ipHash}, ${attempts}, ${lockedUntil}, ${now})
+    ON DUPLICATE KEY UPDATE attempts = VALUES(attempts), locked_until = VALUES(locked_until), updated_at = VALUES(updated_at)
+  `)
+}
+
+async function clearStudentAuthAttempts(identity: Awaited<ReturnType<typeof studentAuthIdentity>>) {
+  await prisma.$executeRaw(Prisma.sql`
+    DELETE FROM student_auth_attempts
+    WHERE purpose = ${identity.purpose}
+      AND identity_hash = ${identity.identityHash}
+      AND ip_hash = ${identity.ipHash}
+  `)
+}
+
+export async function allowStudentPasswordResetRequest(emailInput: string) {
+  await ensureStudentSecurityTables()
+  const identity = await studentAuthIdentity("password_reset", emailInput)
+  const attempt = await getStudentAuthAttempt(identity)
+  const recentIpAttempts = await recentStudentAuthAttemptsForIp(identity)
+  if ((attempt?.lockedUntil && attempt.lockedUntil.getTime() > Date.now()) || recentIpAttempts >= MAX_RESET_REQUESTS_PER_IP) return false
+  await recordStudentAuthFailure(identity, attempt)
+  return true
 }
 
 export async function ensureStudentDemographicColumns() {
@@ -351,17 +433,28 @@ export async function createStudentSessionForAccount(account: StudentAccountForS
 }
 
 export async function loginStudent(emailInput: string, passwordInput: string) {
+  await ensureStudentSecurityTables()
   const email = normalizeEmail(emailInput)
   const password = String(passwordInput || "")
-  if (!email || !password) return { ok: false as const, error: "Invalid email or password" }
-
-  const account = await prisma.studentAccount.findUnique({ where: { email } })
-  if (!account) return { ok: false as const, error: "Invalid email or password" }
-
-  const hash = await hashPassword(password, account.passwordSalt)
-  if (!timingSafeEqual(hash, account.passwordHash)) {
+  const identity = await studentAuthIdentity("password_login", emailInput)
+  const attempt = await getStudentAuthAttempt(identity)
+  const recentIpAttempts = await recentStudentAuthAttemptsForIp(identity)
+  if ((attempt?.lockedUntil && attempt.lockedUntil.getTime() > Date.now()) || recentIpAttempts >= MAX_LOGIN_ATTEMPTS_PER_IP) {
+    return { ok: false as const, code: "RATE_LIMITED", error: "Too many sign-in attempts. Try again in 15 minutes." }
+  }
+  if (!email || !password) {
+    await recordStudentAuthFailure(identity, attempt)
     return { ok: false as const, error: "Invalid email or password" }
   }
+
+  const account = await prisma.studentAccount.findUnique({ where: { email } })
+  const hash = await hashPassword(password, account?.passwordSalt || "invalid-student-login-salt")
+  if (!account || !timingSafeEqual(hash, account.passwordHash)) {
+    await recordStudentAuthFailure(identity, attempt)
+    return { ok: false as const, error: "Invalid email or password" }
+  }
+
+  await clearStudentAuthAttempts(identity)
 
   if (account.mustResetPassword) {
     return {
@@ -407,22 +500,26 @@ export async function createStudentPasswordResetToken(emailInput: string, option
 
 export async function setStudentPassword(accountId: bigint, passwordInput: string) {
   const password = String(passwordInput || "")
-  if (password.length < 8) throw new Error("Password must be at least 8 characters")
+  if (password.length < 12) throw new Error("Password must be at least 12 characters")
   const salt = crypto.randomBytes(16).toString("hex")
   const hash = await hashPassword(password, salt)
   const now = new Date()
-  await prisma.studentAccount.update({
-    where: { id: accountId },
-    data: {
-      passwordHash: hash,
-      passwordSalt: salt,
-      mustResetPassword: false,
-      resetTokenHash: null,
-      resetTokenExpiresAt: null,
-      resetRequestedAt: null,
-      updatedAt: now
-    }
-  })
+  const [account] = await prisma.$transaction([
+    prisma.studentAccount.update({
+      where: { id: accountId },
+      data: {
+        passwordHash: hash,
+        passwordSalt: salt,
+        mustResetPassword: false,
+        resetTokenHash: null,
+        resetTokenExpiresAt: null,
+        resetRequestedAt: null,
+        updatedAt: now
+      }
+    }),
+    prisma.studentSession.deleteMany({ where: { accountId } })
+  ])
+  return account
 }
 
 export async function consumeStudentPasswordResetToken(tokenInput: string, passwordInput: string) {
@@ -436,8 +533,7 @@ export async function consumeStudentPasswordResetToken(tokenInput: string, passw
   if (account.resetTokenExpiresAt && account.resetTokenExpiresAt.getTime() < Date.now()) {
     throw new Error("Invalid or expired reset token")
   }
-  await setStudentPassword(account.id, passwordInput)
-  return account
+  return setStudentPassword(account.id, passwordInput)
 }
 
 export async function verifyStudentPassword(accountId: bigint, passwordInput: string) {

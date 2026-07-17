@@ -74,6 +74,7 @@ export default async function LoginPage({
                   className="w-full rounded-lg border border-input bg-background/50 px-4 py-3.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
                   name="email" 
                   type="email" 
+                  required
                   autoComplete="email" 
                   placeholder="admin@example.com"
                 />

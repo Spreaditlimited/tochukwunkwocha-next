@@ -14,6 +14,22 @@ const sharedConfig: NextConfig = {
       { protocol: "https", hostname: "tochukwunkwocha.com" }
     ]
   },
+  async headers() {
+    const protectedHeaders = [
+      { key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" },
+      { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" }
+    ]
+    return [
+      { source: "/internal/:path*", headers: protectedHeaders },
+      { source: "/dashboard/:path*", headers: protectedHeaders },
+      { source: "/api/internal/:path*", headers: protectedHeaders },
+      { source: "/api/student/:path*", headers: protectedHeaders }
+    ]
+  },
   async redirects() {
     const promptToProfitLegacySlugs = [
       "prompt-to-profit-holiday",

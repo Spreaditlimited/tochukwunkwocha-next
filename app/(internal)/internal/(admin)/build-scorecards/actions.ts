@@ -11,7 +11,7 @@ function clean(value: unknown, max = 500) {
 }
 
 export async function bookBuildScorecardCallAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/build-scorecards")
   await bookBuildCallFromLead({
     leadUuid: clean(formData.get("leadUuid"), 64),
     slotStartIso: clean(formData.get("slotStartIso"), 80)
@@ -22,7 +22,7 @@ export async function bookBuildScorecardCallAction(formData: FormData) {
 }
 
 export async function updateBuildScorecardOutcomeAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/build-scorecards")
   await updateBuildCallOutcome({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     outcomeStatus: clean(formData.get("outcomeStatus"), 40),
@@ -37,7 +37,7 @@ export async function updateBuildScorecardOutcomeAction(formData: FormData) {
 }
 
 export async function sendBuildDiscoveryPaymentLinkAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/build-scorecards")
   await sendBuildDiscoveryPaymentLink({
     leadUuid: clean(formData.get("leadUuid"), 64),
     actor: admin.email || admin.fullName || "admin",

@@ -17,6 +17,7 @@ import {
 
 import { prisma } from "@/lib/prisma"
 import { ensureStudentDemographicColumns } from "@/lib/student-auth"
+import { requireAdmin } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
 
@@ -189,6 +190,7 @@ async function getOperationsOverview() {
 }
 
 export default async function DashboardPage() {
+  await requireAdmin("/internal")
   const stats = await getOperationsOverview()
   
   const primaryCards = [

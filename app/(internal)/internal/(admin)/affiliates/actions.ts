@@ -10,7 +10,7 @@ import { setInternalToast } from "@/lib/internal-toast"
 const PATH = "/internal/affiliates"
 
 export async function saveAffiliateCourseRuleAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/affiliates")
   await saveAffiliateCourseRule(formData, session.email || "admin")
   await setInternalToast({ title: "Affiliate rule saved", message: "Course commission settings have been updated." })
   revalidatePath(PATH)
@@ -18,7 +18,7 @@ export async function saveAffiliateCourseRuleAction(formData: FormData) {
 }
 
 export async function runAffiliatePayoutBatchAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/affiliates")
   const result = await runAffiliatePayoutBatch(formData, session.email || "admin")
   await setInternalToast({
     title: result.empty ? "No payouts to run" : "Affiliate payout batch processed",

@@ -21,7 +21,7 @@ import { saveAdminSettingsAction } from "./actions"
 export const dynamic = "force-dynamic"
 
 export default async function InternalSettingsPage() {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/settings")
   const [settings, audit, emailDeliveryLogs] = await Promise.all([
     listAdminSettings(),
     listAdminSettingsAudit(80),

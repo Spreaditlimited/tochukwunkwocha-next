@@ -414,7 +414,7 @@ function certificateBlockReason(reason: string) {
 
 export async function reviewAssignment(input: { assignmentId: string; status: string; feedback?: string; sendApprovalEmail?: boolean }) {
   await ensureLearningSupportTables()
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/learning")
   const assignmentId = BigInt(String(input.assignmentId || "0"))
   if (assignmentId <= BigInt(0)) throw new Error("assignment_id is required.")
   const before = await prisma.$queryRaw<Array<{ status: string; studentEmail: string; studentName: string | null; courseSlug: string; submissionKind: string; submissionText: string | null; submissionLink: string | null }>>`
@@ -539,7 +539,7 @@ export async function resendCertificateApprovalEmail(assignmentIdInput: string) 
 
 export async function reviewTranscriptAccess(input: { accountId: string; courseSlug: string; status: string; notes?: string; expiresAt?: string }) {
   await ensureLearningSupportTables()
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/learning")
   const accountId = BigInt(String(input.accountId || "0"))
   const courseSlug = normalizeCourseSlug(input.courseSlug)
   const status = clean(input.status, 32).toLowerCase() === "approved" ? "approved" : clean(input.status, 32).toLowerCase() === "denied" ? "denied" : "pending"
@@ -569,7 +569,7 @@ export async function reviewTranscriptAccess(input: { accountId: string; courseS
 
 export async function resetStudentDevices(input: { accountId?: string; email?: string }) {
   await ensureLearningSupportTables()
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/security")
   const accountId = BigInt(String(input.accountId || "0"))
   const email = clean(input.email, 220).toLowerCase()
   const students = accountId > BigInt(0)

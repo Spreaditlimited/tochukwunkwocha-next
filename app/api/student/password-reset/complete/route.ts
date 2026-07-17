@@ -8,8 +8,8 @@ export async function POST(request: Request) {
 
   const token = String(body.token || "").trim()
   const password = String(body.password || "")
-  if (!token || password.length < 8) {
-    return NextResponse.json({ ok: false, error: "Valid token and password (8+ chars) are required" }, { status: 400 })
+  if (!token || password.length < 12) {
+    return NextResponse.json({ ok: false, error: "Valid token and password (12+ chars) are required" }, { status: 400 })
   }
 
   try {

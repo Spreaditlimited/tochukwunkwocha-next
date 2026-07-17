@@ -13,7 +13,7 @@ import {
 } from "@/lib/seo"
 
 export async function updateOpportunityStatusAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/seo")
   await updateOpportunityStatus(
     String(formData.get("pidOpportunity") || ""),
     String(formData.get("status") || "")
@@ -23,7 +23,7 @@ export async function updateOpportunityStatusAction(formData: FormData) {
 }
 
 export async function generateSeoDraftAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/seo")
   const pidOpportunity = String(formData.get("pidOpportunity") || "").trim()
   if (!pidOpportunity) redirect("/internal/seo")
 
@@ -39,7 +39,7 @@ export async function generateSeoDraftAction(formData: FormData) {
 }
 
 export async function applySeoChangeAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/seo")
   const pidChange = String(formData.get("pidChange") || "").trim()
   if (!pidChange) redirect("/internal/seo")
   const slug = await applySeoChange(pidChange)
@@ -50,7 +50,7 @@ export async function applySeoChangeAction(formData: FormData) {
 }
 
 export async function rejectSeoChangeAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/seo")
   const pidChange = String(formData.get("pidChange") || "").trim()
   if (!pidChange) redirect("/internal/seo")
   await rejectSeoChange(pidChange)

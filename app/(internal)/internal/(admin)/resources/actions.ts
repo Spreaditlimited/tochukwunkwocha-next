@@ -8,7 +8,7 @@ import { setInternalToast } from "@/lib/internal-toast"
 import { generateResourceDraftFromForm, upsertBundleFromForm, upsertResourceFromForm } from "@/lib/resources"
 
 export async function saveResourceAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/resources")
   let target = "/internal/resources"
   try {
     const resource = await upsertResourceFromForm(formData)
@@ -33,7 +33,7 @@ export async function saveResourceAction(formData: FormData) {
 }
 
 export async function saveResourceBundleAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/resources")
   const bundle = await upsertBundleFromForm(formData)
   revalidatePath("/resources")
   revalidatePath("/internal/resources")
@@ -45,7 +45,7 @@ export async function saveResourceBundleAction(formData: FormData) {
 }
 
 export async function generateResourceDraftAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/resources")
   let target = "/internal/resources"
   try {
     const resource = await generateResourceDraftFromForm(formData)

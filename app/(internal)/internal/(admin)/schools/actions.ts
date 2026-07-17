@@ -18,7 +18,7 @@ function toDate(value: unknown) {
 }
 
 export async function updateSchoolAccountAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/schools")
   const schoolId = BigInt(String(formData.get("schoolId") || "0"))
   const status = clean(formData.get("status"), 40).toLowerCase() || "active"
   const seats = Number(formData.get("seatsPurchased") || 0)

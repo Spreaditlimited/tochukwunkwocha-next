@@ -17,7 +17,7 @@ import {
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
 
 export async function reviewManualPaymentAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/manual-payments")
   const paymentUuid = String(formData.get("paymentUuid") || "").trim()
   const action = String(formData.get("action") || "").trim().toLowerCase()
   const reviewNote = String(formData.get("reviewNote") || "").trim()
@@ -34,7 +34,7 @@ export async function reviewManualPaymentAction(formData: FormData) {
 }
 
 export async function addExternalStudentPaymentAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/manual-payments")
   try {
     await addExternalStudentPayment({
       courseSlug: String(formData.get("courseSlug") || ""),
@@ -66,7 +66,7 @@ export async function addExternalStudentPaymentAction(formData: FormData) {
 }
 
 export async function updateManualPaymentEmailAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/manual-payments")
   await updateManualPaymentEmail({
     paymentUuid: String(formData.get("paymentUuid") || ""),
     newEmail: String(formData.get("newEmail") || ""),
@@ -78,7 +78,7 @@ export async function updateManualPaymentEmailAction(formData: FormData) {
 }
 
 export async function completeManualPaymentRecoveryAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/manual-payments")
   const actor = admin.email || admin.adminUuid || "admin"
   const paymentUuid = String(formData.get("paymentUuid") || "")
   await completeManualPaymentRecovery({
@@ -104,7 +104,7 @@ export async function completeManualPaymentRecoveryAction(formData: FormData) {
 }
 
 export async function sendManualPaymentMetaPurchaseAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/manual-payments")
   await sendManualPaymentMetaPurchase({
     paymentUuid: String(formData.get("paymentUuid") || ""),
     fbp: String(formData.get("fbp") || ""),
@@ -117,7 +117,7 @@ export async function sendManualPaymentMetaPurchaseAction(formData: FormData) {
 }
 
 export async function resendManualPaymentActivationEmailAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/manual-payments")
   await resendManualPaymentActivationEmail({
     paymentUuid: String(formData.get("paymentUuid") || ""),
     subject: String(formData.get("subject") || ""),
@@ -128,7 +128,7 @@ export async function resendManualPaymentActivationEmailAction(formData: FormDat
 }
 
 export async function resendBatchActivationEmailsAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/manual-payments")
   const result = await resendBatchActivationEmails({
     courseSlug: String(formData.get("courseSlug") || ""),
     batchKey: String(formData.get("batchKey") || ""),
@@ -145,14 +145,14 @@ export async function resendBatchActivationEmailsAction(formData: FormData) {
 }
 
 export async function deleteHolidayWaitlistContactAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/manual-payments")
   await deleteHolidayWaitlistContact(formData.get("id"))
   await setInternalToast({ title: "Waitlist contact deleted", message: "The holiday waitlist contact has been removed." })
   revalidatePath("/internal/manual-payments")
 }
 
 export async function sendWhatsAppCampaignAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/manual-payments")
   await sendWhatsAppCampaign({
     campaignName: String(formData.get("campaignName") || ""),
     templateName: String(formData.get("templateName") || ""),

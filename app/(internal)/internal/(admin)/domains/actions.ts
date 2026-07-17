@@ -17,7 +17,7 @@ function normalizeDomain(value: unknown) {
 }
 
 export async function updateDomainNetlifyStatusAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/domains")
   const accountId = BigInt(String(formData.get("accountId") || "0"))
   const domainName = normalizeDomain(formData.get("domainName"))
   const status = clean(formData.get("status"), 40) || "submitted"
@@ -34,7 +34,7 @@ export async function updateDomainNetlifyStatusAction(formData: FormData) {
 }
 
 export async function updateDomainDnsAction(formData: FormData) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/domains")
   const accountId = BigInt(String(formData.get("accountId") || "0"))
   const domainName = normalizeDomain(formData.get("domainName"))
   const type = clean(formData.get("type"), 20).toUpperCase() || "A"

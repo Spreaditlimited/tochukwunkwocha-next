@@ -1,10 +1,13 @@
 import crypto from "crypto"
-import fs from "node:fs"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+import { ensureAdminAccountsTable } from "@/lib/admin-accounts"
+import { canAccessDashboardPath, isSafeInternalPath, normalizeInternalPath } from "@/lib/admin-permissions"
 import { prisma } from "@/lib/prisma"
+
+export { canAccessDashboardPath } from "@/lib/admin-permissions"
 
 export interface AdminSession {
   adminUuid: string
@@ -15,10 +18,11 @@ export interface AdminSession {
 }
 
 const COOKIE_NAME = "tochukwu_admin_session"
-
-function authSecret() {
-  return process.env.ADMIN_SESSION_SECRET || process.env.AUTH_SECRET || "dev-only-change-this-secret"
-}
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
+const MAX_LOGIN_ATTEMPTS = 5
+const MAX_LOGIN_ATTEMPTS_PER_IP = 25
+const LOGIN_LOCK_MINUTES = 15
+let adminSecurityTablesPromise: Promise<void> | null = null
 
 function normalizeEmail(value: FormDataEntryValue | string | null | undefined) {
   return String(value || "").trim().toLowerCase()
@@ -28,34 +32,6 @@ function timingSafeEqual(a: string, b: string) {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
   return left.length === right.length && crypto.timingSafeEqual(left, right)
-}
-
-function unquoteEnvValue(value: string) {
-  const trimmed = value.trim()
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1)
-  }
-  return trimmed
-}
-
-function readRawEnvValue(keyName: string) {
-  try {
-    const text = fs.readFileSync(".env", "utf8")
-    for (const rawLine of text.split(/\r?\n/)) {
-      const line = rawLine.trim()
-      if (!line || line.startsWith("#") || !line.includes("=")) continue
-      const key = line.slice(0, line.indexOf("=")).trim()
-      if (key === keyName) return unquoteEnvValue(line.slice(line.indexOf("=") + 1))
-    }
-  } catch {}
-  return ""
-}
-
-function matchesAnySecret(input: string, candidates: string[]) {
-  return candidates.some((candidate) => candidate && timingSafeEqual(input, candidate))
 }
 
 function hashPassword(password: string, salt: string) {
@@ -72,130 +48,252 @@ function parseAllowedPages(value: string | null | undefined) {
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean)
+    if (Array.isArray(parsed)) return parsed.map(String).map(normalizeInternalPath).filter(isSafeInternalPath)
   } catch {}
   return raw
     .split(/[,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
+    .map(normalizeInternalPath)
+    .filter(isSafeInternalPath)
 }
 
-function normalizeInternalPath(value: string) {
-  const path = String(value || "").trim()
-  if (!path) return ""
-  const withSlash = path.startsWith("/") ? path : `/${path}`
-  return withSlash.replace(/\/+$/, "") || "/"
+function randomToken() {
+  return crypto.randomBytes(48).toString("base64url")
 }
 
-function sign(value: string) {
-  return crypto.createHmac("sha256", authSecret()).update(value).digest("hex")
+function sha256(value: string) {
+  return crypto.createHash("sha256").update(value).digest("hex")
 }
 
-function encodeSession(session: AdminSession) {
-  const payload = Buffer.from(JSON.stringify(session), "utf8").toString("base64url")
-  return `${payload}.${sign(payload)}`
-}
-
-function decodeSession(token: string | undefined): AdminSession | null {
-  if (!token) return null
-  const [payload, signature] = token.split(".")
-  if (!payload || !signature || !timingSafeEqual(signature, sign(payload))) return null
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))
-    if (!parsed?.adminUuid || !parsed?.email) return null
-    return {
-      adminUuid: String(parsed.adminUuid),
-      fullName: String(parsed.fullName || "Admin"),
-      email: String(parsed.email),
-      isOwner: Boolean(parsed.isOwner),
-      allowedPages: Array.isArray(parsed.allowedPages) ? parsed.allowedPages.map(String) : []
-    }
-  } catch {
-    return null
+async function requestIdentity() {
+  const headerStore = await headers()
+  const forwarded = String(headerStore.get("x-forwarded-for") || "").trim()
+  const ip = String(forwarded.split(",")[0] || headerStore.get("cf-connecting-ip") || headerStore.get("x-real-ip") || "unknown").trim().slice(0, 90)
+  return {
+    ipHash: sha256(`admin-ip:${ip}`),
+    userAgent: String(headerStore.get("user-agent") || "").trim().slice(0, 255)
   }
+}
+
+async function ensureAdminSecurityTables() {
+  if (adminSecurityTablesPromise) return adminSecurityTablesPromise
+  adminSecurityTablesPromise = (async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS tochukwu_admin_sessions (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        session_uuid VARCHAR(64) NOT NULL,
+        admin_uuid VARCHAR(64) NOT NULL,
+        token_hash VARCHAR(128) NOT NULL,
+        ip_hash VARCHAR(128) NULL,
+        user_agent VARCHAR(255) NULL,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME NOT NULL,
+        last_seen_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_tochukwu_admin_session_uuid (session_uuid),
+        UNIQUE KEY uniq_tochukwu_admin_session_token (token_hash),
+        KEY idx_tochukwu_admin_session_admin (admin_uuid),
+        KEY idx_tochukwu_admin_session_expiry (expires_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS tochukwu_admin_login_attempts (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        identity_hash VARCHAR(128) NOT NULL,
+        ip_hash VARCHAR(128) NOT NULL,
+        attempts INT NOT NULL DEFAULT 0,
+        locked_until DATETIME NULL,
+        updated_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_tochukwu_admin_login_identity_ip (identity_hash, ip_hash),
+        KEY idx_tochukwu_admin_login_ip (ip_hash, locked_until)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+  })().catch((error) => {
+    adminSecurityTablesPromise = null
+    throw error
+  })
+  return adminSecurityTablesPromise
+}
+
+async function loginAttempt(email: string, ipHash: string) {
+  const identityHash = sha256(`admin-email:${email || "missing"}`)
+  const rows = await prisma.$queryRaw<Array<{ attempts: number | bigint; lockedUntil: Date | null }>>`
+    SELECT attempts, locked_until AS lockedUntil
+    FROM tochukwu_admin_login_attempts
+    WHERE identity_hash = ${identityHash} AND ip_hash = ${ipHash}
+    LIMIT 1
+  `
+  return { identityHash, row: rows[0] || null }
+}
+
+async function recentLoginAttemptsForIp(ipHash: string) {
+  const rows = await prisma.$queryRaw<Array<{ total: number | bigint | null }>>`
+    SELECT COALESCE(SUM(attempts), 0) AS total
+    FROM tochukwu_admin_login_attempts
+    WHERE ip_hash = ${ipHash}
+      AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+  `
+  return Number(rows[0]?.total || 0)
+}
+
+async function recordLoginFailure(identityHash: string, ipHash: string, current: { attempts: number | bigint; lockedUntil: Date | null } | null) {
+  const now = new Date()
+  const attempts = current?.lockedUntil && current.lockedUntil.getTime() <= now.getTime() ? 1 : Number(current?.attempts || 0) + 1
+  const lockedUntil = attempts >= MAX_LOGIN_ATTEMPTS ? new Date(now.getTime() + LOGIN_LOCK_MINUTES * 60 * 1000) : null
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_admin_login_attempts (identity_hash, ip_hash, attempts, locked_until, updated_at)
+    VALUES (${identityHash}, ${ipHash}, ${attempts}, ${lockedUntil}, ${now})
+    ON DUPLICATE KEY UPDATE attempts = VALUES(attempts), locked_until = VALUES(locked_until), updated_at = VALUES(updated_at)
+  `
 }
 
 export async function loginAdmin(emailInput: string, passwordInput: string) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
+  await ensureAdminAccountsTable()
+  await ensureAdminSecurityTables()
   const email = normalizeEmail(emailInput)
-  const password = String(passwordInput || "").trim()
-  if (!password) return null
+  const password = String(passwordInput || "")
+  const identity = await requestIdentity()
+  const attempt = await loginAttempt(email, identity.ipHash)
+  const recentIpAttempts = await recentLoginAttemptsForIp(identity.ipHash)
+  if ((attempt.row?.lockedUntil && attempt.row.lockedUntil.getTime() > Date.now()) || recentIpAttempts >= MAX_LOGIN_ATTEMPTS_PER_IP) return null
+  if (!email || !password) {
+    await recordLoginFailure(attempt.identityHash, identity.ipHash, attempt.row)
+    return null
+  }
 
-  const expectedDashboardPasswords = [
-    String(process.env.ADMIN_DASHBOARD_PASSWORD || ""),
-    readRawEnvValue("ADMIN_DASHBOARD_PASSWORD")
-  ]
+  let admin = await prisma.tochukwuAdminAccount.findUnique({ where: { email } })
+  if (!admin) {
+    const accountCount = await prisma.tochukwuAdminAccount.count()
+    if (accountCount === 0) {
+      const configuredBootstrapPassword = String(process.env.ADMIN_DASHBOARD_PASSWORD || "")
+      const suppliedBootstrapHash = await hashPassword(password, "admin-bootstrap-verification")
+      const configuredBootstrapHash = await hashPassword(configuredBootstrapPassword, "admin-bootstrap-verification")
+      if (configuredBootstrapPassword && timingSafeEqual(suppliedBootstrapHash, configuredBootstrapHash)) {
+        const salt = crypto.randomBytes(16).toString("hex")
+        const now = new Date()
+        admin = await prisma.tochukwuAdminAccount.create({
+          data: {
+            adminUuid: `adm_${crypto.randomUUID().replace(/-/g, "")}`,
+            fullName: "Owner",
+            email,
+            passwordHash: await hashPassword(password, salt),
+            passwordSalt: salt,
+            isOwner: true,
+            isActive: true,
+            allowedPages: "",
+            createdBy: "secure-bootstrap",
+            createdAt: now,
+            updatedAt: now
+          }
+        })
+      }
+    }
+  }
+  const passwordHash = await hashPassword(password, admin?.passwordSalt || "invalid-admin-login-salt")
+  if (!admin || !admin.isActive || !timingSafeEqual(passwordHash, admin.passwordHash)) {
+    await recordLoginFailure(attempt.identityHash, identity.ipHash, attempt.row)
+    return null
+  }
 
-  if (email) {
-    const admin = await prisma.tochukwuAdminAccount.findUnique({ where: { email } })
-    if (!admin || !admin.isActive) return null
-
-    const hash = await hashPassword(password, admin.passwordSalt)
-    if (!timingSafeEqual(hash, admin.passwordHash)) return null
-
-    const now = new Date()
-    await prisma.tochukwuAdminAccount.update({
+  const now = new Date()
+  await prisma.$transaction([
+    prisma.tochukwuAdminAccount.update({
       where: { adminUuid: admin.adminUuid },
       data: { lastLoginAt: now, updatedAt: now }
-    })
+    }),
+    prisma.$executeRaw`
+      DELETE FROM tochukwu_admin_login_attempts
+      WHERE identity_hash = ${attempt.identityHash} AND ip_hash = ${identity.ipHash}
+    `
+  ])
 
-    return {
-      adminUuid: admin.adminUuid,
-      fullName: admin.fullName,
-      email: admin.email,
-      isOwner: admin.isOwner,
-      allowedPages: parseAllowedPages(admin.allowedPages)
-    } satisfies AdminSession
-  }
-
-  if (matchesAnySecret(password, expectedDashboardPasswords)) {
-    return {
-      adminUuid: "owner",
-      fullName: "Owner",
-      email: "owner@local",
-      isOwner: true,
-      allowedPages: []
-    } satisfies AdminSession
-  }
-
-  return null
+  return {
+    adminUuid: admin.adminUuid,
+    fullName: admin.fullName,
+    email: admin.email,
+    isOwner: admin.isOwner,
+    allowedPages: parseAllowedPages(admin.allowedPages)
+  } satisfies AdminSession
 }
 
 export async function setAdminSession(session: AdminSession) {
-  await applyAdminSettingsToProcessEnv().catch(() => null)
+  await ensureAdminSecurityTables()
+  const identity = await requestIdentity()
+  const token = randomToken()
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000)
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_admin_sessions
+      (session_uuid, admin_uuid, token_hash, ip_hash, user_agent, expires_at, created_at, last_seen_at)
+    VALUES
+      (${`ads_${crypto.randomUUID().replace(/-/g, "")}`}, ${session.adminUuid}, ${sha256(token)}, ${identity.ipHash}, ${identity.userAgent || null}, ${expiresAt}, ${now}, ${now})
+  `
   const cookieStore = await cookies()
-  cookieStore.set(COOKIE_NAME, encodeSession(session), {
+  cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 12
+    maxAge: SESSION_MAX_AGE_SECONDS
   })
 }
 
 export async function clearAdminSession() {
   const cookieStore = await cookies()
+  const token = cookieStore.get(COOKIE_NAME)?.value || ""
+  if (token) {
+    await ensureAdminSecurityTables().catch(() => null)
+    await prisma.$executeRaw`DELETE FROM tochukwu_admin_sessions WHERE token_hash = ${sha256(token)}`.catch(() => null)
+  }
   cookieStore.delete(COOKIE_NAME)
 }
 
 export async function getAdminSession() {
-  await applyAdminSettingsToProcessEnv().catch(() => null)
   const cookieStore = await cookies()
-  return decodeSession(cookieStore.get(COOKIE_NAME)?.value)
+  const token = cookieStore.get(COOKIE_NAME)?.value || ""
+  if (!token) return null
+  try {
+    await ensureAdminSecurityTables()
+    const rows = await prisma.$queryRaw<Array<{
+      adminUuid: string
+      fullName: string
+      email: string
+      isOwner: number | bigint | boolean
+      allowedPages: string | null
+      expiresAt: Date
+    }>>`
+      SELECT a.admin_uuid AS adminUuid, a.full_name AS fullName, a.email,
+        a.is_owner AS isOwner, a.allowed_pages AS allowedPages, s.expires_at AS expiresAt
+      FROM tochukwu_admin_sessions s
+      JOIN tochukwu_admin_accounts a ON a.admin_uuid = s.admin_uuid AND a.is_active = 1
+      WHERE s.token_hash = ${sha256(token)}
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row || row.expiresAt.getTime() <= Date.now()) {
+      await prisma.$executeRaw`DELETE FROM tochukwu_admin_sessions WHERE token_hash = ${sha256(token)}`.catch(() => null)
+      return null
+    }
+    await prisma.$executeRaw`UPDATE tochukwu_admin_sessions SET last_seen_at = ${new Date()} WHERE token_hash = ${sha256(token)}`.catch(() => null)
+    return {
+      adminUuid: row.adminUuid,
+      fullName: row.fullName,
+      email: row.email,
+      isOwner: Boolean(row.isOwner),
+      allowedPages: parseAllowedPages(row.allowedPages)
+    } satisfies AdminSession
+  } catch {
+    return null
+  }
 }
 
-export async function requireAdmin() {
+export async function requireAdmin(path?: string) {
   const session = await getAdminSession()
   if (!session) redirect("/internal/login")
+  if (path && !canAccessDashboardPath(session, path)) {
+    const fallback = session.allowedPages.find((allowed) => isSafeInternalPath(normalizeInternalPath(allowed)))
+    redirect(fallback ? `${normalizeInternalPath(fallback)}?error=forbidden` : "/")
+  }
   return session
-}
-
-export function canAccessDashboardPath(session: AdminSession, path: string) {
-  if (session.isOwner) return true
-  if (!session.allowedPages.length) return true
-  const normalizedPath = normalizeInternalPath(path)
-  return session.allowedPages.some((allowed) => {
-    const normalizedAllowed = normalizeInternalPath(allowed)
-    return normalizedPath === normalizedAllowed || normalizedPath.startsWith(`${normalizedAllowed}/`)
-  })
 }

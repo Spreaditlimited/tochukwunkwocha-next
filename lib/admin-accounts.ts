@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 export const INTERNAL_PAGE_OPTIONS = [
   { path: "/internal", label: "Overview" },
   { path: "/internal/blog", label: "Blog CMS" },
+  { path: "/internal/resources", label: "Resources" },
   { path: "/internal/manual-payments", label: "Manual Payments" },
   { path: "/internal/installments", label: "Installments" },
   { path: "/internal/coupons", label: "Coupons" },
@@ -99,7 +100,7 @@ export async function createAdminAccount(input: {
   const email = normalizeEmail(input.email)
   const password = String(input.password || "").trim()
   const allowedPages = normalizeAllowedPages(input.allowedPages)
-  if (!fullName || !email || password.length < 8) throw new Error("Full name, valid email, and password of at least 8 characters are required.")
+  if (!fullName || !email || password.length < 12) throw new Error("Full name, valid email, and password of at least 12 characters are required.")
   if (!allowedPages.length) throw new Error("Select at least one page permission.")
 
   const salt = crypto.randomBytes(16).toString("hex")
@@ -143,10 +144,14 @@ export async function updateAdminAccount(input: {
   }
   if (typeof input.password === "string" && input.password.trim()) {
     const password = input.password.trim()
-    if (password.length < 8) throw new Error("Password must be at least 8 characters.")
+    if (password.length < 12) throw new Error("Password must be at least 12 characters.")
     const salt = crypto.randomBytes(16).toString("hex")
     data.passwordSalt = salt
     data.passwordHash = await hashPassword(password, salt)
   }
-  return prisma.tochukwuAdminAccount.update({ where: { adminUuid }, data })
+  const updated = await prisma.tochukwuAdminAccount.update({ where: { adminUuid }, data })
+  if (typeof input.isActive === "boolean" || (typeof input.password === "string" && input.password.trim())) {
+    await prisma.$executeRaw`DELETE FROM tochukwu_admin_sessions WHERE admin_uuid = ${adminUuid}`.catch(() => null)
+  }
+  return updated
 }

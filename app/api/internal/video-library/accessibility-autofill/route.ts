@@ -14,7 +14,7 @@ function toInt(value: unknown, fallback = 0) {
 
 export async function POST(request: Request) {
   try {
-    await requireAdmin()
+    await requireAdmin("/internal/video-library")
     const body = await request.json().catch(() => ({}))
     const result = await autofillModuleAccessibility({
       moduleId: clean(body.moduleId || body.module_id, 80),

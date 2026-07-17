@@ -12,7 +12,7 @@ function scope(value: unknown): "all" | "recent" {
 }
 
 export async function POST(request: Request) {
-  const session = await requireAdmin()
+  const session = await requireAdmin("/internal/video-library")
   const body = await request.json().catch(() => ({}))
   const mode = String(body.mode || "batch").toLowerCase()
   const selectedScope = scope(body.scope)

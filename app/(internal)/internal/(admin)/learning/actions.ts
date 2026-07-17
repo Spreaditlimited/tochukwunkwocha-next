@@ -17,7 +17,7 @@ import {
 const PATH = "/internal/learning"
 
 export async function saveCourseFeaturesAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/learning")
   await saveCourseFeatures({
     courseSlug: String(formData.get("courseSlug") || ""),
     assignmentsEnabled: formBool(formData.get("assignmentsEnabled")),
@@ -31,7 +31,7 @@ export async function saveCourseFeaturesAction(formData: FormData) {
 }
 
 export async function resendCertificateApprovalEmailAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/learning")
   const result = await resendCertificateApprovalEmail(String(formData.get("assignmentId") || ""))
   const failed = !result.certificate.issued || !result.email.sent
   await setInternalToast({
@@ -45,7 +45,7 @@ export async function resendCertificateApprovalEmailAction(formData: FormData) {
 }
 
 export async function reviewAssignmentAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/learning")
   const result = await reviewAssignment({
     assignmentId: String(formData.get("assignmentId") || ""),
     status: String(formData.get("status") || ""),
@@ -72,7 +72,7 @@ export async function reviewAssignmentAction(formData: FormData) {
 }
 
 export async function reviewTranscriptAccessAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/learning")
   await reviewTranscriptAccess({
     accountId: String(formData.get("accountId") || ""),
     courseSlug: String(formData.get("courseSlug") || ""),
@@ -85,7 +85,7 @@ export async function reviewTranscriptAccessAction(formData: FormData) {
 }
 
 export async function resetStudentDevicesAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/learning")
   await resetStudentDevices({
     accountId: String(formData.get("accountId") || ""),
     email: String(formData.get("email") || "")
@@ -95,7 +95,7 @@ export async function resetStudentDevicesAction(formData: FormData) {
 }
 
 export async function resendStudentResetLinkAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/learning")
   await resendStudentResetLink({
     accountId: String(formData.get("accountId") || ""),
     email: String(formData.get("email") || "")

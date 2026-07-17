@@ -36,6 +36,7 @@ import { BrandMark } from "@/components/BrandMark"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { InternalActionToaster } from "@/components/internal/InternalActionToaster"
 import type { AdminSession } from "@/lib/auth"
+import { canAccessDashboardPath } from "@/lib/admin-permissions"
 import { cn } from "@/lib/utils"
 
 const navSections = [
@@ -101,6 +102,12 @@ export function InternalDashboardShell({
   children: ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  const allowedNavSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => canAccessDashboardPath(session, item.href))
+    }))
+    .filter((section) => section.items.length > 0)
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(STORAGE_KEY) === "true")
@@ -138,7 +145,7 @@ export function InternalDashboardShell({
           </div>
 
           <nav className={cn("flex-1 overflow-y-auto py-5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20", collapsed ? "space-y-5 px-3" : "space-y-7 px-3")}>
-            {navSections.map((section) => (
+            {allowedNavSections.map((section) => (
               <div key={section.label}>
                 {collapsed ? (
                   <div className="mx-auto mb-2 h-px w-8 bg-border" title={section.label} />
@@ -231,7 +238,7 @@ export function InternalDashboardShell({
 
             <div className="border-t border-border px-4 py-3 sm:px-6 lg:hidden">
               <div className="flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                {navSections.flatMap((section) => section.items).map((item) => {
+                {allowedNavSections.flatMap((section) => section.items).map((item) => {
                   const Icon = item.icon
                   return (
                     <Link

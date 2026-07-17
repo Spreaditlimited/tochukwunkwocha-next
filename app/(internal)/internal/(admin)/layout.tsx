@@ -1,12 +1,10 @@
-import { redirect } from "next/navigation"
 import type { ReactNode } from "react"
 
 import { InternalDashboardShell } from "@/components/internal/InternalDashboardShell"
-import { canAccessDashboardPath, requireAdmin } from "@/lib/auth"
+import { requireAdmin } from "@/lib/auth"
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await requireAdmin()
-  if (!canAccessDashboardPath(session, "/internal")) redirect("/")
 
   const initials = session.fullName
     ?.split(" ")

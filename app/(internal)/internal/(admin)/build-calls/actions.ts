@@ -16,7 +16,7 @@ function clean(value: unknown, max = 500) {
 }
 
 export async function updateBuildCallOutcomeAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/build-calls")
   await updateBuildCallOutcome({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     outcomeStatus: clean(formData.get("outcomeStatus"), 40),
@@ -31,7 +31,7 @@ export async function updateBuildCallOutcomeAction(formData: FormData) {
 }
 
 export async function rescheduleBuildCallAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/build-calls")
   await rescheduleBuildCall({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     slotStartIso: clean(formData.get("slotStartIso"), 80),
@@ -43,7 +43,7 @@ export async function rescheduleBuildCallAction(formData: FormData) {
 }
 
 export async function cancelBuildCallAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/build-calls")
   await cancelBuildCall({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     note: clean(formData.get("note"), 255) || "Cancelled by admin"
@@ -54,7 +54,7 @@ export async function cancelBuildCallAction(formData: FormData) {
 }
 
 export async function resendBuildCallNotificationsAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/build-calls")
   await resendRecentBuildCallNotifications({
     lookbackHours: Number(formData.get("lookbackHours") || 72)
   })

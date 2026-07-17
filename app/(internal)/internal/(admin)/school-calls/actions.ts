@@ -16,7 +16,7 @@ function clean(value: unknown, max = 500) {
 }
 
 export async function updateSchoolCallOutcomeAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/school-calls")
   await updateSchoolCallOutcome({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     outcomeStatus: clean(formData.get("outcomeStatus"), 40),
@@ -31,7 +31,7 @@ export async function updateSchoolCallOutcomeAction(formData: FormData) {
 }
 
 export async function rescheduleSchoolCallAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/school-calls")
   await rescheduleSchoolCall({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     slotStartIso: clean(formData.get("slotStartIso"), 80),
@@ -43,7 +43,7 @@ export async function rescheduleSchoolCallAction(formData: FormData) {
 }
 
 export async function cancelSchoolCallAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/school-calls")
   await cancelSchoolCall({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     note: clean(formData.get("note"), 255) || "Cancelled by admin"
@@ -54,7 +54,7 @@ export async function cancelSchoolCallAction(formData: FormData) {
 }
 
 export async function resendSchoolCallNotificationsAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/school-calls")
   await resendRecentSchoolCallNotifications({ lookbackHours: Number(formData.get("lookbackHours") || 72) })
   await setInternalToast({ title: "School call notifications resent", message: "Recent eligible school call notifications have been queued again." })
   revalidatePath("/internal/school-calls")

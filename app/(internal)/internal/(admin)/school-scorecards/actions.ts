@@ -12,7 +12,7 @@ function clean(value: unknown, max = 500) {
 }
 
 export async function bookSchoolScorecardCallAction(formData: FormData) {
-  await requireAdmin()
+  await requireAdmin("/internal/school-scorecards")
   await bookSchoolCallFromScorecard({
     leadUuid: clean(formData.get("leadUuid"), 64),
     slotStartIso: clean(formData.get("slotStartIso"), 80)
@@ -23,7 +23,7 @@ export async function bookSchoolScorecardCallAction(formData: FormData) {
 }
 
 export async function updateSchoolScorecardOutcomeAction(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdmin("/internal/school-scorecards")
   await updateSchoolCallOutcome({
     bookingUuid: clean(formData.get("bookingUuid"), 72),
     outcomeStatus: clean(formData.get("outcomeStatus"), 40),
