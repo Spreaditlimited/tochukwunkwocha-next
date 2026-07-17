@@ -1,6 +1,7 @@
 import crypto from "crypto"
 import { Prisma } from "@prisma/client"
 
+import { bindSchoolReferralAfterPayment, captureSchoolOrderReferral } from "@/lib/affiliate-alignment"
 import { getAdminSettingValue } from "@/lib/admin-settings"
 import { initializePaystack, initializeStripe, isNigeriaCountry, retrieveStripeSession, siteBaseUrl, stripeCurrencyForCountry, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
@@ -194,6 +195,7 @@ export async function createSchoolAdvancedSeatCheckout(input: {
   adminEmail: string
   courseSlug: string
   seatCount: unknown
+  affiliateCode?: string
 }) {
   await ensureSchoolPaymentTables()
   const country = await resolveSchoolCountry(input.schoolId)
@@ -211,6 +213,7 @@ export async function createSchoolAdvancedSeatCheckout(input: {
        ${quote.seats}, ${quote.currency}, 'prompt-to-production', 'advanced_seat_purchase', ${quote.pricePerSeatMinor}, ${quote.vatBps},
        ${quote.subtotalMinor}, ${quote.vatMinor}, ${quote.processingFeeMinor}, ${quote.totalMinor}, ${quote.provider}, 'pending', ${now}, ${now})
   `
+  await captureSchoolOrderReferral({ orderUuid, affiliateCode: input.affiliateCode }).catch(() => null)
   const reference = `SCHADV_${orderUuid.replace(/[^a-z0-9]/gi, "").slice(0, 22).toUpperCase()}`
   const metadata = {
     school_order_uuid: orderUuid,
@@ -262,7 +265,7 @@ export async function markSchoolAdvancedOrderPaid(input: {
   const orderUuid = clean(input.orderUuid, 80)
   if (!providerReference && !providerOrderId && !orderUuid) throw new Error("Missing order identifier.")
 
-  await prisma.$transaction(async (tx) => {
+  const paidOrder = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT id, order_uuid, school_id, seat_course_slug, order_kind, seats_requested, status
       FROM school_orders
@@ -331,7 +334,9 @@ export async function markSchoolAdvancedOrderPaid(input: {
         ON DUPLICATE KEY UPDATE id = id
       `
     }
+    return { schoolId, orderUuid: clean(order.order_uuid, 64) }
   })
+  await bindSchoolReferralAfterPayment({ schoolId: paidOrder.schoolId, schoolOrderUuid: paidOrder.orderUuid }).catch(() => null)
 }
 
 export async function confirmPaystackSchoolAdvanced(reference: string) {

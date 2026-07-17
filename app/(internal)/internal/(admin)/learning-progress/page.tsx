@@ -2,8 +2,7 @@ import Link from "next/link"
 import { 
   ArrowLeft,
   BookOpen, 
-  CheckCircle2, 
-  ChevronRight, 
+  CheckCircle2,
   Clock, 
   Eye, 
   Filter, 

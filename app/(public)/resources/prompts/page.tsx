@@ -113,9 +113,9 @@ export default async function ResourcePromptsPage({ searchParams }: PageProps) {
               Showing {resources.length.toLocaleString("en")} prompt{resources.length === 1 ? "" : "s"}
             </p>
             {(q || audience || category) ? (
-              <a href="/resources/prompts" className="text-sm font-black text-primary hover:text-primary/80">
+              <Link href="/resources/prompts" className="text-sm font-black text-primary hover:text-primary/80">
                 Clear filters
-              </a>
+              </Link>
             ) : null}
           </div>
           

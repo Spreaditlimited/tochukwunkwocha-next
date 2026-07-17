@@ -5,8 +5,7 @@ import {
   Shield, 
   ShieldAlert, 
   ShieldCheck, 
-  UserPlus, 
-  Users 
+  UserPlus
 } from "lucide-react"
 
 import { PasswordField } from "@/components/PasswordField"
@@ -122,7 +121,6 @@ export default async function InternalAdminAccountsPage() {
         <div className="grid gap-6">
           {accounts.map((account) => {
             const allowedPages = parseAllowedPages(account.allowedPages)
-            const isSelf = false // Not strictly tracked in row data, but visually implied by permissions structure
             const canEditIdentity = session.isOwner && !account.isOwner
             const canEditPermissions = session.isOwner && !account.isOwner
 

@@ -4,8 +4,7 @@ import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { 
   AlertTriangle, 
-  CheckCircle2, 
-  Globe, 
+  CheckCircle2,
   Loader2, 
   Network, 
   RefreshCw, 
@@ -71,10 +70,9 @@ export function DomainActionsPanel({ domains }: { domains: DomainOption[] }) {
   }
 
   async function registerDomain() {
-    await run("register", async () => {
-      const result = await postJson<{ orderUuid: string; domainName: string }>("/api/student/domains/register", { domainName, years: 1, autoRenewEnabled: true })
-      return `Registration request created for ${result.domainName}. Reference: ${result.orderUuid}.`
-    })
+    const normalized = domainName.trim().toLowerCase()
+    if (!normalized) return
+    router.push(`/services/domain-registration?domain=${encodeURIComponent(normalized)}`)
   }
 
   async function renewDomain() {
@@ -208,7 +206,7 @@ export function DomainActionsPanel({ domains }: { domains: DomainOption[] }) {
                   onClick={registerDomain} 
                   disabled={isLoading || !domainName.trim()}
                 >
-                  {activeAction === "register" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Register"}
+                  {activeAction === "register" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buy Domain"}
                 </button>
               </div>
             </div>

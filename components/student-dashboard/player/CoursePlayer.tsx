@@ -124,7 +124,6 @@ function notePreview(value: string) {
     .trim()
 }
 
-const richNoteClass = "space-y-3 text-sm leading-6 text-foreground/85 [&_a]:font-bold [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded [&_code]:bg-background [&_code]:px-1.5 [&_code]:py-0.5 [&_h3]:text-lg [&_h3]:font-black [&_h4]:font-black [&_li]:ml-5 [&_ol]:list-decimal [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-background [&_pre]:p-3 [&_ul]:list-disc"
 const editorNoteClass = "space-y-3 text-sm leading-7 text-foreground [&_a]:font-bold [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded [&_code]:bg-muted/40 [&_code]:px-1.5 [&_code]:py-0.5 [&_h3]:text-lg [&_h3]:font-black [&_h4]:font-black [&_li]:ml-5 [&_ol]:list-decimal [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-muted/40 [&_pre]:p-3 [&_ul]:list-disc"
 
 function RichNoteButton({
@@ -405,7 +404,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
     return () => {
       cancelled = true
     }
-  }, [activeLessonId])
+  }, [activeLesson])
 
   useEffect(() => {
     if (!activeLessonId) return

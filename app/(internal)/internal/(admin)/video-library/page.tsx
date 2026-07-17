@@ -1,6 +1,5 @@
 import Link from "next/link"
 import {
-  CheckCircle2,
   ExternalLink,
   GraduationCap,
   Layers3,
@@ -97,31 +96,6 @@ function activePill(active: unknown, activeLabel = "Published", inactiveLabel = 
       {isActive ? activeLabel : inactiveLabel}
     </span>
   )
-}
-
-function batchRuleRows(
-  batches: Array<{ batchKey: string; batchLabel: string | null; batchStartAt: Date | null; status: string | null }>,
-  schedules: Array<{ batchKey: string; accessMode: string; dripAt: Date | null }> = []
-) {
-  const rows = schedules.length ? schedules : [{ batchKey: "", accessMode: "immediate", dripAt: null }]
-  const batchOptions = [
-    { value: "", label: "Select batch" },
-    ...batches.map((batch) => ({
-      value: batch.batchKey,
-      label: `${batch.batchLabel || batch.batchKey}${batch.batchStartAt ? ` · ${formatDate(batch.batchStartAt)}` : ""}${batch.status ? ` · ${batch.status}` : ""}`
-    }))
-  ]
-  const accessModeOptions = [
-    { value: "immediate", label: "Immediate access" },
-    { value: "drip", label: "Drip by date" }
-  ]
-  return rows.map((schedule, index) => (
-    <div key={`${schedule.batchKey || "new"}-${index}`} className="grid min-w-[46rem] gap-3 rounded-xl border border-border bg-background p-3 md:grid-cols-[1.4fr_1fr_1.3fr]">
-      <PremiumPicker name="dripBatchKey" defaultValue={schedule.batchKey || ""} options={batchOptions} />
-      <PremiumPicker name="dripAccessMode" defaultValue={schedule.accessMode || "immediate"} options={accessModeOptions} />
-      <input name="dripAt" type="datetime-local" defaultValue={dateInput(schedule.dripAt || null)} className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-    </div>
-  ))
 }
 
 function videoLabel(video: { id: bigint; videoUid: string; filename: string | null; readyToStream: number | bigint | boolean; sourceDeletedAt: Date | null }) {

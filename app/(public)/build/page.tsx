@@ -4,18 +4,14 @@ import {
   ArrowRight, 
   CheckCircle2, 
   ClipboardCheck, 
-  Code2, 
-  Cpu, 
-  LayoutDashboard, 
-  Map, 
-  Play, 
+  Code2,
+  Map,
   Rocket, 
   Search, 
   ShieldCheck, 
   XCircle 
 } from "lucide-react"
 
-import { brand } from "@/lib/brand"
 import { buildMetadata } from "@/lib/site-seo"
 
 export const metadata = buildMetadata({

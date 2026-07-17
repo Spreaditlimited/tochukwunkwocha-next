@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
+import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
 import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 
@@ -29,6 +30,10 @@ export async function POST(request: Request) {
   const reference = String(data.reference || "").trim()
   const metadata = data.metadata || {}
   const paymentScope = String(metadata.payment_scope || "").toLowerCase()
+  if (paymentScope === "domain_registration") {
+    const result = await completePaidDomainCheckout(reference)
+    return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })
+  }
   if (paymentScope === "installment" || metadata.installment_plan_uuid) {
     await markInstallmentPaymentPaid(reference, data.id ? String(data.id) : null)
     return NextResponse.json({ ok: true, scope: "installment" })

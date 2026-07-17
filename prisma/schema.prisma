@@ -187,6 +187,9 @@ model StudentAccount {
   mustResetPassword          Boolean   @default(false) @map("must_reset_password")
   domainsAutoRenewEnabled    Boolean   @default(true) @map("domains_auto_renew_enabled")
   phoneE164                  String?   @map("phone_e164") @db.VarChar(20)
+  profilePictureUrl          String?   @map("profile_picture_url") @db.Text
+  profilePicturePublicId     String?   @map("profile_picture_public_id") @db.VarChar(500)
+  profilePictureUpdatedAt    DateTime? @map("profile_picture_updated_at") @db.DateTime(0)
   whatsappOptedIn            Boolean   @default(false) @map("whatsapp_opted_in")
   whatsappOptedInAt          DateTime? @map("whatsapp_opted_in_at") @db.DateTime(0)
   whatsappOptedOutAt         DateTime? @map("whatsapp_opted_out_at") @db.DateTime(0)

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Clock3, KeyRound, ShieldCheck, Ticket, UserRound, Users, UsersRound } from "lucide-react"
+import { Clock3, KeyRound, ShieldCheck, Ticket, UserRound, Users } from "lucide-react"
 
 import {
   EmptyStudentState,
@@ -9,6 +9,7 @@ import {
 import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/student-dashboard/BatchSwitchPanel"
 import { CopyButton } from "@/components/student-dashboard/CopyButton"
 import { GroupEnrollmentPanel } from "@/components/student-dashboard/GroupEnrollmentPanel"
+import { AccessCodeResetButton } from "@/components/AccessCodeResetButton"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { courseName, getFamilyDashboard, hasPendingGroupManualPayment, listActiveLearningCourseOptions, statusLabel, statusTone } from "@/lib/student-dashboard"
@@ -277,6 +278,12 @@ export default async function StudentFamilyPage({
                           label="Copy"
                           copiedLabel="Copied"
                           className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/20 bg-background px-3 py-2 text-xs font-black text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                        />
+                        <AccessCodeResetButton
+                          endpoint="/api/student/group-enrollment/code/reset"
+                          payload={{ childId: child.childId }}
+                          learnerName={child.fullName}
+                          className="inline-flex items-center justify-center rounded-md border border-primary/20 bg-background px-3 py-2 text-xs font-black text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground disabled:cursor-wait disabled:opacity-60"
                         />
                       </div>
                     ) : null}

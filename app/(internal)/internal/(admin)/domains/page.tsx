@@ -1,12 +1,8 @@
 import { 
-  Activity,
   AlertTriangle,
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
+  CheckCircle2,
   CreditCard,
-  Globe, 
-  RefreshCw, 
+  Globe,
   Save, 
   Server, 
   ShoppingCart

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import { 
   AlertCircle,
   Briefcase,
@@ -127,7 +127,7 @@ export function CallBookingClient({
   const dateKeys = Array.from(grouped.keys()).sort()
   const visibleSlots = grouped.get(selectedDate) || []
 
-  async function loadSlots() {
+  const loadSlots = useCallback(async () => {
     setError("")
     const params = new URLSearchParams()
     if (mode !== "school") params.set("source", mode)
@@ -142,7 +142,7 @@ export function CallBookingClient({
       setSelectedDate(dateKey(first.startIso))
       setSelectedSlot(first.startIso)
     }
-  }
+  }, [buildAccessToken, coachingAccessToken, mode])
 
   useEffect(() => {
     loadSlots().catch((err) => setError(err instanceof Error ? err.message : "Could not load slots."))
@@ -151,7 +151,7 @@ export function CallBookingClient({
         .then((data) => setBooking(data.booking))
         .catch((err) => setError(err instanceof Error ? err.message : "Could not load booking."))
     }
-  }, [])
+  }, [loadSlots, manageToken])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

@@ -1,5 +1,4 @@
 import { 
-  AlertCircle,
   Award,
   BookOpen,
   CheckCircle2, 

@@ -1,14 +1,9 @@
-import Link from "next/link"
 import { 
-  AlertTriangle, 
   Banknote, 
   CheckCircle2, 
   Clock, 
-  Link2, 
-  Network, 
+  Link2,
   ShieldAlert, 
-  ShieldCheck, 
-  UsersRound, 
   Wallet,
   XCircle
 } from "lucide-react"

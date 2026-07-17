@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { AFFILIATE_REF_STORAGE_KEY } from "@/components/AffiliateReferralCapture"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 import { resolveCheckoutCourseSlug, type Course } from "@/lib/public-offers"
@@ -260,7 +261,12 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get("ref") || params.get("affiliate") || params.get("affiliateCode") || ""
-    if (code) setAffiliateCode(code.toUpperCase())
+    try {
+      if (code) window.localStorage.setItem(AFFILIATE_REF_STORAGE_KEY, code.toUpperCase())
+      setAffiliateCode((code || window.localStorage.getItem(AFFILIATE_REF_STORAGE_KEY) || "").trim().toUpperCase().slice(0, 40))
+    } catch {
+      if (code) setAffiliateCode(code.toUpperCase().slice(0, 40))
+    }
   }, [])
 
   useEffect(() => {

@@ -38,6 +38,7 @@ export async function POST(request: Request) {
         accountUuid: profile.accountUuid,
         fullName: profile.fullName,
         email: profile.email,
+        profilePictureUrl: refreshed.profilePictureUrl,
         phone: profile.phoneE164 || "",
         whatsappOptedIn: profile.whatsappOptedIn,
         whatsappOptedInAt: profile.whatsappOptedInAt,

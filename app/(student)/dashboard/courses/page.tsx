@@ -1,7 +1,6 @@
 import Link from "next/link"
-import { 
-  BookOpen, 
-  CheckCircle2, 
+import {
+  CheckCircle2,
   Clock3, 
   ExternalLink,
   PlayCircle,

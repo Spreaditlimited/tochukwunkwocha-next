@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   Award,
@@ -27,6 +27,7 @@ import { BrandMark } from "@/components/BrandMark"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { studentLogoutAction } from "@/app/(student)/dashboard/actions"
 import { StudentActionToaster } from "@/components/student-dashboard/StudentActionToaster"
+import { StudentSidebarAvatar } from "@/components/student-dashboard/StudentSidebarAvatar"
 import type { StudentSessionAccount } from "@/lib/student-auth"
 import { cn } from "@/lib/utils"
 
@@ -76,10 +77,33 @@ export function StudentDashboardShell({
   children
 }: StudentDashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileAccountMenuOpen, setMobileAccountMenuOpen] = useState(false)
+  const mobileAccountMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(STUDENT_SIDEBAR_STORAGE_KEY) === "true")
   }, [])
+
+  useEffect(() => {
+    if (!mobileAccountMenuOpen) return
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!mobileAccountMenuRef.current?.contains(event.target as Node)) {
+        setMobileAccountMenuOpen(false)
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileAccountMenuOpen(false)
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick)
+    document.addEventListener("keydown", closeOnEscape)
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick)
+      document.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [mobileAccountMenuOpen])
 
   function toggleCollapsed() {
     setCollapsed((current) => {
@@ -153,8 +177,8 @@ export function StudentDashboardShell({
           {/* Sidebar Footer User Profile */}
           <div className="border-t border-border/50 p-3">
             <div className={cn("flex items-center rounded-md bg-muted/40 p-2.5", collapsed ? "justify-center" : "gap-2.5")}>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 font-heading font-bold text-primary">
-                {account.fullName.charAt(0).toUpperCase()}
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 font-heading font-bold text-primary">
+                <StudentSidebarAvatar fullName={account.fullName} initialUrl={account.profilePictureUrl} />
               </div>
               {!collapsed ? (
                 <div className="min-w-0 flex-1">
@@ -181,7 +205,52 @@ export function StudentDashboardShell({
               
               <div className="flex items-center gap-3">
                 <ThemeToggle className="h-10 w-10 border-border bg-card shadow-sm hover:border-primary/30" />
-                <form action={studentLogoutAction}>
+                <div ref={mobileAccountMenuRef} className="relative lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setMobileAccountMenuOpen((current) => !current)}
+                    className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border bg-card shadow-sm transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                    aria-label="Open account menu"
+                    aria-haspopup="menu"
+                    aria-expanded={mobileAccountMenuOpen}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10 font-heading font-bold text-primary">
+                      <StudentSidebarAvatar fullName={account.fullName} initialUrl={account.profilePictureUrl} />
+                    </span>
+                  </button>
+
+                  {mobileAccountMenuOpen ? (
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-lg border border-border bg-card p-1.5 shadow-xl"
+                    >
+                      <div className="border-b border-border px-3 py-2.5">
+                        <p className="truncate text-sm font-bold text-foreground">{account.fullName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+                      </div>
+                      <Link
+                        href="/dashboard/profile"
+                        role="menuitem"
+                        onClick={() => setMobileAccountMenuOpen(false)}
+                        className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+                      >
+                        <UserRound className="h-4 w-4 text-muted-foreground" />
+                        Profile
+                      </Link>
+                      <form action={studentLogoutAction}>
+                        <button
+                          type="submit"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-destructive transition hover:bg-destructive/10"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Sign out
+                        </button>
+                      </form>
+                    </div>
+                  ) : null}
+                </div>
+                <form action={studentLogoutAction} className="hidden lg:block">
                   <button
                     className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
                     type="submit"

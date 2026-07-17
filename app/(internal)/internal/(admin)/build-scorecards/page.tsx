@@ -2,8 +2,7 @@ import Link from "next/link"
 import { 
   Briefcase,
   Calendar,
-  CalendarPlus, 
-  CheckCircle2, 
+  CalendarPlus,
   ChevronRight, 
   ClipboardList, 
   CreditCard,

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { createRequire } from "module"
 import { Prisma } from "@prisma/client"
 
+import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -22,6 +23,9 @@ const domainClient = requireCjs("./domain-client.cjs") as {
     registrantPhone?: string
     registrantPhoneCc?: string
   }) => Promise<{ success: boolean; domainName?: string; provider?: string; currency?: string; amountMinor?: number; orderId?: string; reason?: string }>
+  buildDomainCandidates: (input: { preferredName: string; limit?: number }) => string[]
+  checkAvailabilityMany: (input: { domainNames: string[]; strict?: boolean }) => Promise<Array<{ available: boolean; domainName?: string; provider?: string; reason?: string }>>
+  getRegistrationPrice: (input: { domainName: string; years?: number }) => Promise<{ currency?: string; amountMinor?: number; provider?: string }>
   getDnsZone?: (input: { domainName: string }) => Promise<unknown>
   updateNameservers?: (input: { domainName: string; nameservers: string[] }) => Promise<{ success?: boolean; nameservers?: string[]; provider?: string; reason?: string }>
   updateDnsRecords?: (input: { domainName: string; records: unknown[] }) => Promise<{ success?: boolean; records?: unknown[]; provider?: string; reason?: string }>
@@ -111,6 +115,8 @@ export async function ensureDomainRequestTables() {
   await addColumnIfMissing("domain_orders", "registrant_profile_json", "TEXT NULL")
   await addColumnIfMissing("domain_orders", "selected_services_json", "TEXT NULL")
   await addColumnIfMissing("domain_orders", "auto_renew_enabled", "TINYINT(1) NOT NULL DEFAULT 1")
+  await addColumnIfMissing("domain_orders", "checkout_url", "VARCHAR(1200) NULL")
+  await addColumnIfMissing("domain_orders", "payment_reference", "VARCHAR(180) NULL")
   await addColumnIfMissing("user_domains", "selected_services_json", "TEXT NULL")
   await addColumnIfMissing("user_domains", "auto_renew_enabled", "TINYINT(1) NOT NULL DEFAULT 1")
   await prisma.$executeRawUnsafe(`
@@ -153,6 +159,27 @@ export async function ensureDomainRequestTables() {
   `)
 }
 
+export function domainProvider() {
+  return domainClient.selectedDomainProviderName()
+}
+
+export async function checkDomainAvailabilityMany(preferredNameInput: unknown) {
+  const preferredName = clean(preferredNameInput, 190)
+  if (!preferredName) throw new Error("preferredName is required")
+  const domainNames = domainClient.buildDomainCandidates({ preferredName, limit: 12 })
+  if (!domainNames.length) throw new Error("Enter a valid domain name.")
+  await applyAdminSettingsToProcessEnv()
+  return domainClient.checkAvailabilityMany({ domainNames, strict: true })
+}
+
+export async function getDomainRegistrationPrice(domainNameInput: unknown, yearsInput: unknown) {
+  const domainName = normalizeDomain(domainNameInput)
+  if (!domainName) throw new Error("domainName is required")
+  const years = Math.max(1, Math.min(10, Math.trunc(Number(yearsInput || 1))))
+  await applyAdminSettingsToProcessEnv()
+  return domainClient.getRegistrationPrice({ domainName, years })
+}
+
 export async function checkStudentDomainAvailability(domainNameInput: unknown) {
   const domainName = normalizeDomain(domainNameInput)
   if (!domainName) throw new Error("domainName is required")
@@ -173,6 +200,7 @@ export async function checkStudentDomainAvailability(domainNameInput: unknown) {
     }
   }
 
+  await applyAdminSettingsToProcessEnv()
   const live = await domainClient.checkAvailability({ domainName, strict: true })
   return {
     domainName,

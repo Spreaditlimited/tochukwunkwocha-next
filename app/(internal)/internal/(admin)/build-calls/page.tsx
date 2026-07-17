@@ -1,20 +1,15 @@
 import Link from "next/link"
 import { 
-  Briefcase,
   Calendar,
   CalendarClock, 
   CheckCircle2, 
   ChevronRight, 
   ClipboardList, 
-  Clock, 
   ExternalLink, 
   Eye, 
   Mail, 
-  MessageSquareText, 
-  PhoneCall, 
   RotateCcw, 
   Save, 
-  Target, 
   User, 
   Video, 
   XCircle 

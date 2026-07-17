@@ -462,7 +462,7 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
       console.warn("student_certificate_issue_failed", { assignmentId: assignmentId.toString(), error: certificate.error })
     }
   }
-  let email = { attempted: false, sent: false, error: "" }
+  const email = { attempted: false, sent: false, error: "" }
   if ((input.sendApprovalEmail || becameApproved) && item.studentEmail) {
     email.attempted = true
     const certificateUrl = certificate.certificateUrl

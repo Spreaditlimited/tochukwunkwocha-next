@@ -1054,8 +1054,8 @@ export async function detachVideoLibraryModule(input: { moduleId: string; course
     WHERE id = ${moduleId}
     LIMIT 1
   `
-  const module = moduleRows[0]
-  if (!module) throw new Error("Module not found.")
+  const moduleRow = moduleRows[0]
+  if (!moduleRow) throw new Error("Module not found.")
   const mappingRows = await prisma.$queryRaw<Array<{ id: bigint }>>`
     SELECT id
     FROM tochukwu_learning_course_modules
@@ -1072,9 +1072,9 @@ export async function detachVideoLibraryModule(input: { moduleId: string; course
     `
     return
   }
-  if (module.courseSlug !== courseSlug) throw new Error("Module is no longer mapped to the selected course.")
+  if (moduleRow.courseSlug !== courseSlug) throw new Error("Module is no longer mapped to the selected course.")
   const unassigned = "__unassigned_modules__"
-  const baseSlug = slugify(module.moduleSlug || module.moduleTitle, "module").slice(0, 145)
+  const baseSlug = slugify(moduleRow.moduleSlug || moduleRow.moduleTitle, "module").slice(0, 145)
   let nextSlug = baseSlug
   for (let attempt = 2; attempt < 250; attempt += 1) {
     const exists = await findModuleId(unassigned, nextSlug)

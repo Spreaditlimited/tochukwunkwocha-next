@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { Award, BookOpen, FileUp, Plus, RotateCcw, Trash2, Users } from "lucide-react"
+import { Award, BookOpen, FileUp, Plus, Trash2, Users } from "lucide-react"
 
+import { AccessCodeResetButton } from "@/components/AccessCodeResetButton"
 import { AdvancedSeatPurchaseForm } from "@/components/schools/AdvancedSeatPurchaseForm"
 import { SchoolDashboardShell } from "@/components/schools/SchoolDashboardShell"
 import { SchoolCodeCopyButton } from "@/components/schools/SchoolCodeCopyButton"
@@ -14,7 +15,6 @@ import {
   deleteSchoolCertificateAction,
   importSchoolStudentsAction,
   issueSchoolCertificateAction,
-  resetSchoolStudentCodeAction,
   toggleSchoolStudentAction,
   upgradeSchoolAdvancedStudentsAction
 } from "./actions"
@@ -158,7 +158,7 @@ export default async function SchoolDashboardPage({
               <h2 className="mt-2 font-heading text-2xl font-black text-foreground">Advanced Seats</h2>
               <p className="mt-1 text-sm text-muted-foreground">Buy advanced seats, then upgrade eligible students.</p>
             </div>
-            <a href="/courses/prompt-to-production" className="btn-secondary w-fit">Learn More</a>
+            <Link href="/courses/prompt-to-production" className="btn-secondary w-fit">Learn More</Link>
           </div>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -287,12 +287,11 @@ export default async function SchoolDashboardPage({
                             <input type="hidden" name="active" value={active ? "0" : "1"} />
                             <button className="btn-secondary px-3 py-2 text-xs" type="submit">{active ? "Disable" : "Enable"}</button>
                           </form>
-                          <form action={resetSchoolStudentCodeAction}>
-                            <input type="hidden" name="studentId" value={student.id} />
-                            <button className="btn-secondary px-3 py-2 text-xs" type="submit">
-                              <RotateCcw className="mr-1 h-3 w-3" /> Code
-                            </button>
-                          </form>
+                          <AccessCodeResetButton
+                            endpoint="/api/schools/students/code/reset"
+                            payload={{ studentId: student.id }}
+                            learnerName={student.fullName}
+                          />
                           {student.certificateNo ? (
                             <form action={deleteSchoolCertificateAction}>
                               <input type="hidden" name="studentId" value={student.id} />

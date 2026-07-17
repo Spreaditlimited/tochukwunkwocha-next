@@ -20,6 +20,7 @@ export default async function StudentProfilePage() {
         profile={{
           fullName: profile.fullName,
           email: profile.email,
+          profilePictureUrl: profile.profilePictureUrl,
           phone: profile.phone,
           whatsappOptedIn: profile.whatsappOptedIn,
           certificateNameConfirmedAt: profile.certificateNameConfirmedAt,
@@ -47,8 +48,7 @@ export default async function StudentProfilePage() {
             lastUserAgent: item.lastUserAgent,
             firstSeenAt: item.firstSeenAt,
             lastSeenAt: item.lastSeenAt
-          })),
-          alerts: security.alerts
+          }))
         }}
       />
     </StudentDashboardShell>

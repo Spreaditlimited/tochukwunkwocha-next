@@ -313,6 +313,8 @@ export function LeadCapturePopup() {
       document.removeEventListener("click", onClick)
       observer?.disconnect()
     }
+    // This lifecycle intentionally resets only when the route changes; helpers read current refs/storage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routePathname])
 
   async function submit(event: FormEvent<HTMLFormElement>) {

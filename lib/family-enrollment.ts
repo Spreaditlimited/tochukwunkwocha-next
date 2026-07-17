@@ -45,6 +45,25 @@ function makeFamilyCode() {
   return out
 }
 
+async function ensureFamilyChildCodeResetTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS family_child_code_resets (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      family_id BIGINT NOT NULL,
+      child_id BIGINT NOT NULL,
+      parent_account_id BIGINT NOT NULL,
+      previous_code VARCHAR(20) NULL,
+      new_code VARCHAR(20) NOT NULL,
+      reset_by_account_id BIGINT NOT NULL,
+      created_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      KEY idx_family_code_reset_family (family_id, created_at),
+      KEY idx_family_code_reset_child (child_id, created_at),
+      KEY idx_family_code_reset_parent (parent_account_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+}
+
 export function normalizeFamilyChildren(input: unknown): FamilyChildInput[] {
   const rows = Array.isArray(input) ? input : []
   return rows
@@ -88,6 +107,72 @@ async function assignFamilyChildCode(childId: bigint | number, client: Prisma.Tr
     LIMIT 1
   `
   return clean(rows[0]?.access_code, 20).toUpperCase()
+}
+
+export async function resetFamilyChildAccessCode(input: {
+  parentAccountId: bigint | number
+  childId: bigint | number
+}) {
+  const parentAccountId = BigInt(input.parentAccountId)
+  const childId = BigInt(input.childId)
+  if (parentAccountId <= BigInt(0) || childId <= BigInt(0)) throw new Error("Learner not found.")
+
+  await ensureFamilyChildCodeResetTable()
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{
+      id: bigint
+      familyId: bigint
+      accountId: bigint | null
+      previousCode: string | null
+    }>>`
+      SELECT c.id,
+             c.family_id AS familyId,
+             c.account_id AS accountId,
+             c.access_code AS previousCode
+      FROM family_children c
+      JOIN family_accounts f ON f.id = c.family_id
+      WHERE c.id = ${childId}
+        AND c.parent_account_id = ${parentAccountId}
+        AND f.parent_account_id = ${parentAccountId}
+        AND f.status = 'active'
+      LIMIT 1
+      FOR UPDATE
+    `
+    const child = rows[0]
+    if (!child) throw new Error("Learner not found in this group enrollment.")
+
+    let newCode = ""
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const candidate = makeFamilyCode()
+      const collision = await tx.$queryRaw<Array<{ id: bigint }>>`
+        SELECT id FROM family_children WHERE access_code = ${candidate} LIMIT 1
+      `
+      if (!collision.length) {
+        newCode = candidate
+        break
+      }
+    }
+    if (!newCode) throw new Error("Could not generate a unique learner code. Try again.")
+
+    await tx.$executeRaw`
+      UPDATE family_children
+      SET access_code = ${newCode}, updated_at = ${now()}
+      WHERE id = ${childId}
+        AND parent_account_id = ${parentAccountId}
+      LIMIT 1
+    `
+    await tx.$executeRaw`
+      INSERT INTO family_child_code_resets
+        (family_id, child_id, parent_account_id, previous_code, new_code, reset_by_account_id, created_at)
+      VALUES
+        (${child.familyId}, ${childId}, ${parentAccountId}, ${clean(child.previousCode, 20) || null},
+         ${newCode}, ${parentAccountId}, ${now()})
+    `
+    if (child.accountId) {
+      await tx.studentSession.deleteMany({ where: { accountId: child.accountId } })
+    }
+    return { newCode }
+  })
 }
 
 export async function upsertFamilyAccount(input: {

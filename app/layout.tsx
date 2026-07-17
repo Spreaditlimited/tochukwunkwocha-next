@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import type { ReactNode } from "react"
 
+import { AffiliateReferralCapture } from "@/components/AffiliateReferralCapture"
 import { MetaPixel } from "@/components/MetaPixel"
 import { RuntimeEventGuard } from "@/components/RuntimeEventGuard"
 import { ThemeScript } from "@/components/ThemeScript"
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ThemeScript />
       </head>
       <body>
+        <AffiliateReferralCapture />
         <MetaPixel />
         <RuntimeEventGuard />
         {children}

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { ensureCertificateVerificationColumns } from "@/lib/certificate-verification"
+import { createSchoolStudentAffiliateCommission } from "@/lib/affiliate-alignment"
 
 const STUDENT_CODE_LENGTH = 10
 const STUDENT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -468,6 +469,7 @@ export async function addSchoolStudent(input: { schoolId: number; fullName: stri
     `
     await assignStudentCode(input.schoolId, Number(existing[0].id))
     await grantStudentCourseAccess({ schoolId: input.schoolId, studentId: Number(existing[0].id), accountId: account.id, courseSlug: input.courseSlug || "prompt-to-profit", adminId: input.adminId })
+    await createSchoolStudentAffiliateCommission(Number(existing[0].id)).catch(() => null)
     return { updated: true }
   }
   await prisma.$executeRaw`
@@ -487,6 +489,7 @@ export async function addSchoolStudent(input: { schoolId: number; fullName: stri
   if (rows[0]) {
     await assignStudentCode(input.schoolId, Number(rows[0].id))
     await grantStudentCourseAccess({ schoolId: input.schoolId, studentId: Number(rows[0].id), accountId: account.id, courseSlug: input.courseSlug || "prompt-to-profit", adminId: input.adminId })
+    await createSchoolStudentAffiliateCommission(Number(rows[0].id)).catch(() => null)
   }
   return { created: true }
 }
@@ -527,38 +530,50 @@ export async function setSchoolStudentStatus(input: { schoolId: number; studentI
 
 export async function resetSchoolStudentCode(input: { schoolId: number; studentId: number; adminId: number }) {
   await ensureSchoolTables()
-  const rows = await prisma.$queryRaw<Array<{ previousCode: string | null }>>`
-    SELECT student_code AS previousCode
-    FROM school_students
-    WHERE id = ${input.studentId}
-      AND school_id = ${input.schoolId}
-    LIMIT 1
-  `
-  if (!rows[0]) throw new Error("Student not found.")
-  let newCode = ""
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    newCode = makeStudentCode()
-    try {
-      await prisma.$executeRaw`
-        UPDATE school_students
-        SET student_code = ${newCode}, updated_at = UTC_TIMESTAMP()
-        WHERE id = ${input.studentId}
-          AND school_id = ${input.schoolId}
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ previousCode: string | null; accountId: bigint | null }>>`
+      SELECT student_code AS previousCode, account_id AS accountId
+      FROM school_students
+      WHERE id = ${input.studentId}
+        AND school_id = ${input.schoolId}
+      LIMIT 1
+      FOR UPDATE
+    `
+    if (!rows[0]) throw new Error("Student not found.")
+    let newCode = ""
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const candidate = makeStudentCode()
+      const collision = await tx.$queryRaw<Array<{ id: bigint }>>`
+        SELECT id
+        FROM school_students
+        WHERE school_id = ${input.schoolId}
+          AND student_code = ${candidate}
         LIMIT 1
       `
-      break
-    } catch {
-      newCode = ""
+      if (!collision.length) {
+        newCode = candidate
+        break
+      }
     }
-  }
-  if (!newCode) throw new Error("Could not generate a unique student code. Try again.")
-  await prisma.$executeRaw`
-    INSERT INTO school_student_code_resets
-      (school_id, student_id, previous_code, new_code, reset_by_admin_id, reason, created_at)
-    VALUES
-      (${input.schoolId}, ${input.studentId}, ${clean(rows[0].previousCode, 20) || null}, ${newCode}, ${input.adminId}, 'Reset by school admin', UTC_TIMESTAMP())
-  `
-  return { newCode }
+    if (!newCode) throw new Error("Could not generate a unique student code. Try again.")
+    await tx.$executeRaw`
+      UPDATE school_students
+      SET student_code = ${newCode}, updated_at = UTC_TIMESTAMP()
+      WHERE id = ${input.studentId}
+        AND school_id = ${input.schoolId}
+      LIMIT 1
+    `
+    await tx.$executeRaw`
+      INSERT INTO school_student_code_resets
+        (school_id, student_id, previous_code, new_code, reset_by_admin_id, reason, created_at)
+      VALUES
+        (${input.schoolId}, ${input.studentId}, ${clean(rows[0].previousCode, 20) || null}, ${newCode}, ${input.adminId}, 'Reset by school admin', UTC_TIMESTAMP())
+    `
+    if (rows[0].accountId) {
+      await tx.studentSession.deleteMany({ where: { accountId: rows[0].accountId } })
+    }
+    return { newCode }
+  })
 }
 
 export async function issueSchoolCertificate(input: { schoolId: number; studentId: number; adminId: number; courseSlug: string }) {

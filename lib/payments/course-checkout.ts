@@ -1,6 +1,7 @@
 import crypto, { randomUUID } from "crypto"
 
 import { getAdminSettingValue } from "@/lib/admin-settings"
+import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { getCourse } from "@/lib/public-offers"
@@ -115,7 +116,7 @@ export function isNigeriaCountry(value: unknown) {
   return country === "ng" || country === "nga" || country === "nigeria"
 }
 
-export function providerForCountry(country: unknown, requested?: unknown): CheckoutProvider {
+export function providerForCountry(country: unknown, _requested?: unknown): CheckoutProvider {
   return isNigeriaCountry(country) ? "paystack" : "stripe"
 }
 
@@ -126,7 +127,12 @@ export function manualTransferAllowedForCountry(country: unknown) {
 export function stripeCurrencyForCountry(country: unknown) {
   const text = String(country || "").trim().toLowerCase()
   if (["gb", "gbr", "uk", "united kingdom", "england", "scotland", "wales"].includes(text)) return "GBP"
-  if (["ie", "ireland", "fr", "france", "de", "germany", "es", "spain", "it", "italy"].includes(text)) return "EUR"
+  if ([
+    "at", "austria", "be", "belgium", "hr", "croatia", "cy", "cyprus", "ee", "estonia", "fi", "finland",
+    "fr", "france", "de", "germany", "gr", "greece", "ie", "ireland", "it", "italy", "lv", "latvia",
+    "lt", "lithuania", "lu", "luxembourg", "mt", "malta", "nl", "netherlands", "pt", "portugal",
+    "sk", "slovakia", "si", "slovenia", "es", "spain"
+  ].includes(text)) return "EUR"
   return "USD"
 }
 
@@ -912,25 +918,31 @@ export async function recordAffiliateAttribution(input: {
   buyerCountry?: string
   buyerCurrency: string
   orderAmountMinor: number
+  requestHeaders?: Headers
 }) {
+  await ensureAffiliateAlignment()
   const affiliateCode = String(input.affiliateCode || "").trim().toUpperCase().slice(0, 40)
-  if (!affiliateCode) return
   const timestamp = now()
   const buyerEmail = normalizeEmail(input.buyerEmail)
+  const requestMetadata = affiliateRequestMetadata(input.requestHeaders)
   const rows = await prisma.$queryRaw<Array<{
     profileId: bigint | null
+    affiliateAccountId: bigint | null
     affiliateCode: string | null
     affiliateEmail: string | null
     profileStatus: string | null
     eligibilityStatus: string | null
     isAffiliateEligible: number | bigint | boolean | null
+    minOrderAmountMinor: number | bigint | null
   }>>`
     SELECT p.id AS profileId,
+           p.account_id AS affiliateAccountId,
            p.affiliate_code AS affiliateCode,
            a.email AS affiliateEmail,
            p.status AS profileStatus,
            p.eligibility_status AS eligibilityStatus,
-           r.is_affiliate_eligible AS isAffiliateEligible
+           r.is_affiliate_eligible AS isAffiliateEligible,
+           r.min_order_amount_minor AS minOrderAmountMinor
     FROM tochukwu_affiliate_profiles p
     LEFT JOIN student_accounts a ON a.id = p.account_id
     LEFT JOIN tochukwu_affiliate_course_rules r
@@ -942,10 +954,16 @@ export async function recordAffiliateAttribution(input: {
     LIMIT 1
   `.catch(() => [])
   const profile = rows[0]
+  const buyerAccounts = buyerEmail
+    ? await prisma.$queryRaw<Array<{ id: bigint }>>`SELECT id FROM student_accounts WHERE email = ${buyerEmail} LIMIT 1`.catch(() => [])
+    : []
+  const buyerAccountId = buyerAccounts[0]?.id || null
   let status = "rejected"
-  let rejectionReason = "Invalid affiliate code"
+  let rejectionReason = affiliateCode ? "Invalid affiliate code" : "No affiliate code"
   let affiliateProfileId: bigint | null = null
   let resolvedCode: string | null = null
+  let riskScore = 0
+  const riskFlags: string[] = []
   if (profile?.profileId) {
     affiliateProfileId = profile.profileId
     resolvedCode = String(profile.affiliateCode || affiliateCode).trim().slice(0, 40)
@@ -955,26 +973,82 @@ export async function recordAffiliateAttribution(input: {
       rejectionReason = "Affiliate profile is not eligible"
     } else if (!Boolean(Number(profile.isAffiliateEligible || 0))) {
       rejectionReason = "Course not affiliate-eligible"
-    } else if (normalizeEmail(profile.affiliateEmail) && normalizeEmail(profile.affiliateEmail) === buyerEmail) {
-      rejectionReason = "Self-referrals are not eligible"
+    } else if (input.orderAmountMinor < Number(profile.minOrderAmountMinor || 0)) {
+      rejectionReason = "Order below commission threshold"
     } else {
-      status = "accepted"
-      rejectionReason = ""
+      if (normalizeEmail(profile.affiliateEmail) && normalizeEmail(profile.affiliateEmail) === buyerEmail) {
+        riskFlags.push("self_referral_same_email")
+        riskScore += 100
+      }
+      if (profile.affiliateAccountId && buyerAccountId && profile.affiliateAccountId === buyerAccountId) {
+        riskFlags.push("self_referral_same_account")
+        riskScore += 100
+      }
+      if (riskScore >= 90) {
+        rejectionReason = "High-risk attribution blocked"
+      } else {
+        status = "accepted"
+        rejectionReason = ""
+      }
     }
   }
   await prisma.$executeRaw`
     INSERT INTO tochukwu_affiliate_attributions
-      (attribution_uuid, order_uuid, course_slug, affiliate_profile_id, affiliate_code, buyer_email, buyer_country, buyer_currency, order_amount_minor, attribution_status, rejection_reason, risk_score, risk_flags_json, created_at, updated_at)
+      (attribution_uuid, order_uuid, course_slug, affiliate_profile_id, affiliate_code, buyer_email, buyer_account_id,
+       buyer_country, buyer_currency, order_amount_minor, ip_hash, user_agent_hash, click_referrer,
+       attribution_status, rejection_reason, risk_score, risk_flags_json, created_at, updated_at)
     VALUES
-      (${`aa_${randomUUID().replace(/-/g, "")}`}, ${input.sourceUuid}, ${input.courseSlug}, ${affiliateProfileId}, ${resolvedCode || affiliateCode}, ${buyerEmail},
-       ${input.buyerCountry || null}, ${input.buyerCurrency}, ${input.orderAmountMinor}, ${status}, ${rejectionReason || null}, 0, '[]', ${timestamp}, ${timestamp})
+      (${`aat_${randomUUID().replace(/-/g, "")}`}, ${input.sourceUuid}, ${input.courseSlug}, ${affiliateProfileId}, ${resolvedCode}, ${buyerEmail}, ${buyerAccountId},
+       ${input.buyerCountry || "Nigeria"}, ${input.buyerCurrency}, ${input.orderAmountMinor}, ${requestMetadata.ipHash || null},
+       ${requestMetadata.userAgentHash || null}, ${requestMetadata.clickReferrer || null}, ${status}, ${rejectionReason || null},
+       ${riskScore}, ${JSON.stringify(riskFlags)}, ${timestamp}, ${timestamp})
     ON DUPLICATE KEY UPDATE
       affiliate_profile_id = VALUES(affiliate_profile_id),
       affiliate_code = VALUES(affiliate_code),
+      buyer_email = VALUES(buyer_email),
+      buyer_account_id = VALUES(buyer_account_id),
+      buyer_country = VALUES(buyer_country),
+      buyer_currency = VALUES(buyer_currency),
+      order_amount_minor = VALUES(order_amount_minor),
+      ip_hash = VALUES(ip_hash),
+      user_agent_hash = VALUES(user_agent_hash),
+      click_referrer = VALUES(click_referrer),
       attribution_status = VALUES(attribution_status),
       rejection_reason = VALUES(rejection_reason),
+      risk_score = VALUES(risk_score),
+      risk_flags_json = VALUES(risk_flags_json),
       updated_at = VALUES(updated_at)
-  `.catch(() => null)
+  `
+  const sourceUpdates = status === "accepted"
+    ? [resolvedCode, affiliateProfileId, "accepted"] as const
+    : [null, null, status] as const
+  await Promise.all([
+    prisma.$executeRaw`
+      UPDATE course_orders SET affiliate_code = ${sourceUpdates[0]}, affiliate_profile_id = ${sourceUpdates[1]},
+        affiliate_attribution_status = ${sourceUpdates[2]} WHERE order_uuid = ${input.sourceUuid} LIMIT 1
+    `.catch(() => null),
+    prisma.$executeRaw`
+      UPDATE course_manual_payments SET affiliate_code = ${sourceUpdates[0]}, affiliate_profile_id = ${sourceUpdates[1]},
+        affiliate_attribution_status = ${sourceUpdates[2]} WHERE payment_uuid = ${input.sourceUuid} LIMIT 1
+    `.catch(() => null)
+  ])
+  await recordAffiliateAudit({
+    eventType: status === "accepted" ? "attribution_accepted" : "attribution_rejected",
+    targetType: "order",
+    targetId: input.sourceUuid,
+    metadata: {
+      courseSlug: input.courseSlug,
+      buyerEmail,
+      affiliateCodeInput: affiliateCode || null,
+      affiliateCodeResolved: resolvedCode,
+      affiliateProfileId: affiliateProfileId ? String(affiliateProfileId) : null,
+      status,
+      reason: rejectionReason || null,
+      riskScore,
+      riskFlags
+    }
+  })
+  return { ok: status === "accepted", status, reason: rejectionReason || null }
 }
 
 export async function createAffiliateCommissionForOrder(orderUuid: string) {
@@ -982,6 +1056,7 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
   if (!uuid || String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") return
 
   try {
+    await ensureAffiliateAlignment()
     const existing = await prisma.$queryRaw<Array<{ id: bigint }>>`
       SELECT id
       FROM tochukwu_affiliate_commissions
@@ -1022,12 +1097,17 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
              r.hold_days AS holdDays
       FROM tochukwu_affiliate_attributions a
       JOIN tochukwu_affiliate_profiles p ON p.id = a.affiliate_profile_id
+      LEFT JOIN school_students affiliate_school_student
+        ON affiliate_school_student.account_id = p.account_id
+       AND affiliate_school_student.status = 'active'
       JOIN tochukwu_affiliate_course_rules r
         ON r.course_slug COLLATE utf8mb4_unicode_ci = a.course_slug COLLATE utf8mb4_unicode_ci
       WHERE a.order_uuid = ${uuid}
         AND a.attribution_status = 'accepted'
         AND p.status = 'active'
         AND p.eligibility_status = 'eligible'
+        AND affiliate_school_student.id IS NULL
+        AND a.risk_score < 90
         AND r.is_affiliate_eligible = 1
         AND (r.starts_at IS NULL OR r.starts_at <= NOW())
         AND (r.ends_at IS NULL OR r.ends_at >= NOW())
@@ -1059,6 +1139,20 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
          ${toInt(row.riskScore)}, ${row.riskFlagsJson || "[]"}, ${payableAt}, ${timestamp}, ${timestamp})
       ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
     `
+    await recordAffiliateAudit({
+      eventType: "commission_created",
+      targetType: "order",
+      targetId: uuid,
+      metadata: {
+        courseSlug: row.courseSlug,
+        affiliateProfileId: String(row.affiliateProfileId),
+        affiliateCode: row.affiliateCode,
+        commissionAmountMinor,
+        currency: String(row.commissionCurrency || row.buyerCurrency || "NGN").toUpperCase(),
+        holdDays,
+        payableAt: payableAt.toISOString()
+      }
+    })
   } catch (_error) {
     return
   }
@@ -1383,6 +1477,8 @@ export async function verifyPaystackTransaction(reference: string) {
   return {
     reference: String(json.data.reference || reference),
     providerOrderId: json.data.id ? String(json.data.id) : null,
+    amountMinor: Number.isFinite(Number(json.data.amount)) ? Math.round(Number(json.data.amount)) : null,
+    currency: json.data.currency ? String(json.data.currency).toUpperCase() : "",
     metadata: json.data.metadata || {}
   }
 }
@@ -1407,6 +1503,8 @@ export async function retrieveStripeSession(sessionId: string) {
     id: String(json.id),
     orderUuid: String(json.client_reference_id || json.metadata?.order_uuid || ""),
     courseSlug: String(json.metadata?.course_slug || ""),
+    amountMinor: Number.isFinite(Number(json.amount_total)) ? Math.round(Number(json.amount_total)) : null,
+    currency: json.currency ? String(json.currency).toUpperCase() : "",
     paymentIntentId: json.payment_intent ? String(json.payment_intent) : null,
     metadata: json.metadata || {}
   }

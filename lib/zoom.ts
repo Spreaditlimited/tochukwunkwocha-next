@@ -3,7 +3,7 @@ import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 type ZoomResult = {
   ok: boolean
   error?: string
-  data?: any
+  data?: Record<string, unknown> | null
 }
 
 function clean(value: unknown, max = 1000) {

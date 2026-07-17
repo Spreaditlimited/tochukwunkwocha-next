@@ -99,7 +99,8 @@ export async function POST(request: Request) {
       buyerEmail: email,
       buyerCountry: country,
       buyerCurrency: result.pricing.currency,
-      orderAmountMinor: result.pricing.finalAmountMinor
+      orderAmountMinor: result.pricing.finalAmountMinor,
+      requestHeaders: request.headers
     })
     await upsertWhatsAppContact({
       email,

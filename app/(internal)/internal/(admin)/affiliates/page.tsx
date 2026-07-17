@@ -1,13 +1,11 @@
 import { 
   Activity,
-  AlertTriangle,
   Banknote, 
   CheckCircle2, 
   Coins,
   Network, 
   ReceiptText, 
-  ShieldCheck, 
-  TrendingUp,
+  ShieldCheck,
   Wallet
 } from "lucide-react"
 

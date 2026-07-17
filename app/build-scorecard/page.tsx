@@ -8,8 +8,7 @@ import {
   ArrowRight, 
   CheckCircle2, 
   ChevronRight, 
-  Cpu, 
-  CreditCard, 
+  Cpu,
   ShieldCheck, 
   XCircle 
 } from "lucide-react"

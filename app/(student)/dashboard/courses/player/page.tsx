@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowLeft, LockKeyhole } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 
 import {
   EmptyStudentState,

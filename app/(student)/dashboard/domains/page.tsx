@@ -3,7 +3,6 @@ import {
   Calendar,
   CheckCircle2,
   CreditCard,
-  ExternalLink,
   Globe,
   Network,
   RefreshCw,
@@ -15,6 +14,7 @@ import {
 
 import { updateDomainAutoRenewAction } from "@/app/(student)/dashboard/actions"
 import { DomainActionsPanel } from "@/components/student-dashboard/DomainActionsPanel"
+import { DomainRetryButton } from "@/components/student-dashboard/DomainRetryButton"
 import {
   EmptyStudentState,
   StudentDashboardCard,
@@ -347,9 +347,10 @@ export default async function StudentDomainsPage() {
                       {order.notes ? <p className="mt-3 text-xs italic text-muted-foreground border-l-2 border-primary/30 pl-3">{order.notes}</p> : null}
                     </div>
                     
-                    <div className="flex shrink-0 items-center gap-2 text-sm font-semibold text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      {statusLabel(order.status)}
+                    <div className="flex shrink-0 items-center gap-3 text-sm font-semibold text-muted-foreground">
+                      {order.paymentStatus === "paid" && order.status === "registration_failed" && order.orderUuid
+                        ? <DomainRetryButton orderUuid={order.orderUuid} />
+                        : <><CheckCircle2 className="h-4 w-4 text-emerald-500" />{statusLabel(order.status)}</>}
                     </div>
                   </div>
                 ))}

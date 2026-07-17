@@ -447,7 +447,7 @@ export async function saveAffiliateCourseRule(formData: FormData, updatedBy: str
 
 export async function runAffiliatePayoutBatch(formData: FormData, initiatedBy: string) {
   await ensureAffiliateAdminTables()
-  await prisma.$executeRaw`UPDATE tochukwu_affiliate_commissions SET status = 'approved', updated_at = ${new Date()} WHERE status = 'pending' AND payable_at IS NOT NULL AND payable_at <= ${new Date()}`
+  await prisma.$executeRaw`UPDATE tochukwu_affiliate_commissions SET status = 'approved', updated_at = ${new Date()} WHERE status = 'pending' AND payable_at IS NOT NULL AND payable_at <= ${new Date()} AND risk_score < 90`
   const mode = clean(formData.get("periodMode"), 40).toLowerCase()
   const inferred = previousMonthPeriod()
   const periodStart = parseDateInput(formData.get("periodStart")) || (mode === "month_end" ? inferred.periodStart : null)

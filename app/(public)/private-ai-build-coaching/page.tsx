@@ -6,17 +6,13 @@ import {
   ChevronDown, 
   Code2, 
   Cpu, 
-  Globe2, 
-  Map, 
-  MessageSquare, 
-  PhoneCall, 
+  Globe2,
+  MessageSquare,
   Rocket, 
   ShieldCheck,
-  Users, 
   XCircle 
 } from "lucide-react"
 
-import { brand } from "@/lib/brand"
 import { buildMetadata } from "@/lib/site-seo"
 import { CoachingPricingCards } from "./CoachingPricingCards"
 

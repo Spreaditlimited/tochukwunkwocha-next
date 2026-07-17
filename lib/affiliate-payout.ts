@@ -4,6 +4,32 @@ import { Prisma } from "@prisma/client"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
 
+const NIGERIAN_BANKS_FALLBACK = [
+  { code: "044", name: "Access Bank" },
+  { code: "063", name: "Access Bank (Diamond)" },
+  { code: "023", name: "Citibank Nigeria" },
+  { code: "050", name: "Ecobank Nigeria" },
+  { code: "011", name: "First Bank of Nigeria" },
+  { code: "214", name: "First City Monument Bank" },
+  { code: "070", name: "Fidelity Bank" },
+  { code: "058", name: "Guaranty Trust Bank" },
+  { code: "030", name: "Heritage Bank" },
+  { code: "082", name: "Keystone Bank" },
+  { code: "076", name: "Polaris Bank" },
+  { code: "221", name: "Stanbic IBTC Bank" },
+  { code: "068", name: "Standard Chartered Bank Nigeria" },
+  { code: "232", name: "Sterling Bank" },
+  { code: "100", name: "SunTrust Bank Nigeria" },
+  { code: "032", name: "Union Bank of Nigeria" },
+  { code: "033", name: "United Bank For Africa" },
+  { code: "215", name: "Unity Bank" },
+  { code: "035", name: "Wema Bank" },
+  { code: "057", name: "Zenith Bank" }
+]
+
+const PAYSTACK_BANKS_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+let payoutBanksCache: { expiresAt: number; banks: Array<{ name: string; code: string; slug: string }> } | null = null
+
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
 }
@@ -143,14 +169,41 @@ function isPayoutAccountChange(existing: { bankCode: string | null; accountNumbe
 }
 
 export async function listPayoutBanks() {
-  const json = await paystackGet("/bank?country=nigeria&currency=NGN")
-  return Array.isArray(json?.data)
-    ? json.data.map((bank: Record<string, unknown>) => ({
+  if (payoutBanksCache && payoutBanksCache.expiresAt > Date.now()) return payoutBanksCache.banks
+  try {
+    const json = await paystackGet("/bank?country=nigeria&currency=NGN")
+    const banks = Array.isArray(json?.data)
+      ? json.data.map((bank: Record<string, unknown>) => ({
         name: clean(bank.name, 160),
         code: clean(bank.code, 40),
         slug: clean(bank.slug, 160)
       })).filter((bank: { name: string; code: string }) => bank.name && bank.code)
-    : []
+      : []
+    if (banks.length) {
+      payoutBanksCache = { expiresAt: Date.now() + PAYSTACK_BANKS_CACHE_TTL_MS, banks }
+      return banks
+    }
+  } catch {
+    // Try Paystack's cursor-style listing before reporting the list unavailable.
+  }
+  try {
+    const json = await paystackGet("/bank?country=nigeria&currency=NGN&perPage=200&use_cursor=true")
+    const verifiedCodes = new Set(
+      (Array.isArray(json?.data) ? json.data : [])
+        .map((bank: Record<string, unknown>) => clean(bank.code, 40))
+        .filter(Boolean)
+    )
+    const fallback = NIGERIAN_BANKS_FALLBACK
+      .filter((bank) => verifiedCodes.has(bank.code))
+      .map((bank) => ({ ...bank, slug: "" }))
+    if (fallback.length) {
+      payoutBanksCache = { expiresAt: Date.now() + PAYSTACK_BANKS_CACHE_TTL_MS, banks: fallback }
+      return fallback
+    }
+  } catch {
+    // An empty list lets the UI retain an already-configured account without offering stale bank codes.
+  }
+  return []
 }
 
 export async function resolvePayoutAccount(input: { bankCode: string; accountNumber: string }) {

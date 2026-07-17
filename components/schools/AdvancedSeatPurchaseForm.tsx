@@ -1,12 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 
 import { createSchoolAdvancedSeatCheckoutAction } from "@/app/schools/dashboard/actions"
+import { AFFILIATE_REF_STORAGE_KEY } from "@/components/AffiliateReferralCapture"
 
 export function AdvancedSeatPurchaseForm({ minSeats = 5 }: { minSeats?: number }) {
   const [seatCount, setSeatCount] = useState(minSeats)
+  const [affiliateCode, setAffiliateCode] = useState("")
+
+  useEffect(() => {
+    try {
+      setAffiliateCode(String(window.localStorage.getItem(AFFILIATE_REF_STORAGE_KEY) || "").trim().toUpperCase().slice(0, 40))
+    } catch {
+      setAffiliateCode("")
+    }
+  }, [])
   const [open, setOpen] = useState(false)
 
   return (
@@ -56,6 +66,7 @@ export function AdvancedSeatPurchaseForm({ minSeats = 5 }: { minSeats?: number }
 
             <form action={createSchoolAdvancedSeatCheckoutAction} className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
               <input type="hidden" name="seatCount" value={seatCount} />
+              <input type="hidden" name="affiliateCode" value={affiliateCode} />
               <button type="button" onClick={() => setOpen(false)} className="btn-secondary justify-center">Cancel</button>
               <button type="submit" className="btn-primary justify-center">Continue to Payment</button>
             </form>

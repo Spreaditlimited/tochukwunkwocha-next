@@ -82,6 +82,7 @@ function BankSearchPicker({
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
           role="combobox"
+          aria-controls="affiliate-bank-options"
           aria-expanded={open}
           aria-autocomplete="list"
         />
@@ -95,7 +96,7 @@ function BankSearchPicker({
         </button>
       </div>
       {open ? (
-        <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-2xl ring-1 ring-border/60 dark:bg-slate-950">
+        <div id="affiliate-bank-options" role="listbox" className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-2xl ring-1 ring-border/60 dark:bg-slate-950">
           {filteredBanks.length ? (
             filteredBanks.map((bank) => (
               <button

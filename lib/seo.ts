@@ -173,13 +173,16 @@ async function callOpenAiForDraft(prompt: string): Promise<SeoDraft> {
     throw new Error(`OpenAI draft request failed: ${response.status} ${truncate(body, 240)}`)
   }
 
-  const payload = await response.json()
+  const payload = await response.json() as {
+    output_text?: unknown
+    output?: Array<{ content?: Array<{ text?: unknown }> }>
+  }
   const content =
     typeof payload?.output_text === "string"
       ? payload.output_text
       : payload?.output
-          ?.flatMap((item: any) => item?.content || [])
-          ?.map((item: any) => item?.text)
+          ?.flatMap((item) => item.content || [])
+          ?.map((item) => item.text)
           ?.filter((item: unknown): item is string => typeof item === "string")
           ?.join("")
 

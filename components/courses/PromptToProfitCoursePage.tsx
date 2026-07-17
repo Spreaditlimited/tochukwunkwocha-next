@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   MonitorPlay,
   Play,
-  Rocket,
   ShieldCheck,
   Star,
   Users,

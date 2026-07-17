@@ -10,7 +10,6 @@ import {
   importSchoolStudents,
   issueSchoolCertificate,
   parseSchoolStudentsCsv,
-  resetSchoolStudentCode,
   runSchoolAdvancedUpgrade,
   setSchoolStudentStatus
 } from "@/lib/school-dashboard"
@@ -73,7 +72,8 @@ export async function createSchoolAdvancedSeatCheckoutAction(formData: FormData)
     adminName: session.fullName,
     adminEmail: session.email,
     courseSlug: session.courseSlug || "prompt-to-profit",
-    seatCount: formData.get("seatCount")
+    seatCount: formData.get("seatCount"),
+    affiliateCode: clean(formData.get("affiliateCode"), 40)
   })
   redirect(checkout.checkoutUrl)
 }
@@ -84,16 +84,6 @@ export async function toggleSchoolStudentAction(formData: FormData) {
     schoolId: session.schoolId,
     studentId: Number(formData.get("studentId") || 0),
     active: clean(formData.get("active"), 10) === "1"
-  })
-  revalidatePath("/schools/dashboard")
-}
-
-export async function resetSchoolStudentCodeAction(formData: FormData) {
-  const session = await requireSchoolAdmin()
-  await resetSchoolStudentCode({
-    schoolId: session.schoolId,
-    studentId: Number(formData.get("studentId") || 0),
-    adminId: session.id
   })
   revalidatePath("/schools/dashboard")
 }

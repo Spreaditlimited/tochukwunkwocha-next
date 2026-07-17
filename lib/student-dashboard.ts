@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { randomUUID } from "crypto"
 
+import { ensureAffiliateAlignment, matureAffiliateCommissions } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
 import { prisma } from "@/lib/prisma"
@@ -28,7 +29,7 @@ function randomAffiliateCode(length = 8) {
 }
 
 function affiliateBaseUrl() {
-  return String(process.env.AFFILIATE_LINK_BASE_URL || process.env.SITE_BASE_URL || "").trim().replace(/\/$/, "")
+  return String(process.env.AFFILIATE_LINK_BASE_URL || process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com").trim().replace(/\/$/, "")
 }
 
 function defaultAffiliateHoldDays() {
@@ -1137,6 +1138,8 @@ export async function getStudentCertificatePublic(certificateNo: string): Promis
 }
 
 export async function getStudentAffiliateSummary(accountId: bigint): Promise<StudentAffiliateSummary> {
+  await ensureAffiliateAlignment()
+  await matureAffiliateCommissions().catch(() => 0)
   const defaultPolicy = {
     defaultHoldDays: defaultAffiliateHoldDays(),
     minPayoutMinor: affiliateMinPayoutMinor("NGN"),

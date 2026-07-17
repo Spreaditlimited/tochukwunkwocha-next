@@ -1,6 +1,5 @@
 import { 
-  Activity, 
-  ArrowUpRight, 
+  Activity,
   CheckCircle2, 
   Clock, 
   CreditCard, 

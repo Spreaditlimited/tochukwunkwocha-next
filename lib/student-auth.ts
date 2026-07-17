@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
+import { getStudentProfilePicture } from "@/lib/student-profile-picture"
 
 const COOKIE_NAME = "tws_student_session"
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
@@ -18,6 +19,7 @@ export interface StudentSessionAccount {
   accountUuid: string
   fullName: string
   email: string
+  profilePictureUrl: string
   domainsAutoRenewEnabled: boolean
   certificateNameConfirmedAt: Date | null
   certificateNameUpdatedAt: Date | null
@@ -276,6 +278,7 @@ type StudentAccountForSession = {
   accountUuid: string
   fullName: string
   email: string
+  profilePictureUrl?: string | null
   domainsAutoRenewEnabled: boolean
   certificateNameConfirmedAt: Date | null
   certificateNameUpdatedAt: Date | null
@@ -285,6 +288,7 @@ export async function createStudentSessionForAccount(account: StudentAccountForS
   const token = randomToken()
   const now = new Date()
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000)
+  const profilePicture = await getStudentProfilePicture(account.id)
   const identity = await resolveStudentDeviceIdentity()
   await registerStudentDevice(account.id, identity).catch(() => null)
 
@@ -338,6 +342,7 @@ export async function createStudentSessionForAccount(account: StudentAccountForS
       accountUuid: account.accountUuid,
       fullName: account.fullName,
       email: account.email,
+      profilePictureUrl: profilePicture.url,
       domainsAutoRenewEnabled: account.domainsAutoRenewEnabled,
       certificateNameConfirmedAt: account.certificateNameConfirmedAt,
       certificateNameUpdatedAt: account.certificateNameUpdatedAt
@@ -444,6 +449,7 @@ export async function verifyStudentPassword(accountId: bigint, passwordInput: st
 
 export async function getStudentProfile(accountId: bigint) {
   await ensureStudentDemographicColumns()
+  const profilePicture = await getStudentProfilePicture(accountId)
   const account = await prisma.studentAccount.findUnique({ where: { id: accountId } })
   if (!account) throw new Error("Account not found")
   const demographicRows = await prisma.$queryRaw<Array<{
@@ -476,6 +482,7 @@ export async function getStudentProfile(accountId: bigint) {
     certificateNameConfirmedAt: account.certificateNameConfirmedAt,
     certificateNameUpdatedAt: account.certificateNameUpdatedAt,
     certificateNameNeedsConfirmation: !account.certificateNameConfirmedAt,
+    profilePictureUrl: profilePicture.url,
     demographicCountry: clean(demographics?.demographicCountry, 120),
     demographicRegion: clean(demographics?.demographicRegion, 120),
     ageBand: clean(demographics?.ageBand, 40),
@@ -498,8 +505,10 @@ export async function updateStudentProfile(accountId: bigint, input: {
   await ensureStudentDemographicColumns()
   const fullName = clean(input.fullName, 180)
   const phoneE164 = clean(input.phoneE164, 20)
+  const gender = clean(input.gender, 40).toLowerCase()
   const whatsappOptedIn = input.whatsappOptedIn === true
   if (!fullName) throw new Error("Full name is required")
+  if (gender !== "male" && gender !== "female") throw new Error("Gender must be Male or Female")
   const existing = await prisma.studentAccount.findUnique({ where: { id: accountId } })
   if (!existing) throw new Error("Account not found")
   const nameChanged = clean(existing.fullName, 180) !== fullName
@@ -530,7 +539,7 @@ export async function updateStudentProfile(accountId: bigint, input: {
     SET demographic_country = ${clean(input.demographicCountry, 120) || null},
         demographic_region = ${clean(input.demographicRegion, 120) || null},
         age_band = ${clean(input.ageBand, 40) || null},
-        gender = ${clean(input.gender, 40) || null},
+        gender = ${gender},
         learner_category = ${clean(input.learnerCategory, 80) || null},
         demographic_updated_at = ${now}
     WHERE id = ${accountId}
@@ -576,21 +585,6 @@ export async function listStudentSecurity(accountId: bigint, currentToken?: stri
     WHERE account_id = ${accountId}
     ORDER BY last_seen_at DESC
   `).catch(() => [])
-  const alerts = await prisma.$queryRaw<Array<{
-    alertUuid: string
-    alertType: string
-    severity: string
-    title: string
-    status: string
-    occurrences: number
-    lastSeenAt: Date
-  }>>(Prisma.sql`
-    SELECT alert_uuid AS alertUuid, alert_type AS alertType, severity, title, status, occurrences, last_seen_at AS lastSeenAt
-    FROM student_security_alerts
-    WHERE account_id = ${accountId}
-    ORDER BY last_seen_at DESC
-    LIMIT 10
-  `).catch(() => [])
   return {
     sessions: sessions.map((session) => ({
       id: session.id,
@@ -602,8 +596,7 @@ export async function listStudentSecurity(accountId: bigint, currentToken?: stri
       expiresAt: session.expiresAt,
       isCurrent: !!currentTokenHash && session.tokenHash === currentTokenHash
     })),
-    devices,
-    alerts
+    devices
   }
 }
 
@@ -660,7 +653,20 @@ export async function getStudentSession() {
 
   const session = await prisma.studentSession.findUnique({
     where: { tokenHash: shaToken(token) },
-    include: { account: true }
+    select: {
+      expiresAt: true,
+      account: {
+        select: {
+          id: true,
+          accountUuid: true,
+          fullName: true,
+          email: true,
+          domainsAutoRenewEnabled: true,
+          certificateNameConfirmedAt: true,
+          certificateNameUpdatedAt: true
+        }
+      }
+    }
   })
   if (!session) return null
 
@@ -676,6 +682,8 @@ export async function getStudentSession() {
     })
     .catch(() => null)
 
+  const profilePicture = await getStudentProfilePicture(session.account.id)
+
   return {
     token,
     account: {
@@ -683,6 +691,7 @@ export async function getStudentSession() {
       accountUuid: session.account.accountUuid,
       fullName: session.account.fullName,
       email: session.account.email,
+      profilePictureUrl: profilePicture.url,
       domainsAutoRenewEnabled: session.account.domainsAutoRenewEnabled,
       certificateNameConfirmedAt: session.account.certificateNameConfirmedAt,
       certificateNameUpdatedAt: session.account.certificateNameUpdatedAt

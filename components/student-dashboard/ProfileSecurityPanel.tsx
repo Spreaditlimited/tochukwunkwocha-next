@@ -1,16 +1,21 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
+import Image from "next/image"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Laptop, LockKeyhole, ShieldAlert, Smartphone, Trash2, UserRound } from "lucide-react"
+import { Camera, Laptop, Loader2, LockKeyhole, Smartphone, Trash2, UserRound } from "lucide-react"
 
 import { PasswordField } from "@/components/PasswordField"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { refreshStudentIdentity } from "@/components/student-dashboard/StudentAuthContext"
+import { resolveMediaUrl } from "@/lib/cloudinary/url"
 
 type Profile = {
   fullName: string
   email: string
+  profilePictureUrl: string
   phone: string
   whatsappOptedIn: boolean
   certificateNameConfirmedAt: Date | string | null
@@ -40,14 +45,6 @@ type SecurityPayload = {
     firstSeenAt: Date | string
     lastSeenAt: Date | string
   }>
-  alerts: Array<{
-    alertUuid: string
-    severity: string
-    title: string
-    status: string
-    occurrences: number
-    lastSeenAt: Date | string
-  }>
 }
 
 async function postJson<T>(url: string, body: Record<string, unknown>) {
@@ -63,11 +60,24 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
 
 function formatDate(value: Date | string | null) {
   if (!value) return "Not recorded"
-  return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return "Not recorded"
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || ""
+  return `${Number(part("day"))} ${part("month")} ${part("year")} at ${part("hour")}:${part("minute")}`
 }
 
 export function ProfileSecurityPanel({ profile: initialProfile, security }: { profile: Profile; security: SecurityPayload }) {
   const router = useRouter()
+  const profilePictureInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState(initialProfile)
   
   // State for messages
@@ -76,10 +86,12 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
   const [passwordMessage, setPasswordMessage] = useState("")
   const [passwordError, setPasswordError] = useState("")
   const [securityError, setSecurityError] = useState("")
+  const [profilePictureError, setProfilePictureError] = useState("")
 
   // Loading states
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [isUpdatingProfilePicture, setIsUpdatingProfilePicture] = useState(false)
   const ageBandOptions = [
     { value: "", label: "Select age band" },
     { value: "under-13", label: "Under 13" },
@@ -90,10 +102,8 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
     { value: "45-plus", label: "45+" }
   ]
   const genderOptions = [
-    { value: "", label: "Prefer not to say" },
     { value: "female", label: "Female" },
-    { value: "male", label: "Male" },
-    { value: "non-binary", label: "Non-binary" }
+    { value: "male", label: "Male" }
   ]
   const learnerCategoryOptions = [
     { value: "", label: "Select learner category" },
@@ -124,6 +134,63 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
       showStudentToast({ type: "error", title: "Profile update failed", message: errorMessage })
     } finally {
       setIsSavingProfile(false)
+    }
+  }
+
+  async function uploadProfilePicture(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+
+    setProfilePictureError("")
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setProfilePictureError("Upload a JPG, PNG, or WebP image.")
+      return
+    }
+    if (file.size <= 0 || file.size > 1024 * 1024) {
+      setProfilePictureError("Profile picture must be 1 MB or smaller.")
+      return
+    }
+
+    setIsUpdatingProfilePicture(true)
+    try {
+      const body = new FormData()
+      body.set("file", file)
+      const response = await fetch("/api/student/profile-picture", { method: "POST", body })
+      const result = await response.json().catch(() => null)
+      if (!response.ok || !result?.ok || !result?.profilePictureUrl) {
+        throw new Error(result?.error || "Could not upload the profile picture.")
+      }
+      setProfile((current) => ({ ...current, profilePictureUrl: String(result.profilePictureUrl) }))
+      refreshStudentIdentity({ profilePictureUrl: String(result.profilePictureUrl) })
+      showStudentToast({ type: "success", title: "Profile picture updated", message: "Your new profile picture has been saved." })
+      router.refresh()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not upload the profile picture."
+      setProfilePictureError(message)
+      showStudentToast({ type: "error", title: "Upload failed", message })
+    } finally {
+      setIsUpdatingProfilePicture(false)
+    }
+  }
+
+  async function removeProfilePicture() {
+    setProfilePictureError("")
+    setIsUpdatingProfilePicture(true)
+    try {
+      const response = await fetch("/api/student/profile-picture", { method: "DELETE" })
+      const result = await response.json().catch(() => null)
+      if (!response.ok || !result?.ok) throw new Error(result?.error || "Could not remove the profile picture.")
+      setProfile((current) => ({ ...current, profilePictureUrl: "" }))
+      refreshStudentIdentity({ profilePictureUrl: "" })
+      showStudentToast({ type: "success", title: "Profile picture removed", message: "Your profile picture has been removed." })
+      router.refresh()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not remove the profile picture."
+      setProfilePictureError(message)
+      showStudentToast({ type: "error", title: "Removal failed", message })
+    } finally {
+      setIsUpdatingProfilePicture(false)
     }
   }
 
@@ -184,6 +251,61 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
           
           <div className="p-6 sm:p-8">
             <form onSubmit={saveProfile} className="grid gap-6">
+              <div className="flex flex-col gap-5 rounded-xl border border-border bg-muted/20 p-5 sm:flex-row sm:items-center">
+                <div className="relative flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-background bg-primary/10 text-primary shadow-sm">
+                  {profile.profilePictureUrl ? (
+                    <Image
+                      src={resolveMediaUrl(profile.profilePictureUrl)}
+                      alt={`${profile.fullName}'s profile picture`}
+                      width={112}
+                      height={112}
+                      unoptimized
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <UserRound className="h-12 w-12" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-heading text-base font-bold text-foreground">Profile picture</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Upload a square JPG, PNG, or WebP image. Maximum file size: 1 MB.
+                  </p>
+                  <input
+                    ref={profilePictureInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    onChange={uploadProfilePicture}
+                    disabled={isUpdatingProfilePicture}
+                  />
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary px-3 py-2 text-xs"
+                      onClick={() => profilePictureInputRef.current?.click()}
+                      disabled={isUpdatingProfilePicture}
+                    >
+                      {isUpdatingProfilePicture ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                      {profile.profilePictureUrl ? "Change picture" : "Upload picture"}
+                    </button>
+                    {profile.profilePictureUrl ? (
+                      <button
+                        type="button"
+                        className="btn-secondary px-3 py-2 text-xs text-destructive hover:border-destructive/30 hover:bg-destructive/10"
+                        onClick={removeProfilePicture}
+                        disabled={isUpdatingProfilePicture}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  {profilePictureError ? (
+                    <p className="mt-3 text-xs font-semibold text-destructive" role="alert">{profilePictureError}</p>
+                  ) : null}
+                </div>
+              </div>
+
               <div className="grid gap-6 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</span>
@@ -252,6 +374,8 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
                     <PremiumPicker
                       value={profile.gender}
                       options={genderOptions}
+                      placeholder="Select gender"
+                      required
                       onChange={(event) => setProfile((current) => ({ ...current, gender: event.target.value }))}
                     />
                   </label>
@@ -285,16 +409,23 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
               </label>
 
               {/* Certificate Identity Info */}
-              <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 p-5">
+              <div className="flex flex-col gap-4 rounded-xl border border-border bg-muted/30 p-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Certificate Identity</p>
                   <p className="mt-1 text-sm font-medium text-foreground">
                     {profile.certificateNameConfirmedAt ? `Confirmed ${formatDate(profile.certificateNameConfirmedAt)}` : "Not confirmed"}
                   </p>
                 </div>
-                <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${profile.certificateNameConfirmedAt ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
-                  {profile.certificateNameConfirmedAt ? "Verified" : "Pending"}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${profile.certificateNameConfirmedAt ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
+                    {profile.certificateNameConfirmedAt ? "Verified" : "Pending"}
+                  </span>
+                  {!profile.certificateNameConfirmedAt ? (
+                    <Link href="/dashboard/certificate" className="btn-primary px-3 py-2 text-xs">
+                      Confirm Now
+                    </Link>
+                  ) : null}
+                </div>
               </div>
 
               {/* Form Feedback */}
@@ -312,21 +443,6 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
       {/* RIGHT COLUMN: Security */}
       <div className="grid gap-8">
         
-        {/* Security Alerts (Only shows if active) */}
-        {security.alerts.length > 0 && (
-          <div className="flex items-start gap-4 rounded-xl border border-destructive/20 bg-destructive/10 p-6 shadow-sm">
-            <ShieldAlert className="mt-0.5 h-6 w-6 shrink-0 text-destructive" />
-            <div>
-              <h3 className="font-heading text-lg font-bold text-destructive">Security Alerts</h3>
-              <ul className="mt-2 list-inside list-disc space-y-1 text-sm font-medium text-destructive/80">
-                {security.alerts.map((alert) => (
-                  <li key={alert.alertUuid}>{alert.title} · {alert.occurrences} occurrence{alert.occurrences === 1 ? "" : "s"}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
         {/* Change Password */}
         <section className="surface-raised bg-card p-0 overflow-hidden">
           <div className="flex items-center gap-4 border-b border-border bg-muted/20 p-6 sm:p-8">
