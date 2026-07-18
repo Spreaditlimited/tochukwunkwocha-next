@@ -101,9 +101,9 @@ function CheckoutAmountBreakdown({ pricing }: { pricing: PricingPayload | null }
   )
 }
 
-function PriceSkeleton({ compact = false }: { compact?: boolean }) {
+function PriceSpinner() {
   return (
-    <span role="status" aria-label="Loading confirmed price" className={`inline-block animate-pulse rounded-md bg-current/20 align-middle ${compact ? "h-4 w-20" : "h-10 w-40"}`}>
+    <span role="status" aria-label="Loading confirmed price" className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-r-transparent align-middle">
       <span className="sr-only">Loading confirmed price</span>
     </span>
   )
@@ -301,8 +301,11 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
       .then((result) => {
         if (cancelled) return
         setBatches(result.batches || [])
+        if (!batchKey && result.batches?.[0]?.batchKey) {
+          setBatchKey(result.batches[0].batchKey)
+          return
+        }
         setPricing(result.pricing)
-        if (!batchKey && result.batches?.[0]?.batchKey) setBatchKey(result.batches[0].batchKey)
       })
       .catch((error) => {
         if (!cancelled) setErrorMessage(error.message)
@@ -644,7 +647,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                       </div>
                       <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground sm:col-span-2">
                         <p className="font-bold text-foreground">
-                          {selectedSeatCount} seats selected • Total: {displayPrice || <PriceSkeleton compact />}
+                          {selectedSeatCount} seats selected • Total: {displayPrice || <PriceSpinner />}
                         </p>
                         <p className="mt-2">
                           Buy multiple seats now under one account. After payment, the seats become available in your dashboard so you can assign them to the right learners.
@@ -684,7 +687,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                 <div className="surface-raised bg-card p-6 sm:p-8">
                   <h2 className="font-heading text-lg font-bold">Installment Plan</h2>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Your plan target is {displayPrice || <PriceSkeleton compact />}. Enter the amount you want to pay now. Leave blank to start with 50%.
+                    Your plan target is {displayPrice || <PriceSpinner />}. Enter the amount you want to pay now. Leave blank to start with 50%.
                   </p>
                   <label className="mt-5 block">
                     <span className="label">First payment amount</span>
@@ -760,7 +763,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
                   <div className="mt-8 border-t border-dashed border-white/20 pt-8">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Investment</p>
-                    <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice || <PriceSkeleton />}</p>
+                    <p className="mt-2 flex min-h-10 items-center font-heading text-4xl font-black tracking-tight text-white">{displayPrice || <PriceSpinner />}</p>
                     {pricing?.groupDiscountMinor ? <p className="mt-2 text-sm text-sky-300">Group savings: {pricing.groupDiscountLabel || formatMinor(pricing.groupDiscountMinor, pricing.currency)}</p> : null}
                     {pricing?.discountMinor ? <p className="mt-2 text-sm text-emerald-300">Discount: {pricing.discountLabel || formatMinor(pricing.discountMinor, pricing.currency)}</p> : null}
                     <CheckoutAmountBreakdown pricing={pricing} />
@@ -815,7 +818,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
               <div className="mt-8 border-t border-dashed border-white/20 pt-8">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Investment</p>
-                <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice || <PriceSkeleton />}</p>
+                <p className="mt-2 flex min-h-10 items-center font-heading text-4xl font-black tracking-tight text-white">{displayPrice || <PriceSpinner />}</p>
                 {pricing?.groupDiscountMinor ? <p className="mt-2 text-sm text-sky-300">Group savings: {pricing.groupDiscountLabel || formatMinor(pricing.groupDiscountMinor, pricing.currency)}</p> : null}
                 {pricing?.discountMinor ? <p className="mt-2 text-sm text-emerald-300">Discount: {pricing.discountLabel || formatMinor(pricing.discountMinor, pricing.currency)}</p> : null}
                 <CheckoutAmountBreakdown pricing={pricing} />
