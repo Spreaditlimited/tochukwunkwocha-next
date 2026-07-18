@@ -12,7 +12,9 @@ import {
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { getMarketingDashboard, type MarketingChartRow } from "@/lib/marketing"
+import { requireAdmin } from "@/lib/auth"
 import { formatDate } from "@/lib/utils"
+import { MetaAdsCampaignBuilder } from "./MetaAdsCampaignBuilder"
 import { MetaAdsConnectionCard } from "./MetaAdsConnectionCard"
 
 export const dynamic = "force-dynamic"
@@ -96,6 +98,7 @@ function DailyChart({ rows }: { rows: MarketingChartRow[] }) {
 }
 
 export default async function MarketingPage({ searchParams }: PageProps) {
+  const session = await requireAdmin("/internal/marketing")
   const params = await searchParams || {}
   const days = Math.min(365, Math.max(1, Number(param(params, "days", "30")) || 30))
   const dashboard = await getMarketingDashboard({ days, limit: 150 })
@@ -144,6 +147,8 @@ export default async function MarketingPage({ searchParams }: PageProps) {
       </div>
 
       <MetaAdsConnectionCard />
+
+      <MetaAdsCampaignBuilder isOwner={session.isOwner} />
 
       {/* Summary Metrics */}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

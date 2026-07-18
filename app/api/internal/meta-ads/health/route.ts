@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireAdmin } from "@/lib/auth"
+import { getMetaAdsBudgetPolicy } from "@/lib/meta-ads-budget"
 
 export const dynamic = "force-dynamic"
 
@@ -61,6 +62,7 @@ export async function GET() {
       )
     }
 
+    const budgetPolicy = await getMetaAdsBudgetPolicy()
     return NextResponse.json({
       ok: true,
       account: {
@@ -71,7 +73,8 @@ export async function GET() {
         currency: String(payload?.currency || ""),
         timezone: String(payload?.timezone_name || "")
       },
-      apiVersion: response.headers.get("facebook-api-version") || apiVersion
+      apiVersion: response.headers.get("facebook-api-version") || apiVersion,
+      budgetPolicy
     }, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Meta Ads connection check failed."

@@ -101,6 +101,14 @@ function CheckoutAmountBreakdown({ pricing }: { pricing: PricingPayload | null }
   )
 }
 
+function PriceSkeleton({ compact = false }: { compact?: boolean }) {
+  return (
+    <span role="status" aria-label="Loading confirmed price" className={`inline-block animate-pulse rounded-md bg-current/20 align-middle ${compact ? "h-4 w-20" : "h-10 w-40"}`}>
+      <span className="sr-only">Loading confirmed price</span>
+    </span>
+  )
+}
+
 type ManualDetails = {
   bankName: string
   accountName: string
@@ -269,6 +277,11 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
       if (code) setAffiliateCode(code.toUpperCase().slice(0, 40))
     }
   }, [])
+
+  useEffect(() => {
+    setPricing(null)
+    setManualDetails(null)
+  }, [batchKey, buyerType, country, couponCode, provider, seatCount])
 
   useEffect(() => {
     if (provider === "manual_transfer") return
@@ -511,7 +524,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
   const displayPrice =
     pricing?.label ||
-    (pricing ? formatMinor(pricing.finalAmountMinor, pricing.currency) : provider === "manual_transfer" ? manualDetails?.amountLabel : course.price)
+    (pricing ? formatMinor(pricing.finalAmountMinor, pricing.currency) : provider === "manual_transfer" ? manualDetails?.amountLabel || null : null)
   const selectedSeatCount = buyerType === "family" ? Math.max(2, Math.min(500, seatCount)) : 1
   const hideBatchSeatBalance = checkoutCourseSlug === "prompt-to-profit-holiday"
   const selectedBatch = useMemo(() => batches.find((batch) => batch.batchKey === batchKey) || null, [batchKey, batches])
@@ -631,7 +644,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                       </div>
                       <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground sm:col-span-2">
                         <p className="font-bold text-foreground">
-                          {selectedSeatCount} seats selected • Total: {displayPrice}
+                          {selectedSeatCount} seats selected • Total: {displayPrice || <PriceSkeleton compact />}
                         </p>
                         <p className="mt-2">
                           Buy multiple seats now under one account. After payment, the seats become available in your dashboard so you can assign them to the right learners.
@@ -671,7 +684,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                 <div className="surface-raised bg-card p-6 sm:p-8">
                   <h2 className="font-heading text-lg font-bold">Installment Plan</h2>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Your plan target is {displayPrice}. Enter the amount you want to pay now. Leave blank to start with 50%.
+                    Your plan target is {displayPrice || <PriceSkeleton compact />}. Enter the amount you want to pay now. Leave blank to start with 50%.
                   </p>
                   <label className="mt-5 block">
                     <span className="label">First payment amount</span>
@@ -747,7 +760,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
                   <div className="mt-8 border-t border-dashed border-white/20 pt-8">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Investment</p>
-                    <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice}</p>
+                    <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice || <PriceSkeleton />}</p>
                     {pricing?.groupDiscountMinor ? <p className="mt-2 text-sm text-sky-300">Group savings: {pricing.groupDiscountLabel || formatMinor(pricing.groupDiscountMinor, pricing.currency)}</p> : null}
                     {pricing?.discountMinor ? <p className="mt-2 text-sm text-emerald-300">Discount: {pricing.discountLabel || formatMinor(pricing.discountMinor, pricing.currency)}</p> : null}
                     <CheckoutAmountBreakdown pricing={pricing} />
@@ -775,9 +788,11 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               </section>
 
               <div>
-                <button className="btn-primary w-full py-4 text-base shadow-lg shadow-primary/20" type="submit" disabled={isSubmitting}>
+                <button className="btn-primary w-full py-4 text-base shadow-lg shadow-primary/20" type="submit" disabled={isSubmitting || !displayPrice} aria-busy={!displayPrice || isSubmitting}>
                   {isSubmitting
                     ? "Processing..."
+                    : !displayPrice
+                      ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" />
                     : provider === "manual_transfer"
                       ? "Submit Manual Payment"
                       : provider === "installment"
@@ -800,7 +815,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
 
               <div className="mt-8 border-t border-dashed border-white/20 pt-8">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Investment</p>
-                <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice}</p>
+                <p className="mt-2 font-heading text-4xl font-black tracking-tight text-white">{displayPrice || <PriceSkeleton />}</p>
                 {pricing?.groupDiscountMinor ? <p className="mt-2 text-sm text-sky-300">Group savings: {pricing.groupDiscountLabel || formatMinor(pricing.groupDiscountMinor, pricing.currency)}</p> : null}
                 {pricing?.discountMinor ? <p className="mt-2 text-sm text-emerald-300">Discount: {pricing.discountLabel || formatMinor(pricing.discountMinor, pricing.currency)}</p> : null}
                 <CheckoutAmountBreakdown pricing={pricing} />

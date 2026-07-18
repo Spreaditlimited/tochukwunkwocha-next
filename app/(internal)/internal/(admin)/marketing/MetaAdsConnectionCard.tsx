@@ -7,6 +7,10 @@ type ConnectionResult = {
   ok: boolean
   error?: string
   apiVersion?: string
+  budgetPolicy?: {
+    currency: "NGN"
+    maxDailyBudgetMinor: number
+  } | null
   account?: {
     id: string
     name: string
@@ -55,7 +59,7 @@ export function MetaAdsConnectionCard() {
       {result ? (
         <div className={`border-t p-5 sm:px-8 ${result.ok ? "border-emerald-500/20 bg-emerald-500/5" : "border-amber-500/20 bg-amber-500/5"}`}>
           {result.ok && result.account ? (
-            <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" /><div><p className="font-heading text-sm font-bold text-foreground">Connected to {result.account.name}</p><p className="mt-1 text-xs text-muted-foreground">{result.account.businessName ? `${result.account.businessName} · ` : ""}{result.account.currency || "Currency unavailable"} · {result.account.timezone || "Timezone unavailable"} · API {result.apiVersion || "App default"}</p></div></div>
+            <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" /><div><p className="font-heading text-sm font-bold text-foreground">Connected to {result.account.name}</p><p className="mt-1 text-xs text-muted-foreground">{result.account.businessName ? `${result.account.businessName} · ` : ""}{result.account.currency || "Currency unavailable"} · {result.account.timezone || "Timezone unavailable"} · API {result.apiVersion || "App default"}</p><p className={`mt-2 text-xs font-bold ${result.budgetPolicy ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{result.budgetPolicy ? `Hard daily limit: ${new Intl.NumberFormat("en-NG", { style: "currency", currency: result.budgetPolicy.currency }).format(result.budgetPolicy.maxDailyBudgetMinor / 100)}` : "Publishing locked: hard daily budget limit is not configured."}</p></div></div>
           ) : (
             <div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" /><div><p className="font-heading text-sm font-bold text-foreground">Connection not ready</p><p className="mt-1 text-xs text-muted-foreground">{result.error || "Review the Meta configuration and try again."}</p></div></div>
           )}
