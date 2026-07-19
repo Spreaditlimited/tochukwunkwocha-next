@@ -13,6 +13,7 @@ import {
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 import { sendEmail } from "@/lib/email"
+import { sendManualPaymentMetaPurchase as dispatchManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
 export type EnrollmentPaymentRow = {
@@ -42,6 +43,10 @@ export type EnrollmentPaymentRow = {
   reviewedAt: Date | null
   metaPurchaseSent: boolean
   metaPurchaseSentAt: Date | null
+  metaPurchaseDispatchStatus: string
+  metaPurchaseAttemptCount: number
+  metaPurchaseLastError: string | null
+  metaPurchaseTraceId: string | null
   recoveryOrigin: boolean
   createdAt: Date | null
 }
@@ -161,6 +166,12 @@ function toInt(value: unknown, fallback = 0) {
 async function ensureManualPaymentReviewColumns() {
   await addColumnIfMissing("course_manual_payments", "meta_purchase_sent", "TINYINT(1) NOT NULL DEFAULT 0")
   await addColumnIfMissing("course_manual_payments", "meta_purchase_sent_at", "DATETIME NULL")
+  await addColumnIfMissing("course_manual_payments", "meta_purchase_dispatch_status", "VARCHAR(24) NOT NULL DEFAULT 'pending'")
+  await addColumnIfMissing("course_manual_payments", "meta_purchase_event_id", "VARCHAR(190) NULL")
+  await addColumnIfMissing("course_manual_payments", "meta_purchase_attempt_count", "INT NOT NULL DEFAULT 0")
+  await addColumnIfMissing("course_manual_payments", "meta_purchase_last_error", "VARCHAR(500) NULL")
+  await addColumnIfMissing("course_manual_payments", "meta_purchase_trace_id", "VARCHAR(190) NULL")
+  await addColumnIfMissing("course_manual_payments", "meta_purchase_dispatch_started_at", "DATETIME NULL")
   await addColumnIfMissing("course_manual_payments", "proof_public_id", "VARCHAR(255) NULL")
   await addColumnIfMissing("course_manual_payments", "base_amount_minor", "INT NULL")
   await addColumnIfMissing("course_manual_payments", "discount_minor", "INT NOT NULL DEFAULT 0")
@@ -447,6 +458,10 @@ export async function listEnrollmentPayments(input: {
       reviewed_at AS reviewedAt,
       COALESCE(meta_purchase_sent, 0) AS metaPurchaseSent,
       meta_purchase_sent_at AS metaPurchaseSentAt,
+      COALESCE(meta_purchase_dispatch_status, 'pending') AS metaPurchaseDispatchStatus,
+      COALESCE(meta_purchase_attempt_count, 0) AS metaPurchaseAttemptCount,
+      meta_purchase_last_error AS metaPurchaseLastError,
+      meta_purchase_trace_id AS metaPurchaseTraceId,
       COALESCE(recovery_origin, 0) AS recoveryOrigin,
       created_at AS createdAt
     FROM course_manual_payments
@@ -498,6 +513,10 @@ export async function listEnrollmentPayments(input: {
         COALESCE(paid_at, updated_at, created_at) AS reviewedAt,
         0 AS metaPurchaseSent,
         NULL AS metaPurchaseSentAt,
+        'sent' AS metaPurchaseDispatchStatus,
+        0 AS metaPurchaseAttemptCount,
+        NULL AS metaPurchaseLastError,
+        NULL AS metaPurchaseTraceId,
         0 AS recoveryOrigin,
         created_at AS createdAt
       FROM course_orders
@@ -536,6 +555,8 @@ export async function listEnrollmentPayments(input: {
       discountMinor: toInt(row.discountMinor),
       seatCount: Math.max(1, toInt(row.seatCount, 1)),
       metaPurchaseSent: Boolean(Number(row.metaPurchaseSent || 0)),
+      metaPurchaseDispatchStatus: clean(row.metaPurchaseDispatchStatus, 24) || (Boolean(Number(row.metaPurchaseSent || 0)) ? "sent" : "pending"),
+      metaPurchaseAttemptCount: Math.max(0, toInt(row.metaPurchaseAttemptCount)),
       recoveryOrigin: Boolean(Number(row.recoveryOrigin || 0))
     }))
 }
@@ -1206,31 +1227,6 @@ export async function listLatestOnboardingEmailFailures(input: {
   })).filter((row) => row.email)
 }
 
-function sha256(value: string) {
-  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex")
-}
-
-function normalizeMetaPhone(value: unknown, country?: unknown) {
-  let digits = clean(value, 80).replace(/\D/g, "")
-  if (!digits) return ""
-  const countryText = clean(country, 80).toLowerCase()
-  if ((countryText === "ng" || countryText === "nga" || countryText === "nigeria") && digits.startsWith("0")) digits = `234${digits.slice(1)}`
-  return digits
-}
-
-function normalizeMetaCountry(value: unknown) {
-  const country = clean(value, 80).toLowerCase()
-  if (country === "nigeria" || country === "nga" || country === "ng") return "ng"
-  if (country === "united kingdom" || country === "uk" || country === "gb") return "gb"
-  if (country === "united states" || country === "united states of america" || country === "usa" || country === "us") return "us"
-  return /^[a-z]{2}$/.test(country) ? country : ""
-}
-
-function metaFbcFromFbclid(value: unknown) {
-  const fbclid = clean(value, 2000)
-  return fbclid ? `fb.1.${Date.now()}.${fbclid}` : ""
-}
-
 export async function sendManualPaymentMetaPurchase(input: {
   paymentUuid: string
   fbp?: string
@@ -1238,70 +1234,7 @@ export async function sendManualPaymentMetaPurchase(input: {
   fbclid?: string
   eventSourceUrl?: string
 }) {
-  const pixelId = clean(process.env.META_PIXEL_ID, 120)
-  const accessToken = clean(process.env.META_PIXEL_ACCESS_TOKEN, 1000)
-  if (!pixelId || !accessToken) throw new Error("Meta Pixel settings are not configured.")
-  const paymentUuid = clean(input.paymentUuid, 80)
-  const rows = await prisma.$queryRaw<Array<{
-    courseSlug: string | null
-    firstName: string | null
-    email: string | null
-    phone: string | null
-    country: string | null
-    amountMinor: number | bigint | null
-    currency: string | null
-    status: string | null
-  }>>`
-    SELECT course_slug AS courseSlug, first_name AS firstName, email, phone, country, amount_minor AS amountMinor, currency, status
-    FROM course_manual_payments
-    WHERE payment_uuid = ${paymentUuid}
-    LIMIT 1
-  `
-  const payment = rows[0]
-  if (!payment) throw new Error("Manual payment not found.")
-  if (clean(payment.status, 40).toLowerCase() !== "approved") throw new Error("Only approved manual payments can send Meta purchase events.")
-  const eventId = `ptp_manual_${paymentUuid}_${Date.now()}`
-  const body = {
-    data: [{
-      event_name: "Purchase",
-      event_time: Math.floor(Date.now() / 1000),
-      event_id: eventId,
-      action_source: "website",
-      event_source_url: clean(input.eventSourceUrl, 1200) || siteBaseUrl(),
-      user_data: {
-        em: normalizeEmail(payment.email) ? [sha256(normalizeEmail(payment.email))] : undefined,
-        ph: normalizeMetaPhone(payment.phone, payment.country) ? [sha256(normalizeMetaPhone(payment.phone, payment.country))] : undefined,
-        fn: clean(payment.firstName, 120) ? [sha256(clean(payment.firstName, 120))] : undefined,
-        country: normalizeMetaCountry(payment.country) ? [sha256(normalizeMetaCountry(payment.country))] : undefined,
-        external_id: paymentUuid ? [sha256(paymentUuid)] : undefined,
-        fbp: clean(input.fbp, 300) || undefined,
-        fbc: clean(input.fbc, 300) || metaFbcFromFbclid(input.fbclid) || undefined
-      },
-      custom_data: {
-        currency: clean(payment.currency, 10).toUpperCase() || "NGN",
-        value: toInt(payment.amountMinor) / 100,
-        content_name: clean(payment.courseSlug, 120) || "Course",
-        content_ids: [clean(payment.courseSlug, 120) || "course"],
-        content_type: "product"
-      }
-    }]
-  }
-  const response = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(pixelId)}/events?access_token=${encodeURIComponent(accessToken)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  })
-  const json = await response.json().catch(() => null)
-  if (!response.ok || json?.error) throw new Error(json?.error?.message || `Meta CAPI failed (${response.status})`)
-  await prisma.$executeRaw`
-    UPDATE course_manual_payments
-    SET meta_purchase_sent = 1,
-        meta_purchase_sent_at = ${new Date()},
-        updated_at = ${new Date()}
-    WHERE payment_uuid = ${paymentUuid}
-    LIMIT 1
-  `
-  return { eventId }
+  return dispatchManualPaymentMetaPurchase(input)
 }
 
 export async function listHolidayWaitlistContacts(limitInput = 200): Promise<{ contacts: HolidayWaitlistContact[]; total: number }> {

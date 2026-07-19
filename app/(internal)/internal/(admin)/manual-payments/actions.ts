@@ -105,14 +105,26 @@ export async function completeManualPaymentRecoveryAction(formData: FormData) {
 
 export async function sendManualPaymentMetaPurchaseAction(formData: FormData) {
   await requireAdmin("/internal/manual-payments")
-  await sendManualPaymentMetaPurchase({
-    paymentUuid: String(formData.get("paymentUuid") || ""),
-    fbp: String(formData.get("fbp") || ""),
-    fbc: String(formData.get("fbc") || ""),
-    fbclid: String(formData.get("fbclid") || ""),
-    eventSourceUrl: String(formData.get("eventSourceUrl") || "")
-  })
-  await setInternalToast({ title: "Meta purchase event sent", message: "The manual payment conversion event has been submitted." })
+  const paymentUuid = String(formData.get("paymentUuid") || "")
+  try {
+    const result = await sendManualPaymentMetaPurchase({
+      paymentUuid,
+      fbp: String(formData.get("fbp") || ""),
+      fbc: String(formData.get("fbc") || ""),
+      fbclid: String(formData.get("fbclid") || ""),
+      eventSourceUrl: String(formData.get("eventSourceUrl") || "")
+    })
+    await setInternalToast({
+      title: result.alreadySent ? "Meta event already dispatched" : "Meta purchase event sent",
+      message: result.alreadySent ? "The existing successful dispatch was preserved; no duplicate event was sent." : "Meta accepted the manual-payment purchase event."
+    })
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Meta event was not sent",
+      message: error instanceof Error ? error.message : "Meta could not accept the purchase event. The record is safe to retry."
+    })
+  }
   revalidatePath("/internal/manual-payments")
 }
 

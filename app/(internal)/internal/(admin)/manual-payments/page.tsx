@@ -68,6 +68,20 @@ function statusLabel(status: string | null) {
   return raw.replace(/_/g, " ")
 }
 
+function metaDispatchTone(status: string, sent: boolean) {
+  if (sent || status === "sent") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+  if (status === "failed") return "bg-red-500/10 text-red-600 dark:text-red-400"
+  if (status === "sending") return "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+  return "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+}
+
+function metaDispatchLabel(status: string, sent: boolean) {
+  if (sent || status === "sent") return "Dispatched"
+  if (status === "failed") return "Failed"
+  if (status === "sending") return "Sending"
+  return "Pending"
+}
+
 function formatTotalsByCurrency(totals: Record<string, number>) {
   const entries = Object.entries(totals)
     .filter(([, amount]) => amount > 0)
@@ -911,8 +925,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       
                       <div className="mb-1 flex items-center justify-between">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Meta Status</span>
-                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${payment.metaPurchaseSent ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
-                          {payment.metaPurchaseSent ? "Dispatched" : "Pending"}
+                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${metaDispatchTone(payment.metaPurchaseDispatchStatus, payment.metaPurchaseSent)}`}>
+                          {metaDispatchLabel(payment.metaPurchaseDispatchStatus, payment.metaPurchaseSent)}
                         </span>
                       </div>
                       
@@ -921,9 +935,18 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       <input name="fbclid" placeholder="fbclid (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       <input name="eventSourceUrl" placeholder="Event Source URL (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       
-                      <button className="btn-secondary mt-1 w-full justify-center py-2 text-xs shadow-sm" type="submit">
-                        <Send className="mr-1.5 h-3.5 w-3.5" /> {payment.metaPurchaseSent ? "Force Resend" : "Dispatch Event"}
+                      <button className="btn-secondary mt-1 w-full justify-center py-2 text-xs shadow-sm" type="submit" disabled={payment.metaPurchaseSent || payment.metaPurchaseDispatchStatus === "sending"}>
+                        <Send className="mr-1.5 h-3.5 w-3.5" /> {payment.metaPurchaseSent ? "Already Dispatched" : payment.metaPurchaseDispatchStatus === "failed" ? "Retry Event" : payment.metaPurchaseDispatchStatus === "sending" ? "Dispatching…" : "Dispatch Event"}
                       </button>
+
+                      {payment.metaPurchaseLastError ? (
+                        <p className="rounded-md border border-red-500/15 bg-red-500/5 p-2 text-[10px] leading-relaxed text-red-600 dark:text-red-400">
+                          {payment.metaPurchaseLastError}
+                          {payment.metaPurchaseTraceId ? <span className="mt-1 block font-mono text-[9px] opacity-80">Trace: {payment.metaPurchaseTraceId}</span> : null}
+                        </p>
+                      ) : null}
+
+                      {payment.metaPurchaseAttemptCount > 0 ? <p className="text-center text-[10px] text-muted-foreground">Attempts: {payment.metaPurchaseAttemptCount}</p> : null}
                       
                       {payment.metaPurchaseSentAt && (
                         <p className="mt-1 text-center text-[10px] text-muted-foreground">

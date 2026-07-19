@@ -1,5 +1,6 @@
 import crypto from "crypto"
 
+import { getMetaCapiConfig } from "@/lib/meta-capi-config"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -126,8 +127,7 @@ export async function sendCourseOrderMetaPurchase(input: {
   eventSourceUrl?: string
   force?: boolean
 }) {
-  const pixelId = clean(process.env.META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID, 120)
-  const accessToken = clean(process.env.META_PIXEL_ACCESS_TOKEN, 1000)
+  const { pixelId, accessToken, apiVersion } = await getMetaCapiConfig()
   if (!pixelId || !accessToken) return { skipped: true, reason: "not_configured" }
 
   await ensureCourseOrderMetaColumns()
@@ -209,10 +209,11 @@ export async function sendCourseOrderMetaPurchase(input: {
     ]
   }
 
-  const response = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(pixelId)}/events?access_token=${encodeURIComponent(accessToken)}`, {
+  const response = await fetch(`https://graph.facebook.com/${apiVersion}/${encodeURIComponent(pixelId)}/events`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store"
   })
   const json = await response.json().catch(() => null)
   if (!response.ok || json?.error) {
@@ -249,8 +250,7 @@ export async function sendMetaLeadEvent(input: {
   contentName?: string
   contentCategory?: string
 }) {
-  const pixelId = clean(process.env.META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID, 120)
-  const accessToken = clean(process.env.META_PIXEL_ACCESS_TOKEN, 1000)
+  const { pixelId, accessToken, apiVersion } = await getMetaCapiConfig()
   if (!pixelId || !accessToken) return { skipped: true, reason: "not_configured" }
 
   const email = normalizeEmail(input.email)
@@ -287,10 +287,11 @@ export async function sendMetaLeadEvent(input: {
     ]
   }
 
-  const response = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(pixelId)}/events?access_token=${encodeURIComponent(accessToken)}`, {
+  const response = await fetch(`https://graph.facebook.com/${apiVersion}/${encodeURIComponent(pixelId)}/events`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store"
   })
   const json = await response.json().catch(() => null)
   if (!response.ok || json?.error) {
