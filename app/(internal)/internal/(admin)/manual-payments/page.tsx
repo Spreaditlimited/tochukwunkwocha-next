@@ -918,9 +918,9 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-5">
+                  <td className="min-w-0 px-6 py-5">
                     {payment.source === "manual" ? (
-                      <form action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
+                      <form action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] min-w-0 max-w-[260px] gap-2.5 overflow-hidden whitespace-normal rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                       <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                       
                       <div className="mb-1 flex items-center justify-between">
@@ -940,10 +940,10 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       </button>
 
                       {payment.metaPurchaseLastError ? (
-                        <p className="rounded-md border border-red-500/15 bg-red-500/5 p-2 text-[10px] leading-relaxed text-red-600 dark:text-red-400">
-                          {payment.metaPurchaseLastError}
-                          {payment.metaPurchaseTraceId ? <span className="mt-1 block font-mono text-[9px] opacity-80">Trace: {payment.metaPurchaseTraceId}</span> : null}
-                        </p>
+                        <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-red-500/15 bg-red-500/5 p-2 text-[10px] leading-relaxed text-red-600 dark:text-red-400">
+                          <p className="max-w-full whitespace-normal [overflow-wrap:anywhere]">{payment.metaPurchaseLastError}</p>
+                          {payment.metaPurchaseTraceId ? <p className="mt-1 max-w-full break-all font-mono text-[9px] opacity-80">Trace: {payment.metaPurchaseTraceId}</p> : null}
+                        </div>
                       ) : null}
 
                       {payment.metaPurchaseAttemptCount > 0 ? <p className="text-center text-[10px] text-muted-foreground">Attempts: {payment.metaPurchaseAttemptCount}</p> : null}

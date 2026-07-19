@@ -315,7 +315,7 @@ export async function listEnrollmentCourses(): Promise<EnrollmentCourseOption[]>
   const rows = await prisma.$queryRaw<Array<{ slug: string; title: string | null; enrollmentMode: string | null }>>`
     SELECT course_slug AS slug, course_title AS title, enrollment_mode AS enrollmentMode
     FROM tochukwu_learning_courses
-    WHERE (is_published = 1 OR status = 'published' OR status = 'active')
+    WHERE tochukwu_learning_courses.is_published = 1
       AND NOT EXISTS (
         SELECT 1
         FROM tochukwu_learning_modules lm
