@@ -10,6 +10,9 @@ import { showStudentToast } from "@/components/student-dashboard/StudentActionTo
 type CourseOption = {
   courseSlug: string
   courseName: string
+  completedLessons: number
+  totalLessons: number
+  completionPercent: number
 }
 
 export function CertificateActionsPanel({
@@ -30,6 +33,12 @@ export function CertificateActionsPanel({
   const [busy, setBusy] = useState<"name" | "proof" | null>(null)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
+  const selectedCourse = courses.find((course) => course.courseSlug === courseSlug)
+  const selectedCourseComplete = Boolean(
+    selectedCourse &&
+    selectedCourse.totalLessons > 0 &&
+    selectedCourse.completedLessons >= selectedCourse.totalLessons
+  )
 
   async function confirmName() {
     setBusy("name")
@@ -157,6 +166,14 @@ export function CertificateActionsPanel({
                 disabled={!courses.length || busy !== null}
               />
             </label>
+
+            <div className="rounded-lg border border-border bg-muted/20 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Learning Support</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Complete all lessons and submit your website link to unlock certificate. Progress:{" "}
+                {selectedCourse?.completedLessons || 0}/{selectedCourse?.totalLessons || 0} ({selectedCourse?.completionPercent || 0}%).
+              </p>
+            </div>
             
             <label className="block">
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -169,7 +186,7 @@ export function CertificateActionsPanel({
                 placeholder="https://your-project.example.com"
                 type="url"
                 required
-                disabled={busy !== null}
+                disabled={busy !== null || !confirmedAt || !selectedCourseComplete}
               />
             </label>
           </div>
@@ -178,7 +195,7 @@ export function CertificateActionsPanel({
         <div className="mt-6 border-t border-border pt-6">
           <button 
             type="submit" 
-            disabled={!confirmedAt || !courses.length || busy !== null} 
+            disabled={!confirmedAt || !courses.length || !selectedCourseComplete || busy !== null}
             className="btn-secondary flex w-full items-center justify-center sm:w-auto"
           >
             {busy === "proof" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -189,6 +206,11 @@ export function CertificateActionsPanel({
               * Please confirm your certificate name first to unlock submissions.
             </p>
           )}
+          {confirmedAt && !selectedCourseComplete ? (
+            <p className="mt-3 text-xs font-medium text-muted-foreground">
+              Finish all lessons to enable proof submission.
+            </p>
+          ) : null}
         </div>
       </form>
   )

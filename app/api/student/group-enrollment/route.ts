@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 
-import { consumeFamilySeatsForChildren, normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
+import { consumeFamilySeatsForChildren, hasPurchasedFamilySeats, normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
 import {
   checkoutContext,
   courseReferencePrefix,
   createCourseOrder,
   familyEnrollmentEnabledForCourse,
+  formatMinorAmount,
   initializePaystack,
   initializeStripe,
   normalizeCourse,
@@ -16,6 +17,63 @@ import { getStudentSession } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
+}
+
+async function groupPurchaseSeatCount(parentAccountId: bigint, requestedSeats: number) {
+  const hasPurchasedSeats = await hasPurchasedFamilySeats(parentAccountId)
+  const minimumSeatCount = hasPurchasedSeats ? 1 : 2
+  return {
+    hasPurchasedSeats,
+    minimumSeatCount,
+    seatCount: Math.max(minimumSeatCount, Math.min(500, Math.round(Number(requestedSeats || 1))))
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const session = await getStudentSession()
+    if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    const body = await request.json()
+    const courseSlug = normalizeCourse(body.courseSlug || "prompt-to-profit")
+    const country = clean(body.country || "NG", 120) || "NG"
+    const provider = providerForCountry(country, body.provider)
+    if (!familyEnrollmentEnabledForCourse(courseSlug)) {
+      return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
+    }
+    const purchase = await groupPurchaseSeatCount(session.account.id, Number(body.seatCount || 1))
+    const context = await checkoutContext({
+      courseSlug,
+      country,
+      provider,
+      email: session.account.email,
+      buyerType: "family",
+      seatCount: purchase.seatCount,
+      minimumFamilySeats: purchase.minimumSeatCount,
+      batchKey: clean(body.batchKey, 64),
+      requireActiveBatch: true,
+      requireExplicitHolidayBatch: true
+    })
+    return NextResponse.json({
+      ok: true,
+      provider,
+      seatCount: context.seatCount,
+      minimumSeatCount: purchase.minimumSeatCount,
+      pricing: {
+        ...context.pricing,
+        label: formatMinorAmount(context.pricing.finalAmountMinor, context.pricing.currency),
+        groupDiscountLabel: formatMinorAmount(Number(context.pricing.groupDiscountMinor || 0), context.pricing.currency),
+        groupUnitLabel: context.pricing.groupUnitAmountMinor
+          ? formatMinorAmount(Number(context.pricing.groupUnitAmountMinor), context.pricing.currency)
+          : null
+      }
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not load group checkout pricing."
+    return NextResponse.json(
+      { ok: false, error: message },
+      { status: /capacity|seat|batch|locked|available|course/i.test(message) ? 400 : 500 }
+    )
+  }
 }
 
 export async function POST(request: Request) {
@@ -64,14 +122,18 @@ export async function POST(request: Request) {
       if (!message.includes("purchased seat")) throw error
     }
 
+    const purchase = await groupPurchaseSeatCount(session.account.id, children.length)
     const context = await checkoutContext({
       courseSlug,
       country,
       provider,
       email: session.account.email,
       buyerType: "family",
-      seatCount: children.length,
-      batchKey: requestedBatchKey
+      seatCount: purchase.seatCount,
+      minimumFamilySeats: purchase.minimumSeatCount,
+      batchKey: requestedBatchKey,
+      requireActiveBatch: true,
+      requireExplicitHolidayBatch: true
     })
     const batchKey = context.batch?.batchKey || requestedBatchKey
     const batchLabel = context.batch?.batchLabel || requestedBatchLabel

@@ -80,6 +80,19 @@ export function normalizeFamilyChildren(input: unknown): FamilyChildInput[] {
     .slice(0, MAX_CHILDREN)
 }
 
+export async function hasPurchasedFamilySeats(parentAccountId: bigint | number) {
+  const accountId = BigInt(parentAccountId)
+  if (accountId <= BigInt(0)) return false
+  const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    SELECT COUNT(*) AS total
+    FROM family_seat_balances b
+    JOIN family_accounts f ON f.id = b.family_id
+    WHERE f.parent_account_id = ${accountId}
+      AND b.seats_purchased > 0
+  `
+  return Number(rows[0]?.total || 0) > 0
+}
+
 async function assignFamilyChildCode(childId: bigint | number, client: Prisma.TransactionClient | typeof prisma = prisma) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const code = makeFamilyCode()

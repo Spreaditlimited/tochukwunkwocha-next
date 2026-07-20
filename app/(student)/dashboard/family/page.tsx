@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Clock3, KeyRound, ShieldCheck, Ticket, UserRound, Users } from "lucide-react"
+import { Clock3, KeyRound, Ticket, UserRound, Users } from "lucide-react"
 
 import {
   EmptyStudentState,
@@ -15,7 +15,7 @@ import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { courseName, getFamilyDashboard, hasPendingGroupManualPayment, listActiveLearningCourseOptions, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
-import { formatDate } from "@/lib/utils"
+import { getLearningCourseForStudent } from "@/lib/learning-player"
 
 export const dynamic = "force-dynamic"
 
@@ -27,6 +27,24 @@ export default async function StudentFamilyPage({
   const session = await requireStudent()
   const params = searchParams ? await searchParams : {}
   const data = await getFamilyDashboard(session.account.id)
+  const learnerProgressEntries = await Promise.all(data.children.map(async (child) => {
+    const key = `${child.childId}:${child.courseSlug}`
+    if (!child.accountId || !child.accountEmail || !child.courseSlug) {
+      return [key, { completedLessons: 0, totalLessons: 0, completionPercent: 0 }] as const
+    }
+    const result = await getLearningCourseForStudent({
+      accountId: BigInt(child.accountId),
+      email: child.accountEmail,
+      courseSlug: child.courseSlug
+    }).catch(() => null)
+    return [
+      key,
+      result?.ok
+        ? result.course.progress
+        : { completedLessons: 0, totalLessons: 0, completionPercent: 0 }
+    ] as const
+  }))
+  const learnerProgressByEnrollment = new Map(learnerProgressEntries)
   const courses = await listActiveLearningCourseOptions()
   const walkthroughVideo = await getPublicVideoSlot("group-enrollment-dashboard-walkthrough")
   const manualPaymentPending =
@@ -53,6 +71,7 @@ export default async function StudentFamilyPage({
   }))
   
   const totalPurchased = data.seats.reduce((sum, seat) => sum + seat.seatsPurchased, 0)
+  const totalAssigned = data.seats.reduce((sum, seat) => sum + seat.seatsUsed, 0)
   const totalAvailable = data.seats.reduce((sum, seat) => sum + seat.seatsAvailable, 0)
 
   return (
@@ -115,24 +134,22 @@ export default async function StudentFamilyPage({
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <StudentDashboardCard className="flex flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
           <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Group Account</p>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-2xl font-black text-foreground capitalize">
-            {data.family ? statusLabel(data.family.status) : "Not created"}
-          </p>
-        </StudentDashboardCard>
-        
-        <StudentDashboardCard className="flex flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Purchased Seats</p>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
               <Ticket className="h-5 w-5" />
             </div>
           </div>
           <p className="mt-6 font-heading text-3xl font-black text-foreground">{totalPurchased}</p>
+        </StudentDashboardCard>
+        
+        <StudentDashboardCard className="flex flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Assigned Seats</p>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <UserRound className="h-5 w-5" />
+            </div>
+          </div>
+          <p className="mt-6 font-heading text-3xl font-black text-foreground">{totalAssigned}</p>
         </StudentDashboardCard>
         
         <StudentDashboardCard className="flex flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
@@ -219,9 +236,14 @@ export default async function StudentFamilyPage({
           <div className="p-6 sm:p-8">
             {data.children.length ? (
               <div className="grid gap-5">
-                {data.children.map((child) => (
-                  <div 
-                    key={`${child.childUuid}-${child.courseSlug}-${child.batchKey || ""}`} 
+                {data.children.map((child) => {
+                  const progress = learnerProgressByEnrollment.get(`${child.childId}:${child.courseSlug}`) || {
+                    completedLessons: 0,
+                    totalLessons: 0,
+                    completionPercent: 0
+                  }
+                  return <div
+                    key={`${child.childUuid}-${child.courseSlug}-${child.batchKey || ""}`}
                     className="group relative overflow-hidden rounded-xl border border-border bg-background p-5 transition-shadow hover:shadow-sm"
                   >
                     {/* Header: User Info & Status */}
@@ -257,9 +279,9 @@ export default async function StudentFamilyPage({
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Paid Date</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Progress</p>
                         <p className="mt-1 text-sm font-semibold text-foreground">
-                          {formatDate(child.paidAt)}
+                          {progress.completedLessons}/{progress.totalLessons} ({progress.completionPercent}%)
                         </p>
                       </div>
                     </div>
@@ -288,7 +310,7 @@ export default async function StudentFamilyPage({
                       </div>
                     ) : null}
                   </div>
-                ))}
+                })}
               </div>
             ) : (
               <EmptyStudentState

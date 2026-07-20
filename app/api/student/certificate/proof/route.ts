@@ -4,7 +4,8 @@ import crypto from "crypto"
 import {
   certificateEligibilitySnapshot,
   ensureCertificateEligibilityColumns,
-  getCertificateCourseCompletion
+  getCertificateCourseCompletion,
+  getLearnerCertificateBatchKey
 } from "@/lib/certificate-eligibility"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
@@ -108,7 +109,7 @@ async function courseFeatures(courseSlug: string) {
   return rows[0] || null
 }
 
-async function latestProofStatus(accountId: bigint, email: string, courseSlug: string) {
+async function latestProofStatus(accountId: bigint, email: string, courseSlug: string, batchKey: string) {
   const rows = await prisma.$queryRaw<{ status: string | null }[]>`
     SELECT status
     FROM tochukwu_learning_assignments
@@ -117,6 +118,7 @@ async function latestProofStatus(accountId: bigint, email: string, courseSlug: s
       AND course_slug = ${courseSlug}
       AND submission_kind = 'link'
       AND submission_text = ${CERTIFICATE_PROOF_MARKER}
+      AND COALESCE(certificate_batch_key, '') = ${batchKey}
     ORDER BY id DESC
     LIMIT 1
   `
@@ -150,7 +152,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Complete all lessons before submitting certificate proof." }, { status: 400 })
     }
 
-    const previousStatus = await latestProofStatus(session.account.id, email, courseSlug)
+    await ensureCertificateEligibilityColumns()
+    const batchKey = await getLearnerCertificateBatchKey(session.account.id, email, courseSlug)
+    const previousStatus = await latestProofStatus(session.account.id, email, courseSlug, batchKey)
     if (previousStatus === "approved") {
       return NextResponse.json({ ok: false, error: "Your certificate proof is already approved." }, { status: 400 })
     }
@@ -160,7 +164,6 @@ export async function POST(request: Request) {
 
     const now = new Date()
     const assignmentUuid = `asg_${crypto.randomUUID().replace(/-/g, "")}`
-    await ensureCertificateEligibilityColumns()
     const eligibilitySnapshot = certificateEligibilitySnapshot({
       ...completion,
       source: "student_certificate_proof_submission"
@@ -168,11 +171,11 @@ export async function POST(request: Request) {
     await prisma.$executeRaw`
       INSERT INTO tochukwu_learning_assignments
         (assignment_uuid, course_slug, account_id, student_email, student_name, submission_kind, submission_text,
-         submission_link, status, certificate_eligible_at_submission, certificate_eligibility_checked_at,
+         submission_link, status, certificate_batch_key, certificate_eligible_at_submission, certificate_eligibility_checked_at,
          certificate_eligibility_snapshot_json, created_at, updated_at)
       VALUES
         (${assignmentUuid}, ${courseSlug}, ${session.account.id}, ${email}, ${session.account.fullName},
-         'link', ${CERTIFICATE_PROOF_MARKER}, ${websiteUrl}, 'submitted', 1, ${now},
+         'link', ${CERTIFICATE_PROOF_MARKER}, ${websiteUrl}, 'submitted', ${batchKey}, 1, ${now},
          ${eligibilitySnapshot}, ${now}, ${now})
     `
 

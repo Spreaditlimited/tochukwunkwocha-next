@@ -55,9 +55,34 @@ export async function ensureCertificateVerificationColumns() {
   await addColumnIfMissing("school_certificates", "project_verified_at", "DATETIME NULL").catch(() => null)
   await addColumnIfMissing("school_certificates", "project_status_at_issue", "VARCHAR(80) NULL").catch(() => null)
   await addColumnIfMissing("school_certificates", "share_image_url", "TEXT NULL").catch(() => null)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS student_certificate_issuance_keys (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      account_id BIGINT NOT NULL,
+      course_slug VARCHAR(120) NOT NULL,
+      batch_key VARCHAR(64) NOT NULL DEFAULT '',
+      certificate_no VARCHAR(140) NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_student_certificate_account_course_batch (account_id, course_slug, batch_key),
+      UNIQUE KEY uniq_student_certificate_issuance_no (certificate_no)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT IGNORE INTO student_certificate_issuance_keys
+      (account_id, course_slug, batch_key, certificate_no, created_at, updated_at)
+    SELECT account_id, course_slug, '', certificate_no, COALESCE(issued_at, created_at), COALESCE(updated_at, issued_at, created_at)
+    FROM student_certificates
+    WHERE status = 'issued'
+  `)
 }
 
-export async function getLatestApprovedStudentProject(input: { accountId: bigint | number; courseSlug: string }) {
+export async function getLatestApprovedStudentProject(input: { accountId: bigint | number; courseSlug: string; batchKey?: string }) {
+  const batchFilter = input.batchKey === undefined
+    ? Prisma.empty
+    : Prisma.sql`AND COALESCE(certificate_batch_key, '') = ${clean(input.batchKey, 64).toLowerCase()}`
   const rows = await prisma.$queryRaw<Array<{ projectUrl: string | null; approvedAt: Date | null }>>(Prisma.sql`
     SELECT submission_link AS projectUrl, reviewed_at AS approvedAt
     FROM tochukwu_learning_assignments
@@ -66,6 +91,7 @@ export async function getLatestApprovedStudentProject(input: { accountId: bigint
       AND submission_kind = 'link'
       AND submission_text = ${CERTIFICATE_PROOF_MARKER}
       AND status = 'approved'
+      ${batchFilter}
       AND submission_link IS NOT NULL
       AND submission_link <> ''
     ORDER BY COALESCE(reviewed_at, updated_at, created_at) DESC

@@ -31,12 +31,11 @@ export default async function StudentDashboardPage() {
   
   const paidCourses = overview.courses.filter((item) => item.isActive)
   const learningAccess = overview.courses
-  const payments = overview.paymentRecords
   const availableSeats = overview.family.seats.reduce((sum, seat) => sum + seat.seatsAvailable, 0)
 
   const stats = [
     { label: "Active courses", value: paidCourses.length, icon: BookOpen, href: "/dashboard/courses" },
-    { label: "Payment records", value: payments.length, icon: CreditCard, href: "/dashboard/courses" },
+    { label: "Payment records", value: overview.paymentCount, icon: CreditCard, href: "/dashboard/courses" },
     { label: "Group seats", value: availableSeats, icon: UsersRound, href: "/dashboard/family" },
     { label: "Domains", value: overview.domains.length, icon: Globe, href: "/dashboard/domains" }
   ]

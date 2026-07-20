@@ -157,6 +157,7 @@ export async function ensureLearningSupportTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
   await ensureCertificateEligibilityColumns()
+  await ensureCertificateVerificationColumns()
 }
 
 export async function listLearningSupportData(filters?: { courseSlug?: string; status?: string; search?: string }) {
@@ -223,10 +224,11 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
       a.reviewed_by AS reviewedBy, a.reviewed_at AS reviewedAt, a.created_at AS createdAt,
       c.certificate_no AS certificateNo
     FROM tochukwu_learning_assignments a
-    LEFT JOIN student_certificates c
-      ON c.account_id = a.account_id
-     AND c.course_slug = a.course_slug
-     AND c.status = 'issued'
+    LEFT JOIN student_certificate_issuance_keys k
+      ON k.account_id = a.account_id
+     AND k.course_slug = a.course_slug
+     AND k.batch_key = COALESCE(a.certificate_batch_key, '')
+    LEFT JOIN student_certificates c ON c.certificate_no = k.certificate_no AND c.status = 'issued'
     ORDER BY a.id DESC
     LIMIT 250
   `.catch(() => [])
@@ -322,22 +324,32 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
     studentName: string | null
     certificateNameConfirmedAt: Date | null
     certificateEligibleAtSubmission: number | bigint | boolean | null
+    certificateBatchKey: string | null
     fullName: string | null
     certificateNo: string | null
   }>>`
     SELECT a.account_id AS accountId, a.course_slug AS courseSlug, a.student_email AS studentEmail,
       a.student_name AS studentName, sa.certificate_name_confirmed_at AS certificateNameConfirmedAt,
       sa.full_name AS fullName, a.certificate_eligible_at_submission AS certificateEligibleAtSubmission,
+      a.certificate_batch_key AS certificateBatchKey,
       c.certificate_no AS certificateNo
     FROM tochukwu_learning_assignments a
     LEFT JOIN student_accounts sa ON sa.id = a.account_id
-    LEFT JOIN student_certificates c ON c.account_id = a.account_id AND c.course_slug = a.course_slug AND c.status = 'issued'
+    LEFT JOIN student_certificate_issuance_keys k
+      ON k.account_id = a.account_id
+     AND k.course_slug = a.course_slug
+     AND k.batch_key = COALESCE(a.certificate_batch_key, '')
+    LEFT JOIN student_certificates c ON c.certificate_no = k.certificate_no AND c.status = 'issued'
     WHERE a.id = ${assignmentId}
     LIMIT 1
   `
   const item = rows[0]
   if (!item) return { issued: false, certificateNo: "", certificateUrl: "", reason: "assignment_not_found" }
-  const project = await getLatestApprovedStudentProject({ accountId: item.accountId, courseSlug: item.courseSlug })
+  const project = await getLatestApprovedStudentProject({
+    accountId: item.accountId,
+    courseSlug: item.courseSlug,
+    batchKey: clean(item.certificateBatchKey, 64).toLowerCase()
+  })
   if (item.certificateNo) {
     if (project.projectUrl) {
       await prisma.$executeRaw`
@@ -346,8 +358,7 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
             project_verified_at = ${project.projectVerifiedAt || new Date()},
             project_status_at_issue = 'live_at_issue',
             updated_at = ${new Date()}
-        WHERE account_id = ${item.accountId}
-          AND course_slug = ${item.courseSlug}
+        WHERE certificate_no = ${item.certificateNo}
           AND status = 'issued'
       `
     }
@@ -371,28 +382,57 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
     }
   }
   const now = new Date()
-  const certNo = certificateNo()
-  await prisma.$executeRaw`
-    INSERT INTO student_certificates
-      (account_id, course_slug, certificate_no, recipient_name, status, issued_at, project_url, project_verified_at, project_status_at_issue, created_at, updated_at)
-    VALUES
-      (${item.accountId}, ${item.courseSlug}, ${certNo}, ${clean(item.fullName, 180)}, 'issued', ${now}, ${project.projectUrl || null}, ${project.projectVerifiedAt || now}, ${project.projectUrl ? "live_at_issue" : null}, ${now}, ${now})
-    ON DUPLICATE KEY UPDATE
-      status = 'issued',
-      project_url = COALESCE(project_url, VALUES(project_url)),
-      project_verified_at = COALESCE(project_verified_at, VALUES(project_verified_at)),
-      project_status_at_issue = COALESCE(project_status_at_issue, VALUES(project_status_at_issue)),
-      updated_at = VALUES(updated_at)
-  `
-  const certificateRows = await prisma.$queryRaw<Array<{ certificateNo: string | null }>>`
-    SELECT certificate_no AS certificateNo
-    FROM student_certificates
-    WHERE account_id = ${item.accountId}
-      AND course_slug = ${item.courseSlug}
-      AND status = 'issued'
-    LIMIT 1
-  `
-  const issuedCertificateNo = clean(certificateRows[0]?.certificateNo, 140)
+  const batchKey = clean(item.certificateBatchKey, 64).toLowerCase()
+  const issuedCertificateNo = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO student_certificate_issuance_keys
+        (account_id, course_slug, batch_key, certificate_no, created_at, updated_at)
+      VALUES
+        (${item.accountId}, ${item.courseSlug}, ${batchKey}, NULL, ${now}, ${now})
+      ON DUPLICATE KEY UPDATE updated_at = updated_at
+    `
+    const keys = await tx.$queryRaw<Array<{ certificateNo: string | null }>>`
+      SELECT certificate_no AS certificateNo
+      FROM student_certificate_issuance_keys
+      WHERE account_id = ${item.accountId}
+        AND course_slug = ${item.courseSlug}
+        AND batch_key = ${batchKey}
+      LIMIT 1
+      FOR UPDATE
+    `
+    const existingCertificateNo = clean(keys[0]?.certificateNo, 140)
+    if (existingCertificateNo) {
+      if (project.projectUrl) {
+        await tx.$executeRaw`
+          UPDATE student_certificates
+          SET project_url = COALESCE(project_url, ${project.projectUrl}),
+              project_verified_at = COALESCE(project_verified_at, ${project.projectVerifiedAt || now}),
+              project_status_at_issue = COALESCE(project_status_at_issue, 'live_at_issue'),
+              updated_at = ${now}
+          WHERE certificate_no = ${existingCertificateNo}
+            AND status = 'issued'
+        `
+      }
+      return existingCertificateNo
+    }
+
+    const nextCertificateNo = certificateNo()
+    await tx.$executeRaw`
+      INSERT INTO student_certificates
+        (account_id, course_slug, certificate_no, recipient_name, status, issued_at, project_url, project_verified_at, project_status_at_issue, created_at, updated_at)
+      VALUES
+        (${item.accountId}, ${item.courseSlug}, ${nextCertificateNo}, ${clean(item.fullName, 180)}, 'issued', ${now},
+         ${project.projectUrl || null}, ${project.projectVerifiedAt || now}, ${project.projectUrl ? "live_at_issue" : null}, ${now}, ${now})
+    `
+    await tx.$executeRaw`
+      UPDATE student_certificate_issuance_keys
+      SET certificate_no = ${nextCertificateNo}, updated_at = ${now}
+      WHERE account_id = ${item.accountId}
+        AND course_slug = ${item.courseSlug}
+        AND batch_key = ${batchKey}
+    `
+    return nextCertificateNo
+  })
   if (!issuedCertificateNo) {
     return { issued: false, certificateNo: "", certificateUrl: "", reason: "certificate_not_found_after_upsert" }
   }

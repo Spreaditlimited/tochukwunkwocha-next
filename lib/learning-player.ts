@@ -415,6 +415,7 @@ export async function getLearningCourseForStudent(input: {
     LEFT JOIN tochukwu_learning_lesson_progress p ON p.lesson_id = l.id AND p.account_id = ${input.accountId}
     WHERE cm.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
       AND cm.is_active = 1
+      AND m.is_active = 1
       AND c.is_published = 1
       AND (c.release_at IS NULL OR c.release_at <= NOW())
     ORDER BY cm.sort_order ASC, cm.id ASC, l.lesson_order ASC, l.id ASC

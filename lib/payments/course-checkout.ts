@@ -185,12 +185,13 @@ export function familyEnrollmentEnabledForCourse(courseSlug: string) {
   return !disabled.includes(slug)
 }
 
-export function normalizeSeatCount(input: { buyerType?: unknown; seatCount?: unknown; courseSlug?: string }) {
+export function normalizeSeatCount(input: { buyerType?: unknown; seatCount?: unknown; courseSlug?: string; minimumFamilySeats?: unknown }) {
   const buyerType = normalizeBuyerType(input.buyerType)
   if (buyerType !== "family") return 1
   if (!familyEnrollmentEnabledForCourse(input.courseSlug || "")) return 1
-  const count = Math.round(Number(input.seatCount || 2))
-  return Math.max(2, Math.min(500, Number.isFinite(count) ? count : 2))
+  const minimum = Math.max(1, Math.min(2, Math.round(Number(input.minimumFamilySeats || 2))))
+  const count = Math.round(Number(input.seatCount || minimum))
+  return Math.max(minimum, Math.min(500, Number.isFinite(count) ? count : minimum))
 }
 
 function groupEnrollmentUnitPriceMinor(courseSlug: string, standardUnitMinor: number, seatCount: number, currency: string) {
@@ -251,9 +252,15 @@ async function findLearningCourse(courseSlug: string) {
   }
 }
 
+async function courseUsesImmediateAccess(courseSlug: string) {
+  if (IMMEDIATE_ACCESS_COURSE_SLUGS.has(courseSlug)) return true
+  const learningCourse = await findLearningCourse(courseSlug)
+  return String(learningCourse?.enrollment_mode || "").trim().toLowerCase() === "immediate"
+}
+
 export async function listCheckoutBatches(courseSlugInput: string): Promise<CheckoutBatch[]> {
   const courseSlug = normalizeCourse(courseSlugInput)
-  if (IMMEDIATE_ACCESS_COURSE_SLUGS.has(courseSlug)) return []
+  if (await courseUsesImmediateAccess(courseSlug)) return []
   const rows = await prisma.$queryRaw<CourseBatchRow[]>`
     SELECT course_slug, batch_key, batch_label, status, is_active, brevo_list_id, seat_limit, batch_start_at
     FROM course_batches
@@ -634,12 +641,21 @@ export async function checkoutContext(input: {
   batchKey?: unknown
   installment?: boolean
   manualTransfer?: boolean
+  minimumFamilySeats?: number
+  requireActiveBatch?: boolean
+  requireExplicitHolidayBatch?: boolean
 }) {
   const courseSlug = normalizeCourse(input.courseSlug)
   const buyerType = normalizeBuyerType(input.buyerType)
-  const seatCount = normalizeSeatCount({ buyerType, seatCount: input.seatCount, courseSlug })
+  const seatCount = normalizeSeatCount({ buyerType, seatCount: input.seatCount, courseSlug, minimumFamilySeats: input.minimumFamilySeats })
   const provider = input.provider || providerForCountry(input.country)
+  if (input.requireExplicitHolidayBatch && courseSlug === HOLIDAY_COURSE_SLUG && !normalizeBatchKey(input.batchKey)) {
+    throw new Error("Please choose a batch.")
+  }
   const batch = await resolveCheckoutBatch(courseSlug, input.batchKey)
+  if (input.requireActiveBatch && !(await courseUsesImmediateAccess(courseSlug)) && !batch) {
+    throw new Error("No active batch is available for this course.")
+  }
   await assertBatchCapacity(batch, seatCount)
   const result = await pricingWithCoupon({
     courseSlug,

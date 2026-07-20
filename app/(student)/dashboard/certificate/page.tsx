@@ -16,6 +16,7 @@ import { brand } from "@/lib/brand"
 import { certificateProjectNote } from "@/lib/certificate-verification"
 import { absoluteUrl } from "@/lib/site-seo"
 import { hasVerifiedStudentProjectProfile, listStudentProjectLinks } from "@/lib/student-project-links"
+import { getLearningCourseForStudent } from "@/lib/learning-player"
 import { courseName, getStudentCertificatePublic, listStudentCertificates, listStudentCourses, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
 import { formatDate } from "@/lib/utils"
@@ -155,13 +156,29 @@ export default async function StudentCertificatesPage({
     listStudentProjectLinks(session.account.id),
     hasVerifiedStudentProjectProfile(session.account.id)
   ])
-  const activeCourses = Array.from(
+  const activeCourseEntries = Array.from(
     new Map(
       courses
         .filter((course) => course.isActive)
         .map((course) => [course.courseSlug, { courseSlug: course.courseSlug, courseName: course.courseName }])
     ).values()
   )
+  const activeCourses = await Promise.all(activeCourseEntries.map(async (course) => {
+    const result = await getLearningCourseForStudent({
+      accountId: session.account.id,
+      email: session.account.email,
+      courseSlug: course.courseSlug
+    }).catch(() => null)
+    const progress = result?.ok
+      ? result.course.progress
+      : { completedLessons: 0, totalLessons: 0, completionPercent: 0 }
+    return {
+      ...course,
+      completedLessons: progress.completedLessons,
+      totalLessons: progress.totalLessons,
+      completionPercent: progress.completionPercent
+    }
+  }))
   const certificateOptions = certificates.map((certificate) => ({
     certificateNo: certificate.certificateNo,
     courseSlug: certificate.courseSlug,

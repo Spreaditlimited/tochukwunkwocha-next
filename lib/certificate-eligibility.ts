@@ -8,6 +8,11 @@ export const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
 export async function ensureCertificateEligibilityColumns() {
   await addColumnIfMissing(
     "tochukwu_learning_assignments",
+    "certificate_batch_key",
+    "VARCHAR(64) NOT NULL DEFAULT ''"
+  )
+  await addColumnIfMissing(
+    "tochukwu_learning_assignments",
     "certificate_eligible_at_submission",
     "TINYINT(1) NULL"
   )
@@ -37,6 +42,45 @@ export async function ensureCertificateEligibilityColumns() {
       AND submission_kind = 'link'
       AND submission_text = ${CERTIFICATE_PROOF_MARKER}
   `)
+}
+
+export async function getLearnerCertificateBatchKey(accountId: bigint, email: string, courseSlug: string) {
+  const normalizedEmail = String(email || "").trim().toLowerCase()
+  const rows = await prisma.$queryRaw<Array<{ batchKey: string | null; enrolledAt: Date | null }>>(Prisma.sql`
+    SELECT batchKey, enrolledAt
+    FROM (
+      SELECT e.batch_key AS batchKey, COALESCE(e.paid_at, e.updated_at, e.created_at) AS enrolledAt
+      FROM family_child_enrollments e
+      JOIN family_children c ON c.id = e.child_id
+      JOIN family_accounts f ON f.id = e.family_id
+      WHERE c.account_id = ${accountId}
+        AND c.status = 'active'
+        AND f.status = 'active'
+        AND e.status = 'active'
+        AND e.course_slug = ${courseSlug}
+
+      UNION ALL
+
+      SELECT o.batch_key AS batchKey, COALESCE(o.paid_at, o.updated_at, o.created_at) AS enrolledAt
+      FROM course_orders o
+      WHERE LOWER(o.email) = ${normalizedEmail}
+        AND o.course_slug = ${courseSlug}
+        AND o.status = 'paid'
+        AND COALESCE(o.buyer_type, 'student') <> 'family'
+
+      UNION ALL
+
+      SELECT m.batch_key AS batchKey, COALESCE(m.reviewed_at, m.updated_at, m.created_at) AS enrolledAt
+      FROM course_manual_payments m
+      WHERE LOWER(m.email) = ${normalizedEmail}
+        AND m.course_slug = ${courseSlug}
+        AND m.status = 'approved'
+        AND COALESCE(m.buyer_type, 'student') <> 'family'
+    ) enrollments
+    ORDER BY enrolledAt DESC
+    LIMIT 1
+  `)
+  return String(rows[0]?.batchKey || "").trim().toLowerCase().slice(0, 64)
 }
 
 export async function getCertificateCourseCompletion(accountId: bigint, courseSlug: string) {

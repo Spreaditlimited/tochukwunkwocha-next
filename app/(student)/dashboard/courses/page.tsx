@@ -15,6 +15,7 @@ import {
 import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/student-dashboard/BatchSwitchPanel"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
+import { getLearningCourseForStudent } from "@/lib/learning-player"
 import {
   formatMinorCurrency,
   hasPendingManualPayment,
@@ -42,6 +43,21 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
   const session = await requireStudent()
   const params = searchParams ? await searchParams : {}
   const courses = await listStudentCourses(session.account.email, session.account.id)
+  const progressEntries = await Promise.all(courses.map(async (course) => {
+    if (!course.isActive) return [course.courseSlug, { completedLessons: 0, totalLessons: 0, completionPercent: 0 }] as const
+    const result = await getLearningCourseForStudent({
+      accountId: session.account.id,
+      email: session.account.email,
+      courseSlug: course.courseSlug
+    }).catch(() => null)
+    return [
+      course.courseSlug,
+      result?.ok
+        ? result.course.progress
+        : { completedLessons: 0, totalLessons: 0, completionPercent: 0 }
+    ] as const
+  }))
+  const progressByCourse = new Map(progressEntries)
   const manualPaymentPending =
     String(params.manual_payment || "") === "pending" &&
     (await hasPendingManualPayment(session.account.email))
@@ -121,6 +137,11 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
               const firstLessonLabel = course.firstRecordedLessonAvailableAt
                 ? formatDateTimeWAT(course.firstRecordedLessonAvailableAt)
                 : ""
+              const progress = progressByCourse.get(course.courseSlug) || {
+                completedLessons: 0,
+                totalLessons: 0,
+                completionPercent: 0
+              }
 
               return (
                 <StudentDashboardCard 
@@ -200,6 +221,13 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                               : "Pending approval"}
                         </p>
                       </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-border bg-background/50 p-5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course Progress</p>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        {progress.completedLessons}/{progress.totalLessons} lessons completed ({progress.completionPercent}%).
+                      </p>
                     </div>
                   </div>
 

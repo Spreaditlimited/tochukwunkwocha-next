@@ -110,6 +110,8 @@ export interface FamilySeatRow {
 export interface FamilyChildRow {
   childId: number
   childUuid: string
+  accountId: number
+  accountEmail: string
   fullName: string
   age: string
   classLevel: string
@@ -190,6 +192,7 @@ export interface LearningCourseOption {
 export interface LearningCourseBatchOption {
   batchKey: string
   batchLabel: string
+  batchStartAt: string | null
   remainingSeats: number | null
   isActive: boolean
 }
@@ -509,6 +512,28 @@ export async function listStudentPaymentRecords(email: string): Promise<StudentO
   return courseItemsFromAccessRows(rows)
 }
 
+export async function countStudentPaymentTransactions(email: string) {
+  const normalized = String(email || "").trim().toLowerCase()
+  if (!normalized) return 0
+
+  const [cardRows, manualRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+      SELECT COUNT(DISTINCT COALESCE(order_uuid, CONCAT('order_', id))) AS total
+      FROM course_orders
+      WHERE LOWER(email) = ${normalized}
+        AND LOWER(COALESCE(status, '')) IN ('paid', 'success', 'completed')
+    `),
+    prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+      SELECT COUNT(DISTINCT COALESCE(payment_uuid, CONCAT('manual_', id))) AS total
+      FROM course_manual_payments
+      WHERE LOWER(email) = ${normalized}
+        AND LOWER(COALESCE(status, '')) IN ('approved', 'paid', 'success', 'completed')
+    `)
+  ])
+
+  return Number(cardRows[0]?.total || 0) + Number(manualRows[0]?.total || 0)
+}
+
 function isPaidStatus(status: string) {
   return ["paid", "approved", "success", "completed"].includes(String(status || "").toLowerCase())
 }
@@ -696,6 +721,7 @@ export async function hasPendingGroupManualPayment(email: string) {
 export async function getStudentOverview(accountId: bigint, email: string) {
   const courses = await listStudentCourses(email, accountId)
   const paymentRecords = await listStudentPaymentRecords(email)
+  const paymentCount = await countStudentPaymentTransactions(email)
   const family = await getFamilyDashboard(accountId).catch(() => ({ family: null, seats: [], children: [] }))
   const domains = await listStudentDomains(accountId).catch(() => [])
   const projects = await listStudentProjects(email).catch(() => [])
@@ -704,6 +730,7 @@ export async function getStudentOverview(accountId: bigint, email: string) {
   return {
     courses,
     paymentRecords,
+    paymentCount,
     family,
     domains,
     projects,
@@ -741,6 +768,8 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
     SELECT
       CAST(c.id AS SIGNED) AS childId,
       COALESCE(c.child_uuid, '') AS childUuid,
+      CAST(COALESCE(c.account_id, 0) AS SIGNED) AS accountId,
+      COALESCE(a.email, '') AS accountEmail,
       COALESCE(c.full_name, '') AS fullName,
       COALESCE(c.age, '') AS age,
       COALESCE(c.class_level, '') AS classLevel,
@@ -753,6 +782,7 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
       COALESCE(e.status, '') AS enrollmentStatus,
       e.paid_at AS paidAt
     FROM family_children c
+    LEFT JOIN student_accounts a ON a.id = c.account_id
     LEFT JOIN family_child_enrollments e ON e.child_id = c.id
     WHERE c.family_id = ${family.id}
       AND c.parent_account_id = ${parentAccountId}
@@ -789,7 +819,8 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
     })),
     children: children.map((child) => ({
       ...child,
-      childId: Number(child.childId || 0)
+      childId: Number(child.childId || 0),
+      accountId: Number(child.accountId || 0)
     }))
   }
 }
@@ -842,6 +873,7 @@ export async function listActiveLearningCourseOptions(): Promise<LearningCourseO
       courseSlug: string
       batchKey: string
       batchLabel: string
+      batchStartAt: Date | string | null
       seatLimit: number | bigint | null
       isActive: number | bigint | boolean | null
       enrolledCount: number | bigint | null
@@ -851,6 +883,7 @@ export async function listActiveLearningCourseOptions(): Promise<LearningCourseO
       b.course_slug AS courseSlug,
       b.batch_key AS batchKey,
       b.batch_label AS batchLabel,
+      b.batch_start_at AS batchStartAt,
       b.seat_limit AS seatLimit,
       b.is_active AS isActive,
       (
@@ -887,6 +920,9 @@ export async function listActiveLearningCourseOptions(): Promise<LearningCourseO
     const batch: LearningCourseBatchOption = {
       batchKey: cleanText(row.batchKey, 64),
       batchLabel: cleanText(row.batchLabel, 120) || cleanText(row.batchKey, 64),
+      batchStartAt: row.batchStartAt instanceof Date
+        ? row.batchStartAt.toISOString()
+        : cleanText(row.batchStartAt, 40) || null,
       remainingSeats: seatLimit === null ? null : Math.max(0, seatLimit - enrolledCount),
       isActive: Boolean(Number(row.isActive || 0))
     }
