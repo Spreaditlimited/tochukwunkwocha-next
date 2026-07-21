@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { Cookie, SlidersHorizontal, X } from "lucide-react"
 
 const STORAGE_KEY = "tochukwu_cookie_consent"
+const STATIC_SITE_STORAGE_KEY = "tws_cookie_consent"
 const COOKIE_NAME = "tochukwu_cookie_consent"
 
 type ConsentChoice = "accepted" | "rejected"
@@ -14,6 +15,10 @@ function readStoredChoice() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
     if (stored === "accepted" || stored === "rejected") return stored
+
+    const staticSiteChoice = window.localStorage.getItem(STATIC_SITE_STORAGE_KEY)
+    if (staticSiteChoice === "granted") return "accepted"
+    if (staticSiteChoice === "denied") return "rejected"
   } catch (_error) {}
   const cookie = document.cookie
     .split(";")
@@ -26,6 +31,7 @@ function readStoredChoice() {
 function saveChoice(choice: ConsentChoice) {
   try {
     window.localStorage.setItem(STORAGE_KEY, choice)
+    window.localStorage.setItem(STATIC_SITE_STORAGE_KEY, choice === "accepted" ? "granted" : "denied")
   } catch (_error) {}
   document.cookie = `${COOKIE_NAME}=${encodeURIComponent(choice)}; Max-Age=${60 * 60 * 24 * 180}; Path=/; SameSite=Lax`
   window.dispatchEvent(new CustomEvent("tochukwu-cookie-consent", { detail: { choice } }))
