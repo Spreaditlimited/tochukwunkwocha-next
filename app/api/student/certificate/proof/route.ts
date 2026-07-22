@@ -85,23 +85,25 @@ async function courseFeatures(courseSlug: string) {
   const rows = await prisma.$queryRaw<
     Array<{ certificateProofRequired: number | bigint | boolean | null; certificateProofType: string | null }>
   >`
-    SELECT certificate_proof_required AS certificateProofRequired,
-           certificate_proof_type AS certificateProofType
-    FROM tochukwu_learning_courses
-    WHERE course_slug = ${courseSlug}
+    SELECT f.certificate_proof_required AS certificateProofRequired,
+           f.certificate_proof_type AS certificateProofType
+    FROM tochukwu_learning_course_features f
+    JOIN tochukwu_learning_courses c
+      ON c.course_slug COLLATE utf8mb4_unicode_ci = f.course_slug COLLATE utf8mb4_unicode_ci
+    WHERE f.course_slug = ${courseSlug}
       AND NOT EXISTS (
         SELECT 1
         FROM tochukwu_learning_modules lm
-        WHERE lm.module_slug COLLATE utf8mb4_unicode_ci = tochukwu_learning_courses.course_slug COLLATE utf8mb4_unicode_ci
-           OR lm.module_title COLLATE utf8mb4_unicode_ci = tochukwu_learning_courses.course_title COLLATE utf8mb4_unicode_ci
+        WHERE lm.module_slug COLLATE utf8mb4_unicode_ci = c.course_slug COLLATE utf8mb4_unicode_ci
+           OR lm.module_title COLLATE utf8mb4_unicode_ci = c.course_title COLLATE utf8mb4_unicode_ci
       )
-      AND tochukwu_learning_courses.course_slug NOT REGEXP ${dayLevelCourseSlugRegex}
+      AND c.course_slug NOT REGEXP ${dayLevelCourseSlugRegex}
       AND (
-        tochukwu_learning_courses.course_slug IN (${configuredLearningCourseSlugSql()})
+        c.course_slug IN (${configuredLearningCourseSlugSql()})
         OR EXISTS (
           SELECT 1
           FROM course_batches cb
-          WHERE cb.course_slug COLLATE utf8mb4_unicode_ci = tochukwu_learning_courses.course_slug COLLATE utf8mb4_unicode_ci
+          WHERE cb.course_slug COLLATE utf8mb4_unicode_ci = c.course_slug COLLATE utf8mb4_unicode_ci
         )
       )
     LIMIT 1

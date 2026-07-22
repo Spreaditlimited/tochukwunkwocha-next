@@ -5,6 +5,24 @@ import { addColumnIfMissing } from "@/lib/schema-guards"
 
 export const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
 
+export async function getCertificateProofEnabledCourseSlugs(courseSlugs: string[]) {
+  const normalizedSlugs = Array.from(new Set(
+    courseSlugs
+      .map((courseSlug) => String(courseSlug || "").trim().toLowerCase().slice(0, 120))
+      .filter(Boolean)
+  ))
+  if (!normalizedSlugs.length) return []
+
+  const rows = await prisma.$queryRaw<Array<{ courseSlug: string }>>(Prisma.sql`
+    SELECT course_slug AS courseSlug
+    FROM tochukwu_learning_course_features
+    WHERE course_slug IN (${Prisma.join(normalizedSlugs)})
+      AND certificate_proof_required = 1
+      AND certificate_proof_type = 'website_link'
+  `)
+  return rows.map((row) => String(row.courseSlug || "").trim().toLowerCase()).filter(Boolean)
+}
+
 export async function ensureCertificateEligibilityColumns() {
   await addColumnIfMissing(
     "tochukwu_learning_assignments",

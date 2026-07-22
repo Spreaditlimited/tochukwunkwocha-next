@@ -13,6 +13,7 @@ import { StudentProjectLinksPanel } from "@/components/student-dashboard/Student
 import { PrintCertificateButton } from "@/components/schools/PrintCertificateButton"
 import { TrademarkText } from "@/components/TrademarkText"
 import { brand } from "@/lib/brand"
+import { getCertificateProofEnabledCourseSlugs } from "@/lib/certificate-eligibility"
 import { certificateProjectNote } from "@/lib/certificate-verification"
 import { absoluteUrl } from "@/lib/site-seo"
 import { hasVerifiedStudentProjectProfile, listStudentProjectLinks } from "@/lib/student-project-links"
@@ -179,6 +180,10 @@ export default async function StudentCertificatesPage({
       completionPercent: progress.completionPercent
     }
   }))
+  const certificateProofEnabledSlugs = new Set(
+    await getCertificateProofEnabledCourseSlugs(activeCourses.map((course) => course.courseSlug))
+  )
+  const certificateProofCourses = activeCourses.filter((course) => certificateProofEnabledSlugs.has(course.courseSlug))
   const certificateOptions = certificates.map((certificate) => ({
     certificateNo: certificate.certificateNo,
     courseSlug: certificate.courseSlug,
@@ -280,7 +285,7 @@ export default async function StudentCertificatesPage({
         <CertificateActionsPanel
           certificateNameConfirmedAt={session.account.certificateNameConfirmedAt?.toISOString() || null}
           certificateName={session.account.fullName}
-          courses={activeCourses}
+          courses={certificateProofCourses}
           certificateContent={certificateContent}
         />
       </div>
