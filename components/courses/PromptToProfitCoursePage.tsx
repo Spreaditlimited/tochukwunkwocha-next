@@ -23,6 +23,7 @@ import {
 import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
@@ -644,7 +645,7 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
             <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 hidden w-32 bg-gradient-to-r from-brand-ink to-transparent lg:block" />
             <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 hidden w-32 bg-gradient-to-l from-brand-ink to-transparent lg:block" />
 
-            <div className="grid gap-6 px-5 pb-8 pt-4 sm:px-6 md:flex md:snap-x md:snap-mandatory md:overflow-x-auto lg:px-8 md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden">
+            <div className="grid gap-6 px-5 pb-8 pt-4 sm:px-6 md:flex md:items-start md:snap-x md:snap-mandatory md:overflow-x-auto lg:px-8 md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden">
               {testimonials.map((testimonial) => (
                 <article
                   key={testimonial.name}
@@ -656,9 +657,7 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
                         <Star key={i} className="h-4 w-4 fill-current" />
                       ))}
                     </div>
-                    <p className="text-base leading-relaxed text-slate-300 sm:text-lg">
-                      "<TrademarkText text={testimonial.quote} />"
-                    </p>
+                    <TestimonialQuote quote={testimonial.quote} />
                   </div>
 
                   <div className="mt-10 flex items-center gap-4 border-t border-white/10 pt-6">

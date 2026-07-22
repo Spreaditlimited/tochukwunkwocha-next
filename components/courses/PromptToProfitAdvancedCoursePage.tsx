@@ -17,6 +17,7 @@ import {
   Rocket,
   ShieldCheck,
   Smartphone,
+  Star,
   Terminal,
   Video
 } from "lucide-react"
@@ -24,6 +25,7 @@ import {
 import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { getCourse } from "@/lib/public-offers"
 
@@ -78,7 +80,7 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
   const testimonials = [
     {
       name: "Okoyeocha Uchenna",
-      role: "Prompt to Profit Student",
+      role: "Prompt to Profit Advanced Student",
       image: "/testimonials/okoyeocha.png",
       quote: "Done with the Basic class and currently on the Advance class, and honestly, I am already proud of myself seeing the amazing things I can do with AI. And for the tutor? He's the best of the best."
     },
@@ -90,10 +92,22 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
       quote: "Mr. Tochukwu is a patient teacher. He is calm and understanding, always willing to explain again to students who have a hard time catching up. The class is enlightening as well. My daughter can do so much now with the things she has learned and I'm glad I enrolled her in this course."
     },
     {
-      name: "Adedayo Adewoye",
-      role: "Prompt to Profit Student",
-      image: "/testimonials/adedayo-adewoye.png",
-      quote: "This was a really impactful training session. I never knew one could do so much in website and application development using AI. This course however, helped me learn this in just 5 days and I have been perfecting it ever since then. I gladly recommend the programmes to anyone else who wants to learn how to use AI for building solutions."
+      name: "Francis Balogun",
+      role: "Prompt to Profit Advanced Student",
+      image: "/testimonials/francis balogun.JPG",
+      quote: "Just wanted to say a massive thank you! Enrolling in your build-it-yourself course was a complete turning point.\n\nApplying what you taught allowed me to build my first restaurant margin intelligence solution, and now I’ve built Flock, a church management platform. Your practical approach made all the difference.\n\nYour course literally shifted me from thinking about ideas to shipping actual products."
+    },
+    {
+      name: "Louis Obinna Odionye",
+      role: "Prompt to Profit Advanced Student",
+      image: "/testimonials/louis obinna odionye.JPG",
+      quote: "Hello Mr. Tochukwu, I just wanted to say a big thank you for your Prompt to Profit Advanced Class. Through your AI-powered web and mobile app development training, I've gone from learning the concepts to actually building my own inventory management application, LOTrack.\n\nThe knowledge, practical approach, and guidance you shared gave me the confidence to turn an idea into a real product. I'm still improving it, but I'm proud of how far I've come, and I couldn't have achieved this without your training.\n\nThank you once again for your dedication and for inspiring us to build with AI. I truly appreciate your impact.\n\nGod bless you, sir."
+    },
+    {
+      name: "Anaekee Paschal Ifechukwu",
+      role: "Prompt to Profit Advanced Student",
+      image: "/testimonials/Anaekee Paschal Ifechukwu.JPG",
+      quote: "Firstly when I initially started this advanced class I was really nervous 😬. I was always saying “God pls let me not disappoint oo” but along the line I saw this was way easier than I thought only if u have proper guidance.\n\nI remembered you would always say “Don’t be scared” and today I can confidently stand anywhere and say I can develop a wonderful website.\n\nAll thanks to you sir, you are a rare gem 💎."
     }
   ]
 
@@ -368,49 +382,68 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
         </div>
       </section>
 
-      <section className="bg-muted/20 py-20 lg:py-28">
-        <div className={sectionContainer}>
-          <div className="mx-auto mb-16 max-w-3xl text-center">
-            <p className="eyebrow text-sky-500">Real Results</p>
-            <h2 className="mt-3 font-heading text-3xl font-black tracking-tight sm:text-4xl">
-              Hear from my past students
+      <section className="relative overflow-hidden bg-brand-ink py-20 text-white lg:py-32">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[300px] w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 bg-sky-500/20 blur-[120px]" />
+
+        <div className="relative z-10">
+          <div className={`${sectionContainer} mb-12 text-center`}>
+            <div className="mx-auto mb-6 inline-flex items-center justify-center gap-1 text-yellow-400">
+              {[...Array(5)].map((_, i) => (
+                <Star key={i} className="h-6 w-6 fill-yellow-400" />
+              ))}
+            </div>
+            <h2 className="font-heading text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+              What our builders are saying
             </h2>
-            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
-              <TrademarkText text="See what past students of my basic AI course are saying. Join Prompt to Profit Advanced and experience practical AI training explained simply." />
+            <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
+              Join hundreds of learners who have transformed their ideas into live platforms.
             </p>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-3">
-            {testimonials.map((testimonial) => (
-              <article key={testimonial.name} className="surface-raised relative bg-brand-ink p-8 text-white sm:p-10">
-                <div className="absolute right-8 top-6 font-serif text-6xl leading-none text-white/10">"</div>
-                <div className="relative z-10 flex items-center gap-4">
-                  <Image
-                    src={testimonial.image}
-                    alt={testimonial.name}
-                    width={56}
-                    height={56}
-                    className="h-14 w-14 rounded-full object-cover ring-2 ring-white/10"
-                  />
+          <div className="relative max-w-[100vw] overflow-hidden">
+            <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 hidden w-32 bg-gradient-to-r from-brand-ink to-transparent lg:block" />
+            <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 hidden w-32 bg-gradient-to-l from-brand-ink to-transparent lg:block" />
+
+            <div className="grid gap-6 px-5 pb-8 pt-4 sm:px-6 md:flex md:items-start md:snap-x md:snap-mandatory md:overflow-x-auto lg:px-8 md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden">
+              {testimonials.map((testimonial) => (
+                <article
+                  key={testimonial.name}
+                  className="flex w-full min-w-0 flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.02] p-8 shadow-xl backdrop-blur-sm transition-colors hover:bg-white/[0.04] md:w-[420px] md:flex-none md:snap-center"
+                >
                   <div>
-                    {testimonial.href ? (
-                      <Link
-                        href={testimonial.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[15px] font-bold text-white no-underline transition-colors hover:text-sky-300"
-                      >
-                        {testimonial.name}
-                      </Link>
-                    ) : (
-                      <h3 className="text-[15px] font-bold text-white">{testimonial.name}</h3>
-                    )}
-                    <p className="mt-1 font-mono text-xs text-slate-500"><TrademarkText text={testimonial.role} /></p>
+                    <div className="mb-6 flex gap-1 text-yellow-400">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} className="h-4 w-4 fill-current" />
+                      ))}
+                    </div>
+                    <TestimonialQuote quote={testimonial.quote} />
                   </div>
-                </div>
-                <p className="relative z-10 mt-8 text-[15px] leading-7 text-slate-300">{testimonial.quote}</p>
-              </article>
-            ))}
+
+                  <div className="mt-10 flex items-center gap-4 border-t border-white/10 pt-6">
+                    <div className="relative h-12 w-12 shrink-0">
+                      <Image
+                        src={testimonial.image}
+                        alt={testimonial.name}
+                        fill
+                        className="rounded-full object-cover shadow-lg ring-2 ring-white/20"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      {testimonial.href ? (
+                        <Link href={testimonial.href} target="_blank" rel="noopener noreferrer" className="block truncate text-sm font-bold text-white transition-colors hover:text-sky-400">
+                          {testimonial.name}
+                        </Link>
+                      ) : (
+                        <h3 className="truncate text-sm font-bold text-white">{testimonial.name}</h3>
+                      )}
+                      <p className="mt-1 truncate font-mono text-xs tracking-wide text-sky-400">
+                        <TrademarkText text={testimonial.role} />
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
         </div>
       </section>
