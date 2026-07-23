@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { getMarketingDashboard, type MarketingChartRow } from "@/lib/marketing"
 import { requireAdmin } from "@/lib/auth"
 import { formatDate } from "@/lib/utils"
@@ -151,31 +152,15 @@ export default async function MarketingPage({ searchParams }: PageProps) {
       <MetaAdsCampaignBuilder isOwner={session.isOwner} />
 
       {/* Summary Metrics */}
+      <DashboardStatsVisibility storageKey="tochukwu-internal-marketing-stats">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (
-          <article 
-            key={card.label} 
-            className={`group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5 ${card.border}`}
-          >
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                {card.label}
-              </p>
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.bg} ${card.color} transition-transform group-hover:scale-110`}>
-                <card.icon className="h-5 w-5" />
-              </span>
-            </div>
-            <div className="mt-6">
-              <p className="font-heading text-4xl font-black text-foreground">
-                {formatNumber(card.value)}
-              </p>
-              <p className="mt-1.5 text-xs font-medium text-muted-foreground">
-                {card.desc}
-              </p>
-            </div>
-          </article>
+          <DashboardStatCard key={card.label} statKey={card.label} label={card.label}
+            value={formatNumber(card.value)} description={card.desc} icon={<card.icon className="h-5 w-5" />}
+            iconClassName={`${card.bg} ${card.color}`} className={card.border} valueClassName="text-4xl" />
         ))}
       </section>
+      </DashboardStatsVisibility>
 
       {/* Primary Charts */}
       <section className="grid gap-6 xl:grid-cols-3">

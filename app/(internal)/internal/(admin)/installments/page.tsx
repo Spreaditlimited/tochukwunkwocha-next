@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 
@@ -123,37 +124,15 @@ export default async function InternalInstallmentsPage() {
       </div>
 
       {/* Summary Metrics */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Plans</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
-              <WalletCards className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{plans.length}</p>
+      <DashboardStatsVisibility storageKey="tochukwu-internal-installments-stats">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <DashboardStatCard statKey="Total Plans" label="Total Plans" value={plans.length} icon={<WalletCards className="h-5 w-5" />} valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Active Open" label="Active / Open" value={activePlans} icon={<Activity className="h-5 w-5" />}
+            iconClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400" valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Completed" label="Completed" value={completedPlans} icon={<CheckCircle2 className="h-5 w-5" />}
+            iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="text-4xl" />
         </div>
-        
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active / Open</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 transition-transform group-hover:scale-110 dark:text-amber-400">
-              <Activity className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{activePlans}</p>
-        </div>
-
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Completed</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-transform group-hover:scale-110 dark:text-emerald-400">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{completedPlans}</p>
-        </div>
-      </div>
+      </DashboardStatsVisibility>
 
       {/* Active Plans List */}
       <section>

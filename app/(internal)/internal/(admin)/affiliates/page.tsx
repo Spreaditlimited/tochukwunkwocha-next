@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { listAffiliateAdminData } from "@/lib/admin-affiliates"
 import { formatDate } from "@/lib/utils"
 import { runAffiliatePayoutBatchAction, saveAffiliateCourseRuleAction } from "./actions"
@@ -288,25 +289,19 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
             </form>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <DashboardStatsVisibility storageKey="tochukwu-internal-affiliates-stats">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {data.commissionSummary.totalsByCurrency.length ? data.commissionSummary.totalsByCurrency.map((item) => (
-              <div key={item.currency} className="group flex flex-col justify-between rounded-xl border border-border bg-background p-5 transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{item.currency} Total Earned</p>
-                  <Wallet className="h-4 w-4 text-primary" />
-                </div>
-                <p className="mt-4 font-heading text-2xl font-black text-foreground">{money(item.earnedMinor, item.currency)}</p>
-                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  <span className="text-emerald-600 dark:text-emerald-400">Appr: {money(item.approvedMinor, item.currency)}</span>
-                  <span className="text-primary">Paid: {money(item.paidMinor, item.currency)}</span>
-                </div>
-              </div>
+              <DashboardStatCard key={item.currency} statKey={`${item.currency} commissions`} label={`${item.currency} Total Earned`}
+                value={<><span className="block">{money(item.earnedMinor, item.currency)}</span><span className="mt-2 block text-[10px] uppercase tracking-widest text-muted-foreground">Approved: {money(item.approvedMinor, item.currency)} · Paid: {money(item.paidMinor, item.currency)}</span></>}
+                icon={<Wallet className="h-4 w-4" />} className="bg-background" valueClassName="text-2xl" />
             )) : (
               <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 sm:col-span-2 lg:col-span-4">
                 <p className="text-sm font-semibold text-muted-foreground">No affiliate commissions recorded yet.</p>
               </div>
             )}
           </div>
+          </DashboardStatsVisibility>
         </div>
 
         <div className="max-h-[600px] overflow-auto bg-background scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">

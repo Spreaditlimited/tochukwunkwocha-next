@@ -16,6 +16,7 @@ import {
 
 import { listAvailableCallSlots, listBuildScorecardLeads, type BuildScorecardLead } from "@/lib/admin-build-service"
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { formatDate } from "@/lib/utils"
 import {
   bookBuildScorecardCallAction,
@@ -195,6 +196,7 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
       </div>
 
       {/* Primary Pulse Metrics */}
+      <DashboardStatsVisibility storageKey="tochukwu-internal-build-scorecards-stats">
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Total Submissions", value: leads.length, icon: ClipboardList, color: "text-primary", bg: "bg-primary/10", border: "hover:border-primary/40" },
@@ -202,17 +204,11 @@ export default async function InternalBuildScorecardsPage({ searchParams }: Page
           { label: "Paid Discovery", value: paid, icon: CreditCard, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", border: "hover:border-emerald-500/40" },
           { label: "Calls Booked", value: booked, icon: Calendar, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10", border: "hover:border-sky-500/40" }
         ].map((stat) => (
-          <div key={stat.label} className={`group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5 ${stat.border}`}>
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</p>
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.bg} ${stat.color} transition-transform group-hover:scale-110`}>
-                <stat.icon className="h-5 w-5" />
-              </div>
-            </div>
-            <p className="mt-6 font-heading text-3xl font-black text-foreground">{stat.value}</p>
-          </div>
+          <DashboardStatCard key={stat.label} statKey={stat.label} label={stat.label} value={stat.value}
+            icon={<stat.icon className="h-5 w-5" />} iconClassName={`${stat.bg} ${stat.color}`} className={stat.border} />
         ))}
       </section>
+      </DashboardStatsVisibility>
 
       {/* Main Ledger & Filtering */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

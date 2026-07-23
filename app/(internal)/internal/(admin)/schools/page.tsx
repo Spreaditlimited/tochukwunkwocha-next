@@ -15,6 +15,7 @@ import {
 
 import { prisma } from "@/lib/prisma"
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 import { updateSchoolAccountAction } from "./actions"
@@ -133,39 +134,17 @@ export default async function InternalSchoolsPage() {
       </div>
 
       {/* Primary Pulse Metrics */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Schools</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-transform group-hover:scale-110 dark:text-emerald-400">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{activeSchools}</p>
-        </div>
-        
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Global Seats Used</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
-              <UsersRound className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">
-            {seatsUsed} <span className="text-xl font-medium text-muted-foreground">/ {seatsPurchased}</span>
-          </p>
-        </div>
-
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-sky-500/40 hover:shadow-lg hover:shadow-sky-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Accounts</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 transition-transform group-hover:scale-110 dark:text-sky-400">
-              <Building2 className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{schools.length}</p>
-        </div>
-      </section>
+      <DashboardStatsVisibility storageKey="tochukwu-internal-schools-stats">
+        <section className="grid gap-4 sm:grid-cols-3">
+          <DashboardStatCard statKey="Active Schools" label="Active Schools" value={activeSchools} icon={<CheckCircle2 className="h-5 w-5" />}
+            iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Global Seats Used" label="Global Seats Used"
+            value={<>{seatsUsed} <span className="text-xl font-medium text-muted-foreground">/ {seatsPurchased}</span></>}
+            icon={<UsersRound className="h-5 w-5" />} valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Total Accounts" label="Total Accounts" value={schools.length} icon={<Building2 className="h-5 w-5" />}
+            iconClassName="bg-sky-500/10 text-sky-600 dark:text-sky-400" valueClassName="text-4xl" />
+        </section>
+      </DashboardStatsVisibility>
 
       {/* Main Registry */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

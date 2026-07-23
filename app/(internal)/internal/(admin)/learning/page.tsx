@@ -27,6 +27,7 @@ import {
   saveCourseFeaturesAction
 } from "./actions"
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 
 export const dynamic = "force-dynamic"
 
@@ -111,37 +112,15 @@ export default async function InternalLearningSupportPage() {
       </div>
 
       {/* Primary Pulse Metrics */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Courses</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
-              <BookOpen className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{courses.length}</p>
-        </div>
-        
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pending Reviews</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 transition-transform group-hover:scale-110 dark:text-amber-400">
-              <Clock className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{pendingCount}</p>
-        </div>
-
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Certificate Proofs</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-transform group-hover:scale-110 dark:text-emerald-400">
-              <Award className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{certificateProofCount}</p>
-        </div>
-      </section>
+      <DashboardStatsVisibility storageKey="tochukwu-internal-learning-stats">
+        <section className="grid gap-4 sm:grid-cols-3">
+          <DashboardStatCard statKey="Total Courses" label="Total Courses" value={courses.length} icon={<BookOpen className="h-5 w-5" />} valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Pending Reviews" label="Pending Reviews" value={pendingCount} icon={<Clock className="h-5 w-5" />}
+            iconClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400" valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Certificate Proofs" label="Certificate Proofs" value={certificateProofCount} icon={<Award className="h-5 w-5" />}
+            iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="text-4xl" />
+        </section>
+      </DashboardStatsVisibility>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
         {/* Student Support Actions */}

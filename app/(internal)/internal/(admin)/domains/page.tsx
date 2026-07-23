@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { ensureDomainRequestTables } from "@/lib/student-domain-actions"
@@ -172,43 +173,18 @@ export default async function InternalDomainsPage() {
       </div>
 
       {/* Primary Pulse Metrics */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Portfolio</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
-              <Globe className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{domains.length}</p>
-        </div>
-        
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Successfully Registered</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-transform group-hover:scale-110 dark:text-emerald-400">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{registered}</p>
-        </div>
-
-        <div className={`group flex flex-col justify-between rounded-xl border p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
-          renewalsDue > 0 
-            ? "border-rose-500/30 bg-rose-500/5 hover:border-rose-500/50 hover:shadow-rose-500/10" 
-            : "border-border bg-card hover:border-primary/40 hover:shadow-primary/5"
-        }`}>
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Renewals Due (30d)</p>
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-110 ${
-              renewalsDue > 0 ? "bg-rose-500/10 text-rose-600 dark:text-rose-400" : "bg-muted text-muted-foreground"
-            }`}>
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{renewalsDue}</p>
-        </div>
-      </section>
+      <DashboardStatsVisibility storageKey="tochukwu-internal-domains-stats">
+        <section className="grid gap-4 sm:grid-cols-3">
+          <DashboardStatCard statKey="Total Portfolio" label="Total Portfolio" value={domains.length}
+            icon={<Globe className="h-5 w-5" />} valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Successfully Registered" label="Successfully Registered" value={registered}
+            icon={<CheckCircle2 className="h-5 w-5" />} iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Renewals Due" label="Renewals Due (30d)" value={renewalsDue}
+            icon={<AlertTriangle className="h-5 w-5" />}
+            iconClassName={renewalsDue > 0 ? "bg-rose-500/10 text-rose-600 dark:text-rose-400" : "bg-muted text-muted-foreground"}
+            className={renewalsDue > 0 ? "border-rose-500/30 bg-rose-500/5" : ""} valueClassName="text-4xl" />
+        </section>
+      </DashboardStatsVisibility>
 
       {/* Active Domains Directory */}
       <section>

@@ -18,6 +18,11 @@ import {
 import { prisma } from "@/lib/prisma"
 import { ensureStudentDemographicColumns } from "@/lib/student-auth"
 import { requireAdmin } from "@/lib/auth"
+import {
+  DashboardStatsVisibility,
+  DashboardStatToggle,
+  DashboardStatValue
+} from "@/components/dashboard/DashboardStatsVisibility"
 
 export const dynamic = "force-dynamic"
 
@@ -252,63 +257,79 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Primary Pulse Metrics */}
-      <section>
-        <h2 className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Primary Pulse</h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {primaryCards.map((card) => {
-            const Icon = card.icon
-            return (
-              <Link 
-                href={card.href} 
-                className={`group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5 ${card.border}`} 
-                key={card.label}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    {card.label}
+      <DashboardStatsVisibility storageKey="tochukwu-internal-dashboard-stats-visibility">
+        {/* Primary Pulse Metrics */}
+        <section>
+          <h2 className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Primary Pulse</h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {primaryCards.map((card) => {
+              const Icon = card.icon
+              return (
+                <article
+                  className={`group relative flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5 ${card.border}`}
+                  key={card.label}
+                >
+                  <Link
+                    href={card.href}
+                    aria-label={`Open ${card.label}`}
+                    className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  />
+                  <div className="pointer-events-none relative z-10 flex items-center justify-between gap-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      {card.label}
+                    </p>
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.bg} ${card.color} transition-transform group-hover:scale-110`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                  </div>
+                  <p className="pointer-events-none relative z-10 mt-6 pr-12 font-heading text-4xl font-black text-foreground">
+                    <DashboardStatValue statKey={`primary:${card.label}`}>{card.value}</DashboardStatValue>
                   </p>
-                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.bg} ${card.color} transition-transform group-hover:scale-110`}>
-                    <Icon className="h-5 w-5" />
-                  </span>
-                </div>
-                <p className="mt-6 font-heading text-4xl font-black text-foreground">
-                  {card.value}
-                </p>
-              </Link>
-            )
-          })}
-        </div>
-      </section>
+                  <div className="absolute bottom-5 right-5 z-20">
+                    <DashboardStatToggle statKey={`primary:${card.label}`} />
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
 
-      {/* Secondary Metrics */}
-      <section>
-        <h2 className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Secondary Metrics</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {secondaryCards.map((card) => {
-            const Icon = card.icon
-            return (
-              <Link 
-                href={card.href} 
-                className="group flex items-center justify-between gap-4 rounded-xl border border-border bg-background p-5 transition-all hover:border-primary/40 hover:bg-muted/30" 
-                key={card.label}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-foreground">
-                    {card.label}
-                  </p>
-                  <p className="mt-1 font-heading text-2xl font-black text-foreground">
-                    {card.value}
-                  </p>
-                </div>
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50 transition-colors group-hover:bg-background ${card.color}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-      </section>
+        {/* Secondary Metrics */}
+        <section>
+          <h2 className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Secondary Metrics</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {secondaryCards.map((card) => {
+              const Icon = card.icon
+              return (
+                <article
+                  className="group relative flex min-h-32 items-center justify-between gap-4 rounded-xl border border-border bg-background p-5 pr-20 transition-all hover:border-primary/40 hover:bg-muted/30"
+                  key={card.label}
+                >
+                  <Link
+                    href={card.href}
+                    aria-label={`Open ${card.label}`}
+                    className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  />
+                  <div className="pointer-events-none relative z-10 min-w-0">
+                    <p className="truncate text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-foreground">
+                      {card.label}
+                    </p>
+                    <p className="mt-1 font-heading text-2xl font-black text-foreground">
+                      <DashboardStatValue statKey={`secondary:${card.label}`}>{card.value}</DashboardStatValue>
+                    </p>
+                  </div>
+                  <div className={`pointer-events-none absolute right-5 top-4 z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50 transition-colors group-hover:bg-background ${card.color}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="absolute bottom-4 right-5 z-20">
+                    <DashboardStatToggle statKey={`secondary:${card.label}`} />
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      </DashboardStatsVisibility>
 
       {/* Operational Shortcuts */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

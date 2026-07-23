@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import {
   getStudentCourseProgressDetail,
   listLearningProgressCourseOptions,
@@ -97,39 +98,16 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
       </div>
 
       {/* Primary Metrics Grid */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Cohort Students</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
-              <UsersRound className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{progress.students.length}</p>
-        </div>
-        
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Course Lessons</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 transition-transform group-hover:scale-110 dark:text-amber-400">
-              <PlaySquare className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 font-heading text-4xl font-black text-foreground">{progress.totalLessons}</p>
-        </div>
-
-        <div className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Target Course</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition-transform group-hover:scale-110 dark:text-emerald-400">
-              <BookOpen className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-6 truncate font-heading text-2xl font-black text-foreground" title={progress.courseSlug}>
-            {progress.courseSlug}
-          </p>
-        </div>
-      </section>
+      <DashboardStatsVisibility storageKey="tochukwu-internal-learning-progress-stats">
+        <section className="grid gap-4 sm:grid-cols-3">
+          <DashboardStatCard statKey="Active Cohort Students" label="Active Cohort Students" value={progress.students.length}
+            icon={<UsersRound className="h-5 w-5" />} valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Total Course Lessons" label="Total Course Lessons" value={progress.totalLessons}
+            icon={<PlaySquare className="h-5 w-5" />} iconClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400" valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Target Course" label="Target Course" value={progress.courseSlug}
+            icon={<BookOpen className="h-5 w-5" />} iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="truncate text-2xl" />
+        </section>
+      </DashboardStatsVisibility>
 
       {/* Main Ledger / Directory */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

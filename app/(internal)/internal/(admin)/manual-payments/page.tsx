@@ -19,6 +19,7 @@ import {
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { TrademarkText } from "@/components/TrademarkText"
 import { ScrollPreservingGetForm } from "@/components/internal/ScrollPreservingGetForm"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import {
   enrollmentDashboardSummary,
   enrollmentSummary,
@@ -203,6 +204,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
         </div>
       </div>
 
+      <DashboardStatsVisibility storageKey="tochukwu-internal-manual-payments-stats">
       {/* Enrollment Summary */}
       <section className="order-[-1] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-t-4 border-primary p-6 sm:p-8">
@@ -249,22 +251,10 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <article className="rounded-xl border border-border bg-muted/20 px-5 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course Name</p>
-              <p className="mt-2 truncate text-lg font-black text-foreground">{dashboardSummary.courseName} ({dashboardSummary.batchLabel})</p>
-            </article>
-            <article className="rounded-xl border border-border bg-muted/20 px-5 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Number of Payments</p>
-              <p className="mt-2 text-lg font-black text-foreground">{dashboardSummary.totalPayments}</p>
-            </article>
-            <article className="rounded-xl border border-border bg-muted/20 px-5 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Actual Enrollments</p>
-              <p className="mt-2 text-lg font-black text-foreground">{dashboardSummary.actualEnrollments}</p>
-            </article>
-            <article className="rounded-xl border border-border bg-muted/20 px-5 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Amount</p>
-              <p className="mt-2 text-lg font-black text-emerald-600 dark:text-emerald-400">{dashboardTotal}</p>
-            </article>
+            <DashboardStatCard statKey="Filtered Course" label="Course Name" value={`${dashboardSummary.courseName} (${dashboardSummary.batchLabel})`} className="bg-muted/20" valueClassName="truncate text-lg" />
+            <DashboardStatCard statKey="Filtered Payments" label="Number of Payments" value={dashboardSummary.totalPayments} className="bg-muted/20" valueClassName="text-lg" />
+            <DashboardStatCard statKey="Filtered Enrollments" label="Actual Enrollments" value={dashboardSummary.actualEnrollments} className="bg-muted/20" valueClassName="text-lg" />
+            <DashboardStatCard statKey="Filtered Total" label="Total Amount" value={dashboardTotal} className="bg-muted/20" valueClassName="text-lg text-emerald-600 dark:text-emerald-400" />
           </div>
 
           <div className="mt-4 rounded-xl border border-border bg-background px-5 py-4">
@@ -283,38 +273,13 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           <p className="mt-1 text-sm font-medium text-muted-foreground">All courses and all batches. These figures never change with the filters below.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pending Review</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400"><RefreshCw className="h-5 w-5" /></div>
-          </div>
-          <p className="mt-6 font-heading text-3xl font-black text-foreground">{pendingCount}</p>
-        </div>
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Paid / Approved Seats</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-5 w-5" /></div>
-          </div>
-          <p className="mt-6 font-heading text-3xl font-black text-foreground">{approvedCount}</p>
-        </div>
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-destructive/40 hover:shadow-lg hover:shadow-destructive/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rejected</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive"><XCircle className="h-5 w-5" /></div>
-          </div>
-          <p className="mt-6 font-heading text-3xl font-black text-foreground">{rejectedCount}</p>
-        </div>
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Approved Revenue</p>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><CreditCard className="h-5 w-5" /></div>
-          </div>
-          <p className="mt-6 min-w-0 break-words font-heading text-2xl font-black leading-tight text-foreground sm:text-3xl lg:text-[clamp(1.25rem,1.7vw,1.875rem)]">
-            {formatMinorCurrency("NGN", approvedTotal)}
-          </p>
-        </div>
+          <DashboardStatCard statKey="Pending Review" label="Pending Review" value={pendingCount} icon={<RefreshCw className="h-5 w-5" />} iconClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
+          <DashboardStatCard statKey="Paid Approved Seats" label="Paid / Approved Seats" value={approvedCount} icon={<CheckCircle2 className="h-5 w-5" />} iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
+          <DashboardStatCard statKey="Rejected" label="Rejected" value={rejectedCount} icon={<XCircle className="h-5 w-5" />} iconClassName="bg-destructive/10 text-destructive" />
+          <DashboardStatCard statKey="Approved Revenue" label="Approved Revenue" value={formatMinorCurrency("NGN", approvedTotal)} icon={<CreditCard className="h-5 w-5" />} valueClassName="break-words text-2xl" />
         </div>
       </section>
+      </DashboardStatsVisibility>
 
       {/* Add External Student Module */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

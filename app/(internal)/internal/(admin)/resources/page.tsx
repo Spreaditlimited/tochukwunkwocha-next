@@ -30,6 +30,7 @@ import {
   resourceTypes
 } from "@/lib/resources"
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { formatDate } from "@/lib/utils"
 import { generateResourceDraftAction, saveResourceAction, saveResourceBundleAction } from "./actions"
 
@@ -96,23 +97,18 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
         </Link>
       </div>
 
+      <DashboardStatsVisibility storageKey="tochukwu-internal-resources-stats">
       <section className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "Published Resources", value: publishedCount, icon: BookOpenCheck },
           { label: "Gated Assets", value: gatedCount, icon: Sparkles },
           { label: "Archived / Paid Assets", value: paidCount, icon: Archive }
         ].map((card) => (
-          <article key={card.label} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{card.label}</p>
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <card.icon className="h-5 w-5" />
-              </span>
-            </div>
-            <p className="mt-5 font-heading text-4xl font-black text-foreground">{card.value.toLocaleString("en")}</p>
-          </article>
+          <DashboardStatCard key={card.label} statKey={card.label} label={card.label}
+            value={card.value.toLocaleString("en")} icon={<card.icon className="h-5 w-5" />} valueClassName="text-4xl" />
         ))}
       </section>
+      </DashboardStatsVisibility>
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

@@ -13,6 +13,11 @@ import {
   StudentDashboardCard,
   StudentDashboardShell
 } from "@/components/student-dashboard/StudentDashboardShell"
+import {
+  DashboardStatsVisibility,
+  DashboardStatToggle,
+  DashboardStatValue
+} from "@/components/dashboard/DashboardStatsVisibility"
 import { TrademarkText } from "@/components/TrademarkText"
 import {
   formatMinorCurrency,
@@ -48,24 +53,34 @@ export default async function StudentDashboardPage() {
       eyebrow="Dashboard Overview"
     >
       {/* Metrics Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => {
-          const Icon = item.icon
-          return (
-            <Link key={item.label} href={item.href} className="group no-underline">
-              <StudentDashboardCard className="flex h-full flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{item.label}</p>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                    <Icon className="h-5 w-5" />
+      <DashboardStatsVisibility storageKey="tochukwu-student-dashboard-stats-visibility">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {stats.map((item) => {
+            const Icon = item.icon
+            return (
+              <StudentDashboardCard key={item.label} className="group relative flex h-full flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
+                  <Link
+                    href={item.href}
+                    aria-label={`Open ${item.label}`}
+                    className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  />
+                  <div className="pointer-events-none relative z-10 flex items-center justify-between gap-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                      <Icon className="h-5 w-5" />
+                    </div>
                   </div>
-                </div>
-                <p className="mt-6 font-heading text-3xl font-black text-foreground">{item.value}</p>
+                  <p className="pointer-events-none relative z-10 mt-6 pr-12 font-heading text-3xl font-black text-foreground">
+                    <DashboardStatValue statKey={item.label}>{item.value}</DashboardStatValue>
+                  </p>
+                  <div className="absolute bottom-5 right-5 z-20">
+                    <DashboardStatToggle statKey={item.label} />
+                  </div>
               </StudentDashboardCard>
-            </Link>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      </DashboardStatsVisibility>
 
       <div className="mt-8 grid gap-8 xl:grid-cols-[1.4fr_0.6fr]">
         

@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { listVideoLibrary } from "@/lib/admin-video-library"
 import { formatDate, formatDateTimeWAT } from "@/lib/utils"
 import {
@@ -367,6 +368,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
         </div>
       </div>
 
+      <DashboardStatsVisibility storageKey="tochukwu-internal-video-library-stats">
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Courses", value: courses.length, icon: GraduationCap },
@@ -374,17 +376,11 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
           { label: "Lessons", value: lessons.length, icon: PlaySquare },
           { label: "Synced Videos", value: videos.length, icon: Video }
         ].map((stat) => (
-          <article key={stat.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{stat.label}</p>
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <stat.icon className="h-5 w-5" />
-              </span>
-            </div>
-            <p className="mt-5 font-heading text-3xl font-black text-foreground">{stat.value}</p>
-          </article>
+          <DashboardStatCard key={stat.label} statKey={stat.label} label={stat.label}
+            value={stat.value} icon={<stat.icon className="h-5 w-5" />} />
         ))}
       </section>
+      </DashboardStatsVisibility>
 
       <CloudflareProgressPanel />
 

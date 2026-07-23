@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 
 import { formatDate } from "@/lib/utils"
+import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { getSeoStats, listSeoOpportunities } from "@/lib/seo"
 import { buildMetadata } from "@/lib/site-seo"
 import { generateSeoDraftAction, updateOpportunityStatusAction } from "./actions"
@@ -133,26 +134,14 @@ export default async function SeoQueuePage({
       )}
 
       {/* Primary Pulse Metrics */}
+      <DashboardStatsVisibility storageKey="tochukwu-internal-seo-stats">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map(({ label, key, icon: Icon, bg, color, border }) => (
-          <div 
-            key={label}
-            className={`group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5 ${border}`}
-          >
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                {label}
-              </p>
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${bg} ${color} transition-transform group-hover:scale-110`}>
-                <Icon className="h-5 w-5" />
-              </div>
-            </div>
-            <p className="mt-6 font-heading text-3xl font-black text-foreground">
-              {number(stats[key])}
-            </p>
-          </div>
+          <DashboardStatCard key={label} statKey={label} label={label} value={number(stats[key])}
+            icon={<Icon className="h-5 w-5" />} iconClassName={`${bg} ${color}`} className={border} />
         ))}
       </div>
+      </DashboardStatsVisibility>
 
       {/* Technical Instruction Panel */}
       <div className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-sm lg:grid-cols-[1fr_auto] lg:items-center sm:p-6">
