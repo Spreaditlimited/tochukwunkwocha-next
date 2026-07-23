@@ -50,8 +50,10 @@ export default async function CertificateVerificationPage({
 
   return (
     <main className="bg-background text-foreground">
-      <section className="bg-[linear-gradient(rgba(13,79,154,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(13,79,154,0.08)_1px,transparent_1px)] bg-[size:44px_44px] py-10 sm:py-14">
-        <div className="site-container">
+      <section className="relative overflow-hidden bg-brand-ink py-10 text-white sm:py-14">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
+        <div className="site-container relative z-10">
           <div className="mb-6">
             <Link href="/certificates/verify" className="btn-secondary">
               Verify Another Certificate

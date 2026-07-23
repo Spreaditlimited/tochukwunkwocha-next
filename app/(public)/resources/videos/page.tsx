@@ -22,27 +22,28 @@ export default async function ResourceVideosPage() {
     <main className="bg-background">
       
       {/* Editorial Hero Section */}
-      <section className="relative overflow-hidden pt-16 pb-20 lg:pt-24 lg:pb-28">
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <section className="relative overflow-hidden bg-brand-ink pb-20 pt-16 text-white lg:pb-28 lg:pt-24">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
         
         <div className={`${sectionContainer} relative z-10`}>
           <Link 
             href="/resources" 
-            className="mb-10 inline-flex items-center text-sm font-bold text-muted-foreground transition-colors hover:text-primary"
+            className="mb-10 inline-flex items-center text-sm font-bold text-slate-400 transition-colors hover:text-white"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Library
           </Link>
 
-          <div className="max-w-4xl">
-            <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-primary">
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-brand-sky/30 bg-brand-sky/10 px-4 py-1.5 text-brand-sky">
               <PlayCircle className="h-4 w-4" />
               Video Library
             </p>
-            <h1 className="font-heading text-5xl font-black leading-[1.1] tracking-tighter text-foreground sm:text-6xl lg:text-7xl">
-              Short, practical <span className="text-primary italic">AI videos</span>.
+            <h1 className="font-heading text-5xl font-black leading-[1.1] tracking-tighter text-white sm:text-6xl lg:text-7xl">
+              Short, practical <span className="bg-gradient-to-r from-brand-sky to-primary bg-clip-text text-transparent">AI videos</span>.
             </h1>
-            <p className="mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+            <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
               A growing library of quick, useful videos for learning and applying AI in real contexts.
             </p>
           </div>

@@ -71,50 +71,52 @@ export default async function ResourceDetailPage({ params }: PageProps) {
 
   return (
     <main className="relative bg-background">
-      {/* Editorial Background Grid */}
-      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-
-      <section className="py-16 lg:py-24">
-        <div className={sectionContainer}>
-          
+      <section className="relative overflow-hidden bg-brand-ink py-16 text-white lg:py-24">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
+        <div className={`${sectionContainer} relative z-10`}>
           <Link 
             href="/resources" 
-            className="mb-10 inline-flex items-center text-sm font-bold text-muted-foreground transition-colors hover:text-primary"
+            className="mb-10 inline-flex items-center text-sm font-bold text-slate-400 transition-colors hover:text-white"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Library
           </Link>
 
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="mb-6 flex flex-wrap justify-center gap-3">
+              <span className="eyebrow inline-flex items-center gap-1.5 rounded-full border border-brand-sky/30 bg-brand-sky/10 px-3 py-1 text-brand-sky">
+                <BookOpen className="h-3.5 w-3.5" />
+                {resourceTypeLabel(resource.resourceType)}
+              </span>
+              <span className="eyebrow inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+                {audienceLabel(resource.audienceKey)}
+              </span>
+              <span className="eyebrow inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+                {categoryLabel(resource.categoryKey)}
+              </span>
+            </div>
+
+            <h1 className="font-heading text-5xl font-black leading-[1.1] tracking-tighter text-white sm:text-6xl lg:text-7xl">
+              {resource.title}
+            </h1>
+            <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
+              {resource.summary}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 lg:py-24">
+        <div className={sectionContainer}>
           <div className="grid gap-12 lg:grid-cols-[1fr_360px] xl:grid-cols-[1fr_400px] lg:items-start lg:gap-16">
             
             {/* Main Editorial Article Column */}
             <article className="min-w-0">
-              
-              {/* Meta Tags */}
-              <div className="mb-6 flex flex-wrap gap-3">
-                <span className="eyebrow inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-primary">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  {resourceTypeLabel(resource.resourceType)}
-                </span>
-                <span className="eyebrow inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
-                  {audienceLabel(resource.audienceKey)}
-                </span>
-                <span className="eyebrow inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
-                  {categoryLabel(resource.categoryKey)}
-                </span>
-              </div>
-
-              {/* Title & Summary */}
-              <h1 className="font-heading text-4xl font-black leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-                {resource.title}
-              </h1>
-              <p className="mt-8 text-lg leading-relaxed text-muted-foreground sm:text-xl">
-                {resource.summary}
-              </p>
 
               {/* Cover Image / Thumbnail */}
               {resource.thumbnailUrl && (
-                <figure className="surface-raised relative mt-12 aspect-video overflow-hidden bg-muted">
+                <figure className="surface-raised relative aspect-video overflow-hidden bg-muted">
                   <Image
                     src={resource.thumbnailUrl} 
                     alt={resource.title} 

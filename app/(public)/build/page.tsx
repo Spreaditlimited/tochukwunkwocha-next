@@ -38,13 +38,13 @@ export default function BuildPage() {
       {/* 1. Immersive Hero Section */}
       <section className="relative overflow-hidden border-b border-border bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-        <div className="pointer-events-none absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/4 translate-x-1/4 rounded-full bg-brand-sky/20 blur-[150px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
 
         <div className={`${sectionContainer} relative z-10 pb-20 lg:pb-28`}>
           <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 items-center">
             
             {/* Hero Content */}
-            <div>
+            <div className="text-center lg:text-left">
               <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-brand-sky/30 bg-brand-sky/10 px-4 py-1.5 text-brand-sky">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-sky opacity-75"></span>
@@ -61,11 +61,11 @@ export default function BuildPage() {
                 I help businesses replace spreadsheets, manual processes, WhatsApp confusion, and operational bottlenecks with custom web applications—built and deployed within <strong className="text-white">30 days</strong>.
               </p>
               
-              <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
-                <Link className="btn-inverse w-full whitespace-nowrap px-3 py-3.5 text-sm shadow-lg shadow-primary/20 sm:w-auto sm:px-8 sm:py-4 sm:text-base" href="/build-scorecard">
+              <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row lg:mx-0 lg:justify-start">
+                <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href="/build-scorecard">
                   Apply Now
                 </Link>
-                <Link className="btn-inverse-secondary w-full whitespace-nowrap px-3 py-3.5 text-sm sm:w-auto sm:px-8 sm:py-4 sm:text-base" href="#how-build-works">
+                <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#how-build-works">
                   See Methodology
                 </Link>
               </div>
@@ -73,7 +73,7 @@ export default function BuildPage() {
               {/* Social Proof Trust Strip */}
               <div className="mt-12 border-t border-white/10 pt-8">
                 <p className="mb-4 font-mono text-xs font-bold uppercase tracking-widest text-slate-500">Systems trusted by real businesses</p>
-                <div className="flex flex-wrap items-center gap-4">
+                <div className="flex flex-wrap items-center justify-center gap-4 lg:justify-start">
                   <div className="flex h-12 items-center justify-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-bold text-slate-300">
                     Sure Imports
                   </div>

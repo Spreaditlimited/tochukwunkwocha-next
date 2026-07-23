@@ -72,8 +72,7 @@ export default function EverydayBusinessOwnersPage() {
       {/* 1. Hero Section */}
       <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
-        <div className="pointer-events-none absolute left-0 top-0 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/4 rounded-full bg-sky-500/20 blur-[150px]" />
-        <div className="pointer-events-none absolute right-0 top-1/2 h-[500px] w-[500px] translate-x-1/2 rounded-full bg-primary/15 blur-[140px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]" />
         
         <div className={`${sectionContainer} relative z-10 pb-20 lg:pb-28`}>
           <div className="mx-auto max-w-4xl text-center">
@@ -95,11 +94,11 @@ export default function EverydayBusinessOwnersPage() {
               How to use ChatGPT to save time, write better, think clearly, and work faster. <strong className="font-semibold text-white">No coding. No fluff. Just useful work.</strong>
             </p>
             
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
               <Link href="/checkout/ai-for-everyday-business-owners" className="btn-primary w-full justify-center px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto">
                 <PlayCircle className="mr-2 h-5 w-5" /> Start the Course
               </Link>
-              <a href="#curriculum" className="btn-inverse-secondary w-full justify-center px-8 py-4 text-base sm:w-auto">
+              <a href="#curriculum" className="btn-secondary w-full justify-center px-8 py-4 text-base sm:w-auto">
                 See What You'll Learn
               </a>
             </div>

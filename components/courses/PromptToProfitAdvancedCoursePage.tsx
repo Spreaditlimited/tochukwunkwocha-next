@@ -115,7 +115,7 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
     <main>
       <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
-        <div className="pointer-events-none absolute left-0 top-0 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/4 rounded-full bg-sky-500/20 blur-[150px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]" />
 
         <div className={`${sectionContainer} relative z-10 pb-20 lg:pb-28`}>
           <div className="mx-auto max-w-4xl text-center">
@@ -142,11 +142,11 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
               <TrademarkText text="Designed for learners who are ready to move beyond simple websites. If Prompt to Profit Basic taught you how to build, Prompt to Profit Advanced teaches you how to build with structure, confidence, and a professional workflow." />
             </p>
 
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-              <Link className="btn-primary px-8 py-4 text-base shadow-lg shadow-primary/20" href={course.checkoutHref}>
+            <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
                 Enroll Now
               </Link>
-              <Link className="btn-inverse-secondary px-8 py-4 text-base" href="#video">
+              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#video">
                 <Play className="mr-2 h-4 w-4" /> Learn More
               </Link>
             </div>

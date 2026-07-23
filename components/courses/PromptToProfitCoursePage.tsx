@@ -304,12 +304,12 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
     <main>
       <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
-        <div className="pointer-events-none absolute right-0 top-0 h-[500px] w-[500px] -translate-y-12 translate-x-1/3 rounded-full bg-sky-500/20 blur-[120px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]" />
 
         <div className={`${sectionContainer} relative z-10 pb-20 lg:pb-28`}>
           <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16">
-            <div>
-              <div className="mb-6 flex flex-wrap items-center gap-3">
+            <div className="text-center lg:text-left">
+              <div className="mb-6 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
                 <p className="font-mono text-xs font-bold uppercase tracking-widest text-sky-400"><PromptToProfitMark suffix=" Basic" /></p>
                 <span className="flex max-w-full items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase leading-5 tracking-wide text-emerald-400 sm:tracking-widest">
                   <span className="relative flex h-2 w-2">
@@ -330,11 +330,11 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
                 </p>
               </div>
 
-              <div className="mt-10 flex flex-wrap items-center gap-4">
-                <Link className="btn-inverse max-w-full px-8 py-4 text-center text-base shadow-lg shadow-primary/20" href={course.checkoutHref}>
+              <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row lg:mx-0 lg:justify-start">
+                <Link className="btn-primary w-full px-8 py-4 text-center text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
                   Enroll Now
                 </Link>
-                <Link className="btn-inverse-secondary max-w-full px-8 py-4 text-center text-base" href="#video">
+                <Link className="btn-secondary w-full px-8 py-4 text-center text-base sm:w-auto" href="#video">
                   <Play className="mr-2 h-4 w-4" /> Learn More
                 </Link>
               </div>

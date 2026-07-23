@@ -106,30 +106,32 @@ export default async function CoursePage({ params }: CoursePageProps) {
   return (
     <main>
       {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-      <section className="bg-card">
-        <div className="container-page py-12">
-          <Link href="/courses" className="inline-flex items-center text-sm font-semibold text-primary no-underline">
+      <section className="relative overflow-hidden bg-brand-ink text-white">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
+        <div className="container-page relative z-10 py-12">
+          <Link href="/courses" className="inline-flex items-center text-sm font-semibold text-brand-sky no-underline">
             <ArrowLeft className="mr-2 h-4 w-4" /> All courses
           </Link>
           <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px] lg:items-center">
             <div>
-              <p className="eyebrow">{displayCourse.eyebrow}</p>
-              <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight sm:text-5xl"><TrademarkText text={displayCourse.title} /></h1>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">{displayCourse.description}</p>
+              <p className="eyebrow text-brand-sky">{displayCourse.eyebrow}</p>
+              <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight text-white sm:text-5xl"><TrademarkText text={displayCourse.title} /></h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">{displayCourse.description}</p>
               <div className="mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border border-border bg-background p-4">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <Users className="h-4 w-4 text-primary" />
+                    <Users className="h-4 w-4 text-brand-sky" />
                     Audience
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{displayCourse.audience}</p>
+                  <p className="mt-2 text-sm text-slate-300">{displayCourse.audience}</p>
                 </div>
-                <div className="rounded-lg border border-border bg-background p-4">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <Clock className="h-4 w-4 text-primary" />
+                    <Clock className="h-4 w-4 text-brand-sky" />
                     Format
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{displayCourse.duration}</p>
+                  <p className="mt-2 text-sm text-slate-300">{displayCourse.duration}</p>
                 </div>
               </div>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -139,7 +141,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
                 <Link href="/blog" className="btn-secondary">Read related lessons</Link>
               </div>
             </div>
-            <aside className="surface-raised bg-brand-ink p-6 text-white">
+            <aside className="surface-raised border-white/10 bg-white/5 p-6 text-white">
               {displayCourse.logo ? (
                 <Image src={displayCourse.logo} alt={`${displayCourse.title} logo`} width={260} height={80} className="h-12 w-auto object-contain brightness-125" />
               ) : (

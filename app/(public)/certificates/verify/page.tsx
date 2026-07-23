@@ -15,18 +15,20 @@ export const metadata: Metadata = buildMetadata({
 export default function CertificateLookupPage() {
   return (
     <main className="bg-background text-foreground">
-      <section className="bg-[linear-gradient(rgba(13,79,154,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(13,79,154,0.08)_1px,transparent_1px)] bg-[size:44px_44px] py-16 sm:py-20">
-        <div className="site-container">
+      <section className="relative overflow-hidden bg-brand-ink py-16 text-white sm:py-20">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
+        <div className="site-container relative z-10">
           <div className="grid gap-10 lg:grid-cols-[1fr_0.82fr] lg:items-center">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-sm font-black text-primary ring-1 ring-primary/20">
+              <div className="inline-flex items-center gap-2 rounded-full bg-brand-sky/10 px-4 py-2 text-sm font-black text-brand-sky ring-1 ring-brand-sky/20">
                 <ShieldCheck className="h-4 w-4" />
                 Certificate Verification
               </div>
-              <h1 className="mt-6 max-w-4xl font-heading text-4xl font-black tracking-tight text-foreground sm:text-6xl">
+              <h1 className="mt-6 max-w-4xl font-heading text-4xl font-black tracking-tight text-white sm:text-6xl">
                 Verify a certificate issued by Tochukwu Tech and AI Academy.
               </h1>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">
                 Enter the certificate number exactly as shown on the certificate. If the record is valid, you will see the recipient, programme, issue date, and linked project where available.
               </p>
 

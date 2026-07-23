@@ -199,7 +199,7 @@ export function PromptToProfitSchoolsCoursePage() {
     <main>
       <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/15 blur-[150px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]" />
 
         <div className={`${sectionContainer} relative z-10 pb-20 text-center lg:pb-32`}>
           <div className="mx-auto max-w-4xl">

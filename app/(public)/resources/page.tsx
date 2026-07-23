@@ -82,7 +82,7 @@ export default async function ResourcesPage() {
       {/* 1. Hero Section */}
       <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
-        <div className="pointer-events-none absolute left-0 top-0 h-[550px] w-[550px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-sky-500/20 blur-[140px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]" />
         
         <div className={`${sectionContainer} relative z-10 pb-16 lg:pb-24`}>
           <div className="mx-auto max-w-4xl text-center">
@@ -96,11 +96,11 @@ export default async function ResourcesPage() {
             <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-400">
               Practical prompt playbooks and short videos for learners, parents, teachers, schools, business owners, founders, and public-sector teams.
             </p>
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-              <Link href="/resources/videos" className="btn-primary px-8 py-3.5 text-base">
+            <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link href="/resources/videos" className="btn-primary w-full px-8 py-4 text-base sm:w-auto">
                 <Play className="mr-2 h-4 w-4" /> Watch Videos
               </Link>
-              <Link href="/resources/prompts" className="btn-inverse-secondary px-8 py-3.5 text-base">
+              <Link href="/resources/prompts" className="btn-secondary w-full px-8 py-4 text-base sm:w-auto">
                 <MessageSquare className="mr-2 h-4 w-4" /> Browse Prompts
               </Link>
             </div>

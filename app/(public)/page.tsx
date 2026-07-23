@@ -73,11 +73,11 @@ export default async function HomePage() {
               Artificial Intelligence is changing how we learn, work, solve problems, and build businesses. We help complete beginners, students, professionals, parents, entrepreneurs, and schools develop practical AI skills by building real projects.
             </p>
             
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-              <Link className="btn-primary px-8 py-4 text-base shadow-lg shadow-primary/20" href="/courses">
+            <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href="/courses">
                 Explore Programmes
               </Link>
-              <Link className="btn-secondary px-8 py-4 text-base" href="/resources">
+              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="/resources">
                 Browse Free Resources
               </Link>
             </div>

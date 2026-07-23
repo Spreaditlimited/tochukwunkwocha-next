@@ -42,13 +42,13 @@ export default function PrivateCoachingPage() {
       {/* 1. Immersive Hero Section */}
       <section className="relative overflow-hidden border-b border-border bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-        <div className="absolute left-0 top-0 -translate-x-1/4 -translate-y-1/4 h-[600px] w-[600px] rounded-full bg-primary/10 blur-[150px] pointer-events-none"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
 
         <div className={`${sectionContainer} relative z-10 pb-20 lg:pb-28`}>
           <div className="grid gap-12 lg:grid-cols-[1.2fr_0.8fr] lg:gap-16 items-center">
             
             {/* Hero Content */}
-            <div>
+            <div className="text-center lg:text-left">
               <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-brand-sky">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-sky opacity-75"></span>
@@ -57,7 +57,7 @@ export default function PrivateCoachingPage() {
                 Private AI Build Coaching
               </p>
               
-              <h1 className="max-w-4xl font-heading text-[2.75rem] font-black leading-[1.03] tracking-tighter [text-wrap:balance] sm:text-6xl sm:leading-[1.05] lg:text-7xl lg:leading-[1.1]">
+              <h1 className="max-w-4xl font-heading text-5xl font-black leading-[1.03] tracking-tighter [text-wrap:balance] sm:text-6xl sm:leading-[1.05] lg:text-7xl lg:leading-[1.1]">
                 Build your digital tool with <span className="bg-gradient-to-r from-brand-sky to-primary bg-clip-text text-transparent">personal guidance.</span>
               </h1>
               
@@ -65,17 +65,17 @@ export default function PrivateCoachingPage() {
                 One-on-one coaching for students who want private help turning an idea into a working digital tool using AI.
               </p>
               
-              <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
-                <Link className="btn-primary w-full whitespace-nowrap px-3 py-3.5 text-sm shadow-lg shadow-primary/20 sm:w-auto sm:px-8 sm:py-4 sm:text-base" href="/private-ai-build-coaching/apply">
+              <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row lg:mx-0 lg:justify-start">
+                <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href="/private-ai-build-coaching/apply">
                   Apply Now
                 </Link>
-                <Link className="btn-inverse-secondary w-full whitespace-nowrap px-3 py-3.5 text-sm sm:w-auto sm:px-8 sm:py-4 sm:text-base" href="#pricing">
+                <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#pricing">
                   View Pricing
                 </Link>
               </div>
 
               {/* Social Proof Strip */}
-              <div className="mt-12 flex min-w-0 items-center gap-4 border-t border-white/10 pt-8">
+              <div className="mt-12 flex min-w-0 items-center justify-center gap-4 border-t border-white/10 pt-8 lg:justify-start">
                 <div className="flex shrink-0 items-center">
                   {socialProofAvatars.map((avatar, index) => (
                     <Image

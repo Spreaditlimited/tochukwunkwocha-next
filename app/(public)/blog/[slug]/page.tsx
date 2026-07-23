@@ -73,36 +73,37 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         ]}
       />
       {/* 1. Article Header & Meta */}
-      <header className="relative overflow-hidden pt-12 lg:pt-20">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <header className="relative overflow-hidden bg-brand-ink pt-12 text-white lg:pt-20">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
         
         <div className={`${sectionContainer} relative z-10 pb-12`}>
           <div className="mx-auto max-w-4xl text-center">
             <Link 
               href="/blog" 
-              className="group mb-8 inline-flex items-center text-sm font-bold text-muted-foreground transition-colors hover:text-primary"
+              className="group mb-8 inline-flex items-center text-sm font-bold text-slate-400 transition-colors hover:text-white"
             >
               <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" /> 
               Back to Publications
             </Link>
             
-            <h1 className="font-heading text-4xl font-black tracking-tight text-foreground sm:text-5xl lg:text-6xl lg:leading-[1.1]">
+            <h1 className="font-heading text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl lg:leading-[1.1]">
               {post.blogTitle}
             </h1>
             
             {post.excerpt && (
-              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
                 {post.excerpt}
               </p>
             )}
 
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 border-t border-border pt-8 text-sm font-semibold text-muted-foreground">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 border-t border-white/10 pt-8 text-sm font-semibold text-slate-300">
               <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
+                <Calendar className="h-4 w-4 text-brand-sky" />
                 {formatDate(post.createdAt)}
               </div>
               <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" />
+                <User className="h-4 w-4 text-brand-sky" />
                 {post.blogBy || brand.personalName}
               </div>
             </div>

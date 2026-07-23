@@ -39,19 +39,20 @@ export default function ProgrammesPage() {
   return (
     <main>
       {/* 1. Hero Section */}
-      <section className="relative overflow-hidden bg-background pt-16 lg:pt-24">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
         
         <div className={`${sectionContainer} relative z-10 pb-16 lg:pb-24`}>
           <div className="mx-auto max-w-4xl text-center">
-            <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-primary">
+            <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-brand-sky/30 bg-brand-sky/10 px-4 py-1.5 text-brand-sky">
               <BookOpen className="h-4 w-4" />
               Academy Curriculum
             </p>
-            <h1 className="font-heading text-5xl font-black tracking-tighter text-foreground sm:text-6xl lg:text-7xl lg:leading-[1.1]">
-              Learn Practical AI by <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-sky-500">Building Real Projects.</span>
+            <h1 className="font-heading text-5xl font-black tracking-tighter text-white sm:text-6xl lg:text-7xl lg:leading-[1.1]">
+              Learn Practical AI by <span className="bg-gradient-to-r from-brand-sky to-primary bg-clip-text text-transparent">Building Real Projects.</span>
             </h1>
-            <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+            <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-300">
               Every programme at {brand.name} is designed around one simple belief: people learn AI best when they build. From complete beginners to experienced professionals, follow a structured path that combines clear instruction with practical execution.
             </p>
           </div>

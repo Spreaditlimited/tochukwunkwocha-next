@@ -33,7 +33,7 @@ export default async function ServicePage({ params }: ServicePageProps) {
   const Icon = service.icon
 
   return (
-    <main className="container-page py-12">
+    <main>
       <JsonLd
         data={[
           serviceJsonLd(service),
@@ -44,26 +44,32 @@ export default async function ServicePage({ params }: ServicePageProps) {
           ])
         ]}
       />
-      <Link href="/" className="inline-flex items-center text-sm font-semibold text-primary no-underline">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Home
-      </Link>
-      <section className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
-        <div>
-          <p className="eyebrow">{service.eyebrow}</p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight sm:text-5xl">{service.title}</h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">{service.description}</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/contact" className="btn-primary">
-              Start an enquiry <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-            <Link href="/blog" className="btn-secondary">Read practical guides</Link>
+      <section className="relative overflow-hidden bg-brand-ink py-12 text-white">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
+        <div className="container-page relative z-10">
+          <Link href="/" className="inline-flex items-center text-sm font-semibold text-brand-sky no-underline">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Home
+          </Link>
+          <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
+            <div>
+              <p className="eyebrow text-brand-sky">{service.eyebrow}</p>
+              <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight text-white sm:text-5xl">{service.title}</h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">{service.description}</p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link href="/contact" className="btn-primary">
+                  Start an enquiry <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+                <Link href="/blog" className="btn-secondary">Read practical guides</Link>
+              </div>
+            </div>
+            <aside className="surface-raised border-white/10 bg-white/5 p-6">
+              <Icon className="h-8 w-8 text-brand-sky" />
+              <p className="mt-5 text-xs font-black uppercase text-slate-400">Migration note</p>
+              <p className="mt-2 text-sm leading-6 text-slate-300">{service.outcome}</p>
+            </aside>
           </div>
         </div>
-        <aside className="surface-raised p-6">
-          <Icon className="h-8 w-8 text-primary" />
-          <p className="mt-5 text-xs font-black uppercase text-muted-foreground">Migration note</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{service.outcome}</p>
-        </aside>
       </section>
     </main>
   )
