@@ -15,6 +15,38 @@ import {
   updateManualPaymentEmail
 } from "@/lib/admin-enrollments"
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
+import { reconcileCoursePaystackOrders } from "@/lib/payments/paystack-reconciliation"
+
+export async function reconcilePaystackPaymentsAction(formData: FormData) {
+  await requireAdmin("/internal/manual-payments")
+  try {
+    const result = await reconcileCoursePaystackOrders({
+      courseSlug: String(formData.get("courseSlug") || "all"),
+      batchKey: String(formData.get("batchKey") || "all"),
+      limit: 80
+    })
+    const details = [
+      `${result.markedPaid} payment${result.markedPaid === 1 ? "" : "s"} marked paid`,
+      `${result.accountsCreated} account${result.accountsCreated === 1 ? "" : "s"} created`,
+      `${result.provisioned} enrollment${result.provisioned === 1 ? "" : "s"} provisioned`,
+      `${result.checked} Paystack reference${result.checked === 1 ? "" : "s"} checked`
+    ]
+    if (result.failed) details.push(`${result.failed} failed`)
+    await setInternalToast({
+      type: result.failed ? "error" : "success",
+      title: "Paystack reconciliation complete",
+      message: details.join(", ") + "."
+    })
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Paystack reconciliation failed",
+      message: error instanceof Error ? error.message : "Could not reconcile Paystack payments."
+    })
+  }
+  revalidatePath("/internal/manual-payments")
+  revalidatePath("/dashboard")
+}
 
 export async function reviewManualPaymentAction(formData: FormData) {
   const admin = await requireAdmin("/internal/manual-payments")

@@ -36,6 +36,7 @@ import {
   addExternalStudentPaymentAction,
   completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
+  reconcilePaystackPaymentsAction,
   resendBatchActivationEmailsAction,
   resendManualPaymentActivationEmailAction,
   reviewManualPaymentAction,
@@ -189,6 +190,13 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-3">
+          <form action={reconcilePaystackPaymentsAction}>
+            <input type="hidden" name="courseSlug" value={courseSlug} />
+            <input type="hidden" name="batchKey" value={batchKey} />
+            <button type="submit" className="btn-primary shadow-sm">
+              <RefreshCw className="mr-2 h-4 w-4" /> Reconcile Paystack
+            </button>
+          </form>
           <Link href="/internal/video-library" className="btn-secondary shadow-sm">
             <MonitorPlay className="mr-2 h-4 w-4" /> Course Manager
           </Link>

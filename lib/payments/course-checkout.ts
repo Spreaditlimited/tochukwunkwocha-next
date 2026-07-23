@@ -794,7 +794,7 @@ export async function markCourseOrderPaid(input: {
     await prisma.$executeRaw`
       UPDATE course_orders
       SET status = 'paid',
-          paid_at = ${paidAt},
+          paid_at = COALESCE(paid_at, ${paidAt}),
           provider_reference = COALESCE(${input.providerReference || null}, provider_reference),
           provider_order_id = COALESCE(${input.providerOrderId || null}, provider_order_id),
           updated_at = ${paidAt}
