@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { 
   CheckCircle2, 
+  ChevronDown,
   CreditCard, 
   ExternalLink, 
   Filter, 
@@ -205,8 +206,9 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </div>
 
       <DashboardStatsVisibility storageKey="tochukwu-internal-manual-payments-stats">
+      <div className="flex flex-col gap-8">
       {/* Enrollment Summary */}
-      <section className="order-[-1] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <section className="order-2 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-t-4 border-primary p-6 sm:p-8">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
@@ -241,10 +243,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             </ScrollPreservingGetForm>
           </div>
 
-          <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="inline-flex w-fit items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-sm font-bold text-amber-700 dark:text-amber-300">
-              Pending manual approvals: {dashboardSummary.manualPendingCount}
-            </p>
+          <div className="mt-5 flex justify-end">
             <p className="text-sm font-semibold text-muted-foreground">
               Registered payment records: {dashboardSummary.totalRegistrations}
             </p>
@@ -267,7 +266,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </section>
 
       {/* Global statistics are intentionally independent of every page filter. */}
-      <section className="order-first">
+      <section className="order-1">
         <div className="mb-4">
           <p className="eyebrow text-primary">Global Statistics</p>
           <p className="mt-1 text-sm font-medium text-muted-foreground">All courses and all batches. These figures never change with the filters below.</p>
@@ -279,6 +278,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           <DashboardStatCard statKey="Approved Revenue" label="Approved Revenue" value={formatMinorCurrency("NGN", approvedTotal)} icon={<CreditCard className="h-5 w-5" />} valueClassName="break-words text-2xl" />
         </div>
       </section>
+      </div>
       </DashboardStatsVisibility>
 
       {/* Add External Student Module */}
@@ -368,8 +368,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </section>
 
       {/* Activation Email Resend */}
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
+      <details className="group order-2 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-muted/20 p-6 marker:content-none sm:p-8 [&::-webkit-details-marker]:hidden">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
               <Mail className="h-5 w-5" />
@@ -381,7 +381,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </p>
             </div>
           </div>
-        </div>
+          <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
         <form action={resendBatchActivationEmailsAction} className="p-6 sm:p-8">
           <div className="grid gap-5 lg:grid-cols-2">
             <label className="block">
@@ -439,14 +440,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             </div>
           </div>
         ) : null}
-      </section>
+      </details>
 
       {/* Communications Grid */}
       <div className="contents">
         
         {/* WhatsApp Campaign */}
-        <section className="order-2 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-          <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-start sm:p-8">
+        <details className="group order-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <summary className="flex cursor-pointer list-none items-start justify-between gap-4 bg-muted/20 p-6 marker:content-none sm:p-8 [&::-webkit-details-marker]:hidden">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 <MessageCircle className="h-4 w-4" />
@@ -458,11 +459,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 </p>
               </div>
             </div>
-            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Audience Size</p>
-              <p className="font-heading text-lg font-black text-primary">{whatsAppContacts.length}</p>
+            <div className="flex shrink-0 items-center gap-4">
+              <div className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Audience Size</p>
+                <p className="font-heading text-lg font-black text-primary">{whatsAppContacts.length}</p>
+              </div>
+              <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform group-open:rotate-180" />
             </div>
-          </div>
+          </summary>
           
           <div className="p-6 sm:p-8">
             <form action={sendWhatsAppCampaignAction} className="grid gap-5 lg:grid-cols-2">
@@ -551,11 +555,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </div>
             </div>
           </div>
-        </section>
+        </details>
 
         {/* WhatsApp Audience List */}
-        <section className="order-4 flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-          <div className="border-b border-border bg-muted/20 p-6">
+        <details className="group order-5 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-muted/20 p-6 marker:content-none [&::-webkit-details-marker]:hidden">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Users className="h-4 w-4" />
@@ -565,7 +569,10 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 <p className="mt-1 text-xs font-medium text-muted-foreground">Opted-in contacts dynamically aggregated across workflows.</p>
               </div>
             </div>
-            
+            <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+
+          <div className="border-t border-border bg-muted/20 p-6">
             <ScrollPreservingGetForm className="mt-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
               <input type="hidden" name="course" value={courseSlug} />
               <input type="hidden" name="status" value={status} />
@@ -618,12 +625,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </table>
             </div>
           </div>
-        </section>
+        </details>
       </div>
 
       {/* Holiday Waitlist Section */}
-      <section className="order-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:p-8">
+      <details className="group order-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-muted/20 p-6 marker:content-none sm:p-8 [&::-webkit-details-marker]:hidden">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <ShieldAlert className="h-4 w-4" />
@@ -635,11 +642,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </p>
             </div>
           </div>
-          <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/10 px-4 py-2 text-center shadow-inner">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Total Waitlist</p>
-            <p className="font-heading text-xl font-black text-primary">{waitlist.total}</p>
+          <div className="flex shrink-0 items-center gap-4">
+            <div className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-2 text-center shadow-inner">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Total Waitlist</p>
+              <p className="font-heading text-xl font-black text-primary">{waitlist.total}</p>
+            </div>
+            <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform group-open:rotate-180" />
           </div>
-        </div>
+        </summary>
         
         <div className="max-h-[28rem] overflow-auto bg-background">
           <table className="w-full min-w-[54rem] text-left text-sm whitespace-nowrap">
@@ -684,7 +694,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
       {/* Master Ledger: manual submissions and paid online orders */}
       <section className="order-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
