@@ -105,14 +105,14 @@ export function ApplyForm() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col bg-brand-ink text-white selection:bg-emerald-500 selection:text-white">
+    <main className="relative flex min-h-screen flex-col bg-brand-ink text-white selection:bg-primary selection:text-white">
       <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:32px_32px]" />
-      <div className="pointer-events-none fixed -left-[10%] -top-[10%] z-0 h-[50%] w-[60%] rounded-full bg-emerald-500/10 blur-[150px]" />
-      <div className="pointer-events-none fixed -bottom-[10%] -right-[10%] z-0 h-[60%] w-[50%] rounded-full bg-cyan-500/10 blur-[150px]" />
+      <div className="pointer-events-none fixed -left-[10%] -top-[10%] z-0 h-[50%] w-[60%] rounded-full bg-primary/10 blur-[150px]" />
+      <div className="pointer-events-none fixed -bottom-[10%] -right-[10%] z-0 h-[60%] w-[50%] rounded-full bg-brand-sky/10 blur-[150px]" />
 
       <div className="fixed left-0 top-0 z-50 h-1.5 w-full bg-white/5">
         <div
-          className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-all duration-500 ease-out"
+          className="h-full bg-gradient-to-r from-primary to-brand-sky shadow-[0_0_10px_hsl(var(--brand-sky)/0.45)] transition-all duration-500 ease-out"
           style={{ width: `${step === 0 ? 10 : (step / TOTAL_STEPS) * 100}%` }}
         />
       </div>
@@ -139,14 +139,14 @@ export function ApplyForm() {
 
       <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
         <div className="w-full max-w-3xl">
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0a1120]/80 p-6 shadow-2xl backdrop-blur-2xl sm:p-10 lg:p-12">
+          <div className="overflow-hidden rounded-3xl border border-white/10 bg-brand-navy/80 p-6 shadow-2xl backdrop-blur-2xl sm:p-10 lg:p-12">
             <form onSubmit={handleSubmit} className="relative">
                 {step === 0 && (
                   <div className="animate-in fade-in slide-in-from-bottom-4 text-center duration-500">
-                    <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                    <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-brand-sky">
                       <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-sky opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                       </span>
                       Coaching Application
                     </span>
@@ -158,7 +158,7 @@ export function ApplyForm() {
                     </p>
                     <div className="mt-8 flex flex-col items-center justify-center gap-3 text-xs font-bold uppercase tracking-widest text-slate-500 sm:flex-row sm:gap-6">
                       <span className="flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-emerald-400" /> 3-5 minutes
+                        <MessageSquare className="h-4 w-4 text-brand-sky" /> 3-5 minutes
                       </span>
                       <span className="hidden h-1.5 w-1.5 rounded-full bg-white/20 sm:block" />
                       <span>Reviewed before coaching</span>
@@ -175,15 +175,15 @@ export function ApplyForm() {
                     <div className="mt-8 grid gap-6 sm:grid-cols-2">
                       <label className="block">
                         <span className="mb-2 block text-sm font-bold text-slate-300">Full Name</span>
-                        <input name="fullName" value={formData.fullName} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Jane Doe" />
+                        <input name="fullName" value={formData.fullName} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Jane Doe" />
                       </label>
                       <label className="block">
                         <span className="mb-2 block text-sm font-bold text-slate-300">Email Address</span>
-                        <input name="email" type="email" value={formData.email} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="you@example.com" />
+                        <input name="email" type="email" value={formData.email} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" placeholder="you@example.com" />
                       </label>
                       <label className="block">
                         <span className="mb-2 block text-sm font-bold text-slate-300">Phone Number</span>
-                        <input name="phone" value={formData.phone} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="+234 ..." />
+                        <input name="phone" value={formData.phone} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" placeholder="+234 ..." />
                       </label>
                       <label className="block">
                         <span className="mb-2 block text-sm font-bold text-slate-300">Paying From</span>
@@ -214,7 +214,7 @@ export function ApplyForm() {
                           onChange={handleChange}
                           required
                           rows={5}
-                          className="w-full resize-none rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          className="w-full resize-none rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                           placeholder="Briefly describe your idea, website, software tool, or current blocker..."
                         />
                       </label>
@@ -229,8 +229,8 @@ export function ApplyForm() {
                           ].map((option) => (
                             <label key={option.value} className="group relative cursor-pointer">
                               <input type="radio" name="currentStage" value={option.value} checked={formData.currentStage === option.value} onChange={handleChange} className="peer sr-only" />
-                              <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 p-5 transition-all hover:bg-white/10 peer-checked:border-emerald-500 peer-checked:bg-emerald-500/10">
-                                <div className="h-4 w-4 rounded-full border-2 border-slate-500 peer-checked:group-[]:border-4 peer-checked:group-[]:border-emerald-400" />
+                              <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 p-5 transition-all hover:bg-white/10 peer-checked:border-primary peer-checked:bg-primary/10">
+                                <div className="h-4 w-4 rounded-full border-2 border-slate-500 peer-checked:group-[]:border-4 peer-checked:group-[]:border-brand-sky" />
                                 <span className="text-sm font-bold text-white">{option.label}</span>
                               </div>
                             </label>
@@ -263,7 +263,7 @@ export function ApplyForm() {
                       </label>
                       <label className="block">
                         <span className="mb-2 block text-sm font-bold text-slate-300">Availability</span>
-                        <input name="availability" value={formData.availability} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="e.g. Weekdays, evenings, weekends..." />
+                        <input name="availability" value={formData.availability} onChange={handleChange} required className="w-full rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" placeholder="e.g. Weekdays, evenings, weekends..." />
                       </label>
                     </div>
                   </div>
@@ -283,15 +283,15 @@ export function ApplyForm() {
                           ].map((option) => (
                             <label key={option.value} className="group relative cursor-pointer">
                               <input type="radio" name="commitment" value={option.value} checked={formData.commitment === option.value} onChange={handleChange} className="peer sr-only" />
-                              <div className="flex min-h-24 items-center justify-center rounded-xl border border-white/10 bg-white/5 p-4 text-center transition-all hover:bg-white/10 peer-checked:border-emerald-500 peer-checked:bg-emerald-500/10">
+                              <div className="flex min-h-24 items-center justify-center rounded-xl border border-white/10 bg-white/5 p-4 text-center transition-all hover:bg-white/10 peer-checked:border-primary peer-checked:bg-primary/10">
                                 <span className="text-sm font-bold text-white">{option.label}</span>
                               </div>
                             </label>
                           ))}
                         </div>
                       </div>
-                      <label className="flex cursor-pointer items-start gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5 transition-colors hover:bg-emerald-500/10">
-                        <input name="acknowledged" type="checkbox" checked={formData.acknowledged} onChange={handleChange} required className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500" />
+                      <label className="flex cursor-pointer items-start gap-4 rounded-xl border border-primary/20 bg-primary/5 p-5 transition-colors hover:bg-primary/10">
+                        <input name="acknowledged" type="checkbox" checked={formData.acknowledged} onChange={handleChange} required className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-800 text-primary focus:ring-primary" />
                         <span className="text-sm leading-relaxed text-slate-300">
                           I understand that the discovery call is paid, coaching slots are limited, and private coaching requires practice between sessions.
                         </span>
@@ -317,7 +317,7 @@ export function ApplyForm() {
                   </div>
                 )}
                 {errorMessage ? (
-                  <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-sm font-bold text-rose-200">
+                  <p className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm font-bold text-white">
                     {errorMessage}
                   </p>
                 ) : null}

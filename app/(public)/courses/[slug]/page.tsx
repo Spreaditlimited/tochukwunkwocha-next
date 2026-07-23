@@ -4,6 +4,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock, Users } from "lucide-react"
 
+import AiForEverydayBusinessOwnersCoursePage from "@/components/courses/AiForEverydayBusinessOwnersCoursePage"
 import { PromptToProfitAdvancedCoursePage } from "@/components/courses/PromptToProfitAdvancedCoursePage"
 import { PromptToProfitCoursePage } from "@/components/courses/PromptToProfitCoursePage"
 import { PromptToProfitSchoolsCoursePage } from "@/components/courses/PromptToProfitSchoolsCoursePage"
@@ -63,6 +64,15 @@ export default async function CoursePage({ params }: CoursePageProps) {
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
         <PromptToProfitAdvancedCoursePage course={course} />
+      </>
+    )
+  }
+
+  if (course?.slug === "ai-for-everyday-business-owners") {
+    return (
+      <>
+        {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
+        <AiForEverydayBusinessOwnersCoursePage />
       </>
     )
   }

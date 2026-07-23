@@ -130,16 +130,16 @@ export default function BuildScorecardPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col bg-brand-ink text-white selection:bg-sky-500 selection:text-white">
+    <main className="relative flex min-h-screen flex-col bg-brand-ink text-white selection:bg-brand-sky selection:text-brand-ink">
       {/* Deep Space Backgrounds */}
       <div className="fixed inset-0 z-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none"></div>
-      <div className="fixed -left-[10%] -top-[10%] z-0 h-[50%] w-[60%] rounded-full bg-emerald-500/10 blur-[150px] pointer-events-none"></div>
-      <div className="fixed -right-[10%] -bottom-[10%] z-0 h-[60%] w-[50%] rounded-full bg-sky-500/10 blur-[150px] pointer-events-none"></div>
+      <div className="pointer-events-none fixed -left-[10%] -top-[10%] z-0 h-[50%] w-[60%] rounded-full bg-primary/15 blur-[150px]"></div>
+      <div className="pointer-events-none fixed -right-[10%] -bottom-[10%] z-0 h-[60%] w-[50%] rounded-full bg-brand-sky/10 blur-[150px]"></div>
 
       {/* Progress Bar */}
       <div className="fixed left-0 top-0 z-50 h-1.5 w-full bg-white/5">
         <div 
-          className="h-full bg-gradient-to-r from-emerald-500 to-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.5)] transition-all duration-500 ease-out" 
+          className="h-full bg-gradient-to-r from-primary to-brand-sky shadow-[0_0_10px_hsl(var(--brand-sky)/0.45)] transition-all duration-500 ease-out"
           style={{ width: `${step === 0 ? 10 : (step / TOTAL_STEPS) * 100}%` }}
         />
       </div>
@@ -170,7 +170,7 @@ export default function BuildScorecardPage() {
         <div className="w-full max-w-3xl">
           
           {/* Card Wrapper */}
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0a1120]/80 p-6 shadow-2xl backdrop-blur-2xl sm:p-10 lg:p-12">
+          <div className="overflow-hidden rounded-3xl border border-white/10 bg-brand-navy/90 p-6 shadow-2xl backdrop-blur-2xl sm:p-10 lg:p-12">
             
             {resultStatus === "idle" ? (
               <form onSubmit={handleSubmit} className="relative">
@@ -395,7 +395,7 @@ export default function BuildScorecardPage() {
                 )}
 
                 {errorMessage ? (
-                  <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-sm font-bold text-rose-200">
+                  <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm font-bold text-white">
                     {errorMessage}
                   </p>
                 ) : null}
@@ -407,8 +407,8 @@ export default function BuildScorecardPage() {
                 
                 {resultStatus === "success" && (
                   <>
-                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                      <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-brand-sky/30 bg-brand-sky/10 shadow-lg shadow-primary/20">
+                      <CheckCircle2 className="h-10 w-10 text-brand-sky" />
                     </div>
                     <h2 className="font-heading text-3xl font-black">Great fit.</h2>
                     <p className="mx-auto mt-4 max-w-md text-lg text-slate-400">
@@ -423,8 +423,8 @@ export default function BuildScorecardPage() {
 
                 {resultStatus === "review" && (
                   <>
-                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
-                      <ShieldCheck className="h-10 w-10 text-amber-400" />
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-primary/30 bg-primary/15 shadow-lg shadow-primary/20">
+                      <ShieldCheck className="h-10 w-10 text-brand-sky" />
                     </div>
                     <h2 className="font-heading text-3xl font-black">Application Received.</h2>
                     <p className="mx-auto mt-4 max-w-md text-lg text-slate-400">

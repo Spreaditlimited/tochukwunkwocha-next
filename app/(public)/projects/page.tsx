@@ -33,50 +33,50 @@ function formatDate(value: Date | string | null) {
 
 export default async function StudentProjectsPage() {
   const projects = await listPublicStudentProjects(90)
-  const schoolProjects = projects.filter((project) => project.sourceType === "school").length
 
   return (
     <main className="bg-background">
       
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-background pt-16 pb-12 sm:pt-24 sm:pb-16 lg:pt-32">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
-        <div className="site-container">
+      <section className="relative overflow-hidden bg-brand-ink pb-12 pt-16 text-white sm:pb-16 sm:pt-24 lg:pt-32">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
+        <div className="pointer-events-none absolute right-0 top-0 h-[550px] w-[550px] -translate-y-1/3 translate-x-1/3 rounded-full bg-sky-500/20 blur-[140px]" />
+        <div className="site-container relative z-10">
           <div className="relative grid gap-12 lg:grid-cols-[1fr_minmax(auto,400px)] lg:items-center">
             <div className="max-w-3xl">
-              <p className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+              <p className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-sky-400">
                 <Sparkles className="h-4 w-4" /> Student Projects
               </p>
-              <h1 className="mt-6 font-heading text-4xl font-black tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-                See What Our Students Have Built.
+              <h1 className="mt-6 font-heading text-5xl font-black tracking-tighter text-white sm:text-6xl lg:text-7xl lg:leading-[1.1]">
+                See What Our Students Have <span className="bg-gradient-to-r from-brand-sky to-primary bg-clip-text text-transparent">Built.</span>
               </h1>
-              <div className="mt-6 space-y-4 text-lg leading-relaxed text-muted-foreground">
+              <div className="mt-6 space-y-4 text-lg leading-relaxed text-slate-400">
                 <p>
                   One of the best ways to understand what&apos;s possible is to see what others have already created.
                 </p>
                 <p>
                   Every project on this page represents someone who decided to stop wondering whether they could build with AI and started learning by doing. Our students come from different backgrounds. Some had never built a website before joining Prompt to Profit™. Others simply wanted to understand how AI could help them create useful digital solutions.
                 </p>
-                <p className="font-medium text-foreground">
+                <p className="font-medium text-white">
                   Today, they have projects they can proudly share with family, employers, clients, and the world.
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-1 lg:gap-6">
-              <div className="flex flex-col justify-center rounded-2xl border border-border/50 bg-card p-6 shadow-xl shadow-primary/5 transition-transform hover:-translate-y-1">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <div className="flex flex-col justify-center rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl transition-transform hover:-translate-y-1">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-400/10 text-sky-400">
                   <FolderKanban className="h-6 w-6" />
                 </div>
-                <p className="font-heading text-4xl font-black text-foreground">{projects.length}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">Published Projects</p>
+                <p className="font-heading text-4xl font-black text-white">{projects.length}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">Published Projects</p>
               </div>
-              <div className="flex flex-col justify-center rounded-2xl border border-border/50 bg-card p-6 shadow-xl shadow-primary/5 transition-transform hover:-translate-y-1">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                  <School className="h-6 w-6" />
+              <div className="flex flex-col justify-center rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl transition-transform hover:-translate-y-1">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-sky-400">
+                  <GraduationCap className="h-6 w-6" />
                 </div>
-                <p className="font-heading text-4xl font-black text-foreground">{schoolProjects}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">School Projects</p>
+                <p className="font-heading text-4xl font-black text-white">100%</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">Learner Built</p>
               </div>
             </div>
           </div>
@@ -200,7 +200,7 @@ export default async function StudentProjectsPage() {
               </div>
               <h3 className="mt-6 font-heading text-2xl font-black text-foreground">No public projects yet.</h3>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                Approved student projects will appear here after they pass the certificate or school project review workflows.
+                Approved student projects will appear here after they pass the project review process.
               </p>
             </div>
           )}

@@ -77,19 +77,20 @@ export default async function BlogPage({
   return (
     <main>
       {/* 1. Hero Section */}
-      <section className="relative overflow-hidden bg-background pt-16 lg:pt-24">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]" />
+        <div className="pointer-events-none absolute right-0 top-0 h-[550px] w-[550px] -translate-y-1/3 translate-x-1/3 rounded-full bg-sky-500/20 blur-[140px]" />
         
         <div className={`${sectionContainer} relative z-10 pb-16 lg:pb-24`}>
           <div className="mx-auto max-w-4xl text-center">
-            <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-primary">
+            <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-sky-400">
               <BookOpen className="h-4 w-4" />
               Academy Insights
             </p>
-            <h1 className="font-heading text-5xl font-black tracking-tighter text-foreground sm:text-6xl lg:text-7xl lg:leading-[1.1]">
-              Practical Insights on AI, Technology, and <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-sky-500">Building.</span>
+            <h1 className="font-heading text-5xl font-black tracking-tighter text-white sm:text-6xl lg:text-7xl lg:leading-[1.1]">
+              Practical Insights on AI, Technology, and <span className="bg-gradient-to-r from-sky-400 to-primary bg-clip-text text-transparent">Building.</span>
             </h1>
-            <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+            <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-400">
               Artificial Intelligence is moving quickly, but understanding it shouldn’t feel overwhelming. Explore clear explanations written for real people—whether you are discovering AI for the first time or looking for practical ways to improve your business.
             </p>
           </div>

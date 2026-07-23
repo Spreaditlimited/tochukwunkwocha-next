@@ -74,12 +74,12 @@ export function CoachingPricingCards() {
       <div className="grid gap-8 xl:grid-cols-4 xl:items-start">
         
         {/* Step 01: Discovery Call (Required Entry Point) */}
-        <article className="surface-raised group relative flex min-w-0 flex-col overflow-hidden bg-brand-ink p-8 text-white transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_rgba(16,185,129,0.15)] xl:col-span-1">
-          <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 opacity-80 transition-opacity group-hover:opacity-100"></div>
+        <article className="surface-raised group relative flex min-w-0 flex-col overflow-hidden bg-brand-ink p-8 text-white transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl xl:col-span-1">
+          <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-primary via-brand-blue to-brand-sky opacity-80 transition-opacity group-hover:opacity-100"></div>
           
           <div className="flex-1">
-            <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-emerald-400">
-              <span className="flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>
+            <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-brand-sky">
+              <span className="flex h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
               Step 01
             </p>
             <h3 className="font-heading text-3xl font-black tracking-tight sm:text-4xl">Discovery Call</h3>
@@ -116,18 +116,18 @@ export function CoachingPricingCards() {
                 key={plan.key}
                 className={`surface-raised group relative flex min-w-0 flex-col p-8 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl ${
                   isPopular 
-                    ? "border-emerald-500/40 bg-gradient-to-b from-emerald-500/5 to-background shadow-[0_20px_40px_rgba(16,185,129,0.08)] dark:from-emerald-500/10 dark:to-background" 
+                    ? "border-primary/40 bg-gradient-to-b from-primary/5 to-background shadow-xl shadow-primary/10 dark:from-primary/10 dark:to-background"
                     : "bg-card hover:border-primary/30"
                 }`}
               >
                 {/* Popular Glow Line */}
                 {isPopular && (
-                  <div className="absolute left-0 top-0 h-1 w-full bg-emerald-500"></div>
+                  <div className="absolute left-0 top-0 h-1 w-full bg-primary"></div>
                 )}
 
                 {/* Badge */}
                 <p className={`mb-6 inline-flex items-center gap-2 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
-                  isPopular ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border border-border bg-muted/50 text-muted-foreground"
+                  isPopular ? "border border-primary/20 bg-primary/10 text-primary dark:text-brand-sky" : "border border-border bg-muted/50 text-muted-foreground"
                 }`}>
                   {isPopular && <Sparkles className="h-3 w-3" />}
                   {plan.badge ?? "Monthly plan"}
@@ -166,7 +166,7 @@ export function CoachingPricingCards() {
                   <ul className="grid gap-3">
                     {plan.benefits.map((benefit) => (
                       <li key={benefit} className="flex gap-3 text-sm leading-relaxed text-muted-foreground">
-                        <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${isPopular ? "text-emerald-500" : "text-primary"}`} />
+                        <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${isPopular ? "text-primary" : "text-primary"}`} />
                         <span>{benefit}</span>
                       </li>
                     ))}
@@ -175,7 +175,7 @@ export function CoachingPricingCards() {
 
                 {/* Footer Lock / Outcome */}
                 <div className="mt-8 pt-6 border-t border-border">
-                  <p className={`text-sm font-bold leading-relaxed ${isPopular ? "text-emerald-600 dark:text-emerald-400" : "text-primary"}`}>
+                  <p className={`text-sm font-bold leading-relaxed ${isPopular ? "text-primary dark:text-brand-sky" : "text-primary"}`}>
                     {plan.outcome}
                   </p>
                   <div className="mt-4 flex items-center justify-center gap-2 rounded-md bg-muted/40 py-2.5 text-xs font-bold text-muted-foreground">

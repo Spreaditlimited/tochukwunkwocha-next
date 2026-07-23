@@ -12,6 +12,7 @@ import {
   LayoutDashboard, 
   School, 
   ShieldCheck, 
+  Sparkles,
   Terminal 
 } from "lucide-react"
 
@@ -152,26 +153,78 @@ export default function ProgrammesPage() {
               </div>
             </div>
 
-            {/* Schools Programme */}
+            {/* AI for Everyday Business Owners */}
             <div className="surface-raised grid overflow-hidden bg-card lg:grid-cols-[1.2fr_0.8fr]">
               <div className="p-8 sm:p-12">
                 <div className="mb-6 inline-flex rounded-lg bg-primary/10 p-4 text-primary">
-                  <School className="h-8 w-8" />
+                  <Sparkles className="h-8 w-8" />
                 </div>
-                <h3 className="font-heading text-3xl font-black tracking-tight lg:text-4xl">Schools Programme</h3>
-                <p className="mt-2 text-sm font-bold uppercase tracking-widest text-muted-foreground">Practical AI Education for Schools</p>
+                <h3 className="font-heading text-3xl font-black tracking-tight lg:text-4xl">
+                  AI for Everyday Business Owners
+                </h3>
+                <p className="mt-2 text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                  Practical AI for Daily Business Work
+                </p>
                 <div className="mt-6 space-y-4 text-lg leading-relaxed text-muted-foreground">
-                  <p>Enable your educational institution to introduce structured AI learning without increasing administrative complexity.</p>
-                  <p>Suitable for primary schools, secondary schools, after-school clubs, and other educational organisations that want to prepare learners for a future shaped by Artificial Intelligence.</p>
+                  <p>A practical programme for business owners who want useful results from AI without learning to code.</p>
+                  <p>Learn how to use ChatGPT to save time, improve customer communication, create stronger content, organise ideas, and work through everyday business tasks with greater clarity.</p>
                 </div>
                 <div className="mt-10 hidden lg:block">
-                  <Link href="/courses/prompt-to-profit-schools" className="btn-primary px-8 py-3.5 text-base">
+                  <Link href="/courses/ai-for-everyday-business-owners" className="btn-primary px-8 py-3.5 text-base">
                     Explore
                   </Link>
                 </div>
               </div>
               <div className="border-t border-border bg-muted/30 p-8 sm:p-12 lg:border-l lg:border-t-0">
-                <h4 className="font-heading text-lg font-bold">Programme Features</h4>
+                <h4 className="font-heading text-lg font-bold">What You Will Learn</h4>
+                <ul className="mt-6 space-y-4">
+                  {[
+                    "Writing clear, useful AI prompts",
+                    "Creating business content faster",
+                    "Improving customer communication",
+                    "Planning and organising daily work",
+                    "Thinking through business decisions",
+                    "Avoiding common AI mistakes"
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-3 text-sm font-semibold text-foreground">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> {item}
+                    </li>
+                  ))}
+                </ul>
+                <h4 className="mt-10 font-heading text-lg font-bold">Suitable For</h4>
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {["Business owners", "Freelancers", "Service providers", "Online sellers", "Creators", "Professionals"].map((badge) => (
+                    <span key={badge} className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground">{badge}</span>
+                  ))}
+                </div>
+                <div className="mt-10 lg:hidden">
+                  <Link href="/courses/ai-for-everyday-business-owners" className="btn-primary px-8 py-3.5 text-base">
+                    Explore
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Schools Programme */}
+            <div className="surface-raised grid overflow-hidden bg-brand-ink text-white lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="p-8 sm:p-12">
+                <div className="mb-6 inline-flex rounded-lg bg-white/10 p-4 text-sky-400">
+                  <School className="h-8 w-8" />
+                </div>
+                <h3 className="font-heading text-3xl font-black tracking-tight text-white lg:text-4xl">Schools Programme</h3>
+                <p className="mt-2 text-sm font-bold uppercase tracking-widest text-sky-400/80">Practical AI Education for Schools</p>
+                <div className="mt-6 space-y-4 text-lg leading-relaxed text-slate-300">
+                  <p>Enable your educational institution to introduce structured AI learning without increasing administrative complexity.</p>
+                  <p>Suitable for primary schools, secondary schools, after-school clubs, and other educational organisations that want to prepare learners for a future shaped by Artificial Intelligence.</p>
+                </div>
+                <div className="mt-10 hidden lg:block">
+                  <Link href="/courses/prompt-to-profit-schools" className="btn-inverse px-8 py-3.5 text-base">
+                    Explore
+                  </Link>
+                </div>
+              </div>
+              <div className="border-t border-white/10 bg-white/5 p-8 sm:p-12 lg:border-l lg:border-t-0">
+                <h4 className="font-heading text-lg font-bold text-white">Programme Features</h4>
                 <ul className="mt-6 space-y-4">
                   {[
                     { text: "Dedicated school dashboard", icon: LayoutDashboard },
@@ -184,14 +237,14 @@ export default function ProgrammesPage() {
                   ].map((item, i) => {
                     const Icon = item.icon
                     return (
-                      <li key={i} className="flex items-center gap-3 text-sm font-semibold text-foreground">
-                        <Icon className="h-4 w-4 shrink-0 text-primary" /> {item.text}
+                      <li key={i} className="flex items-center gap-3 text-sm font-semibold text-slate-300">
+                        <Icon className="h-4 w-4 shrink-0 text-sky-400" /> {item.text}
                       </li>
                     )
                   })}
                 </ul>
                 <div className="mt-10 lg:hidden">
-                  <Link href="/courses/prompt-to-profit-schools" className="btn-primary px-8 py-3.5 text-base">
+                  <Link href="/courses/prompt-to-profit-schools" className="btn-inverse px-8 py-3.5 text-base">
                     Explore
                   </Link>
                 </div>

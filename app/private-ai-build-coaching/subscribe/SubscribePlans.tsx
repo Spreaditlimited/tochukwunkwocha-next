@@ -52,7 +52,7 @@ export function SubscribePlans() {
   return (
     <>
       <form className="surface-raised relative mb-10 overflow-hidden border-white/10 bg-white/[0.04] p-6 text-white shadow-2xl sm:p-8">
-        <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-emerald-400 to-cyan-500" />
+        <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-brand-sky to-brand-sky" />
         <div className="grid gap-6 md:grid-cols-3 md:items-end">
           <label className="block">
             <span className="label text-slate-300">Full Name</span>
@@ -84,10 +84,10 @@ export function SubscribePlans() {
             <article
               key={plan.key}
               className={`surface-raised flex min-w-0 flex-col border-white/10 p-7 text-white ${
-                plan.popular ? "bg-emerald-500/15 shadow-[0_24px_54px_rgba(16,185,129,0.16)]" : "bg-white/[0.04]"
+                plan.popular ? "bg-primary/15 shadow-xl shadow-primary/20" : "bg-white/[0.04]"
               }`}
             >
-              <p className="eyebrow text-emerald-400">{plan.badge ?? "Monthly plan"}</p>
+              <p className="eyebrow text-brand-sky">{plan.badge ?? "Monthly plan"}</p>
               <h2 className="mt-4 font-heading text-3xl font-black tracking-tight">{plan.name}</h2>
               <p className="mt-3 break-words font-heading text-4xl font-black leading-tight tracking-tight [overflow-wrap:anywhere]">
                 {price?.monthlyLabel || (pricingError ? "Configure in admin" : "Loading...")}
@@ -110,7 +110,7 @@ export function SubscribePlans() {
               <ul className="mt-5 grid gap-3">
                 {plan.benefits.map((benefit) => (
                   <li key={benefit} className="flex gap-2 text-sm leading-relaxed text-slate-400">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-sky" />
                     <span>{benefit}</span>
                   </li>
                 ))}

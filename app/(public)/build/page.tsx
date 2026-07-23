@@ -38,35 +38,35 @@ export default function BuildPage() {
       {/* 1. Immersive Hero Section */}
       <section className="relative overflow-hidden border-b border-border bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-        <div className="absolute right-0 top-0 -translate-y-1/4 translate-x-1/4 h-[500px] w-[500px] rounded-full bg-sky-500/20 blur-[150px] pointer-events-none"></div>
+        <div className="pointer-events-none absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/4 translate-x-1/4 rounded-full bg-brand-sky/20 blur-[150px]"></div>
 
         <div className={`${sectionContainer} relative z-10 pb-20 lg:pb-28`}>
           <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 items-center">
             
             {/* Hero Content */}
             <div>
-              <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-1.5 text-sky-400">
+              <p className="eyebrow mb-6 inline-flex items-center gap-2 rounded-full border border-brand-sky/30 bg-brand-sky/10 px-4 py-1.5 text-brand-sky">
                 <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500"></span>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-sky opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-sky"></span>
                 </span>
                 Founder-Led Implementation
               </p>
               
               <h1 className="font-heading text-5xl font-black tracking-tighter sm:text-6xl lg:text-[4rem] lg:leading-[1.1]">
-                I Personally Take <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-primary">One Build Project</span> Per Month.
+                I Personally Take <span className="bg-gradient-to-r from-brand-sky to-primary bg-clip-text text-transparent">One Build Project</span> Per Month.
               </h1>
               
               <p className="mt-6 text-lg leading-relaxed text-slate-300">
                 I help businesses replace spreadsheets, manual processes, WhatsApp confusion, and operational bottlenecks with custom web applications—built and deployed within <strong className="text-white">30 days</strong>.
               </p>
               
-              <div className="mt-10 flex flex-wrap items-center gap-4">
-                <Link className="btn-inverse px-8 py-4 text-base shadow-lg shadow-primary/20" href="/build-scorecard">
-                  Apply for Build
+              <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+                <Link className="btn-inverse w-full whitespace-nowrap px-3 py-3.5 text-sm shadow-lg shadow-primary/20 sm:w-auto sm:px-8 sm:py-4 sm:text-base" href="/build-scorecard">
+                  Apply Now
                 </Link>
-                <Link className="btn-inverse-secondary px-8 py-4 text-base" href="#how-build-works">
-                  See the Methodology
+                <Link className="btn-inverse-secondary w-full whitespace-nowrap px-3 py-3.5 text-sm sm:w-auto sm:px-8 sm:py-4 sm:text-base" href="#how-build-works">
+                  See Methodology
                 </Link>
               </div>
 
@@ -89,8 +89,8 @@ export default function BuildPage() {
 
             {/* Hero Visual */}
             <div className="relative hidden lg:block">
-              <div className="absolute -inset-4 rounded-2xl bg-sky-500/10 -z-10 transform rotate-2"></div>
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0a1120] shadow-2xl">
+              <div className="absolute -inset-4 -z-10 rotate-2 rounded-2xl bg-brand-sky/10"></div>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-brand-ink shadow-2xl">
                 <Image
                   src="/brand/tochukwu-portrait.webp"
                   alt="Tochukwu Nkwocha"
@@ -137,7 +137,7 @@ export default function BuildPage() {
             <div className="surface-raised relative overflow-hidden bg-card p-6 lg:p-8">
               <span className="absolute -right-4 -top-6 font-heading text-[8rem] font-black leading-none text-muted/40 select-none">2</span>
               <div className="relative z-10">
-                <Search className="mb-6 h-8 w-8 text-sky-500" />
+                <Search className="mb-6 h-8 w-8 text-primary" />
                 <h3 className="font-heading text-xl font-bold">Discovery</h3>
                 <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                   A paid, high-level architectural strategy session to map out all core requirements.
@@ -161,7 +161,7 @@ export default function BuildPage() {
             <div className="surface-raised relative overflow-hidden bg-brand-ink text-white p-6 lg:p-8">
               <span className="absolute -right-4 -top-6 font-heading text-[8rem] font-black leading-none text-white/5 select-none">4</span>
               <div className="relative z-10">
-                <Code2 className="mb-6 h-8 w-8 text-sky-400" />
+                <Code2 className="mb-6 h-8 w-8 text-brand-sky" />
                 <h3 className="font-heading text-xl font-bold text-white">Build</h3>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
                   Heads-down, founder-led coding. App architecture designed and built in 30 days.
@@ -193,14 +193,14 @@ export default function BuildPage() {
             {/* Preferred Projects */}
             <div>
               <div className="mb-8 flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                   <CheckCircle2 className="h-6 w-6" />
                 </div>
                 <h2 className="font-heading text-3xl font-black tracking-tight">Projects I Prefer</h2>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {preferredProjects.map((project, i) => (
-                  <div key={i} className="surface-raised bg-card p-5 transition-colors hover:border-emerald-500/30">
+                  <div key={i} className="surface-raised bg-card p-5 transition-colors hover:border-primary/30">
                     <p className="text-sm font-bold text-foreground">{project}</p>
                   </div>
                 ))}
@@ -208,23 +208,23 @@ export default function BuildPage() {
             </div>
 
             {/* Declined Projects */}
-            <div className="surface-raised relative overflow-hidden bg-rose-50/50 p-8 dark:bg-rose-950/10 sm:p-10 border-rose-200 dark:border-rose-900/30">
-              <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-rose-500/5 blur-[80px] pointer-events-none -z-10"></div>
+            <div className="surface-raised relative overflow-hidden border-white/10 bg-brand-ink p-8 text-white sm:p-10">
+              <div className="pointer-events-none absolute right-0 top-0 -z-10 h-64 w-64 rounded-full bg-brand-sky/10 blur-[80px]"></div>
               
               <div className="mb-8 flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-brand-sky/20 bg-brand-sky/10 text-brand-sky">
                   <XCircle className="h-6 w-6" />
                 </div>
-                <h2 className="font-heading text-3xl font-black tracking-tight">Projects I Decline</h2>
+                <h2 className="font-heading text-3xl font-black tracking-tight text-white">Projects I Decline</h2>
               </div>
-              <p className="mb-8 text-base text-muted-foreground">
+              <p className="mb-8 text-base text-slate-300">
                 To maintain a strict 30-day delivery standard, I automatically decline projects outside my core architectural focus.
               </p>
               
               <div className="grid gap-3">
                 {declinedProjects.map((project, i) => (
-                  <div key={i} className="flex items-center gap-3 rounded-lg border border-rose-200 bg-white p-4 text-sm font-medium text-foreground dark:border-rose-900/30 dark:bg-background">
-                    <div className="h-2 w-2 shrink-0 rounded-full bg-rose-500"></div> 
+                  <div key={i} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm font-medium text-white">
+                    <div className="h-2 w-2 shrink-0 rounded-full bg-brand-sky"></div>
                     {project}
                   </div>
                 ))}
@@ -242,10 +242,10 @@ export default function BuildPage() {
             <div className="surface-raised relative overflow-hidden bg-brand-ink px-8 py-16 text-center text-white sm:px-16 sm:py-24">
               {/* Abstract decorative blobs */}
               <div className="absolute -right-20 -top-20 h-96 w-96 rounded-full bg-primary/20 blur-[120px] pointer-events-none"></div>
-              <div className="absolute -bottom-20 -left-20 h-96 w-96 rounded-full bg-sky-500/10 blur-[120px] pointer-events-none"></div>
+              <div className="pointer-events-none absolute -bottom-20 -left-20 h-96 w-96 rounded-full bg-brand-sky/10 blur-[120px]"></div>
               
               <div className="relative z-10 mx-auto max-w-3xl">
-                <ShieldCheck className="mx-auto mb-6 h-12 w-12 text-sky-400" />
+                <ShieldCheck className="mx-auto mb-6 h-12 w-12 text-brand-sky" />
                 <h2 className="font-heading text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
                   Why Only One Project Monthly?
                 </h2>
