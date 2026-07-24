@@ -31,11 +31,28 @@ function formatDate(value: Date | string | null) {
   return new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" }).format(date)
 }
 
-export default async function StudentProjectsPage() {
+type StudentProjectsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function StudentProjectsPage({ searchParams }: StudentProjectsPageProps) {
+  const params = searchParams ? await searchParams : {}
+  const source = Array.isArray(params.from) ? params.from[0] : params.from
+  const buildYoursHref = source === "prompt-to-profit"
+    ? "/checkout/prompt-to-profit"
+    : "/courses/prompt-to-profit"
   const projects = await listPublicStudentProjects(90)
 
   return (
     <main className="bg-background">
+      <Link
+        href={buildYoursHref}
+        className="sticky-project-cta btn-primary fixed bottom-4 right-4 z-20 gap-2 px-5 py-3.5 text-sm shadow-2xl shadow-primary/25 sm:bottom-6 sm:right-6 sm:px-7 sm:py-4 sm:text-base"
+        aria-label="Build yours with Prompt to Profit Basic"
+      >
+        Build Yours
+        <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
+      </Link>
       
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-brand-ink pb-12 pt-16 text-white sm:pb-16 sm:pt-24 lg:pt-32">

@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronRight,
+  Globe2,
   Quote,
   School,
   Trophy
@@ -14,25 +15,37 @@ import {
 
 function BrowserMockup({ title, url, iframeSrc }: { title: string; url: string; iframeSrc?: string }) {
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-brand-ink shadow-2xl transition-all hover:-translate-y-2 hover:shadow-sky-500/10">
-      <div className="flex items-center gap-4 border-b border-white/10 bg-[#161b22] px-4 py-3">
-        <div className="flex gap-1.5">
-          <div className="h-3 w-3 rounded-full bg-rose-500" />
-          <div className="h-3 w-3 rounded-full bg-sky-500" />
-          <div className="h-3 w-3 rounded-full bg-emerald-500" />
-        </div>
-        <div className="flex-1 rounded-md border border-white/5 bg-[#060b14] px-3 py-1 text-center font-mono text-xs text-slate-400">
-          {url}
-        </div>
-      </div>
-      <div className="relative aspect-video w-full bg-muted sm:aspect-[4/3] md:aspect-[16/10]">
-        {iframeSrc ? (
-          <iframe src={iframeSrc} title={title} className="absolute inset-0 h-full w-full border-0 bg-white" loading="lazy" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[#0a0f1e] text-slate-500">
-            <p className="font-mono text-xs font-bold uppercase tracking-widest">[Live Preview Placeholder]</p>
+    <div className="group min-w-0 max-w-full">
+      <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:border-white/20 hover:shadow-sky-500/10">
+        <div className="flex h-14 min-w-0 items-center gap-3 border-b border-white/10 bg-[#161b22] px-3 sm:gap-4 sm:px-5">
+          <div className="flex shrink-0 gap-2 sm:gap-2.5">
+            <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ff5f56]" />
+            <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ffbd2e]" />
+            <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#27c93f]" />
           </div>
-        )}
+          <div className="min-w-0 flex-1">
+            <div className="mx-auto flex min-w-0 max-w-full items-center justify-center gap-2 truncate rounded-lg border border-white/5 bg-[#0d1117] px-3 py-1.5 text-center font-mono text-xs tracking-wide text-slate-400 shadow-inner sm:max-w-[320px] sm:px-4">
+              <Globe2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="truncate">{url}</span>
+            </div>
+          </div>
+          <div className="hidden w-12 shrink-0 sm:block" />
+        </div>
+        <div className="relative h-[380px] w-full bg-white md:h-[450px]">
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
+            <span className="animate-pulse text-xs font-bold uppercase tracking-widest text-slate-400">Loading Site...</span>
+          </div>
+          {iframeSrc ? (
+            <iframe
+              src={iframeSrc}
+              title={title}
+              className="relative z-10 block h-full w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -44,6 +57,33 @@ const scorecardQuestions = [
   { id: 1, text: "Do your students have access to internet-connected computers or tablets at school?" },
   { id: 2, text: "Does your school leadership actively support introducing practical digital skills?" },
   { id: 3, text: "Are your teachers open to facilitating pre-recorded, guided technical lessons?" }
+]
+
+const parentTestimonials = [
+  {
+    name: "Anuri Okongwu",
+    role: "Secondary School Parent",
+    image: "/testimonials/anuri-avatar.webp",
+    quote: "Thanks to your training, they built their websites in just a few days without any prior knowledge of HTML and CSS, and they are already live. Honestly, I got great value for the money spent, which is why I am confident about continuing."
+  },
+  {
+    name: "Marquis Festus",
+    role: "Father of an 8-year old",
+    image: "/testimonials/marquis-avatar.webp",
+    quote: "She followed along and by the end, she had a live page for a business she made up. The proof that a course works is not in the certificate. It is in what the student builds when the class ends."
+  },
+  {
+    name: "Rosemary Blessing Alor",
+    role: "Parent",
+    image: "/testimonials/rosemary-blessing-alor.png",
+    quote: "Mr. Tochukwu is a patient teacher. He is calm and understanding, always willing to explain again to students who have a hard time catching up. The class is enlightening as well. My daughter can do so much now with the things she has learned and I'm glad I enrolled her in this course."
+  },
+  {
+    name: "Buchi Ileka",
+    role: "Parent",
+    image: "/testimonials/buchi-avatar.webp",
+    quote: "I enrolled my 8-year-old in Prompt to Profit, and by Day 3 he had already built three practice websites on his own. He was so excited to show me everything he made."
+  }
 ]
 
 export function PromptToProfitSchoolsCoursePage() {
@@ -236,45 +276,35 @@ export function PromptToProfitSchoolsCoursePage() {
             </h2>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div className="surface-raised relative bg-card p-8 sm:p-10">
-              <Quote className="absolute right-8 top-8 h-16 w-16 text-muted-foreground/10" />
-              <div className="mb-6 flex items-center gap-4">
-                <Image
-                  src="/testimonials/anuri-avatar.webp"
-                  alt="Anuri Okongwu"
-                  width={48}
-                  height={48}
-                  className="h-12 w-12 rounded-full object-cover"
-                />
-                <div>
-                  <p className="font-heading font-bold text-foreground">Anuri Okongwu</p>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-sky-500">Secondary School Parent</p>
-                </div>
-              </div>
-              <p className="text-base leading-relaxed text-muted-foreground">
-                “Thanks to your training, they built their websites in just a few days without any prior knowledge of HTML and CSS, and they are already live. Honestly, I got great value for the money spent, which is why I am confident about continuing.”
-              </p>
-            </div>
+          <div className="relative max-w-[100vw] overflow-hidden">
+            <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 hidden w-20 bg-gradient-to-r from-background to-transparent lg:block" />
+            <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 hidden w-20 bg-gradient-to-l from-background to-transparent lg:block" />
 
-            <div className="surface-raised relative bg-card p-8 sm:p-10">
-              <Quote className="absolute right-8 top-8 h-16 w-16 text-muted-foreground/10" />
-              <div className="mb-6 flex items-center gap-4">
-                <Image
-                  src="/testimonials/marquis-avatar.webp"
-                  alt="Marquis Festus"
-                  width={48}
-                  height={48}
-                  className="h-12 w-12 rounded-full object-cover"
-                />
-                <div>
-                  <p className="font-heading font-bold text-foreground">Marquis Festus</p>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-sky-500">Father of an 8-year old</p>
-                </div>
-              </div>
-              <p className="text-base leading-relaxed text-muted-foreground">
-                “She followed along and by the end, she had a live page for a business she made up. The proof that a course works is not in the certificate. It is in what the student builds when the class ends.”
-              </p>
+            <div className="grid gap-6 pb-8 pt-4 md:flex md:items-stretch md:snap-x md:snap-mandatory md:overflow-x-auto md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden">
+              {parentTestimonials.map((testimonial) => (
+                <article
+                  key={testimonial.name}
+                  className="surface-raised relative flex w-full min-w-0 flex-col bg-card p-8 sm:p-10 md:w-[420px] md:flex-none md:snap-center"
+                >
+                  <Quote className="absolute right-8 top-8 h-16 w-16 text-muted-foreground/10" />
+                  <div className="mb-6 flex items-center gap-4">
+                    <Image
+                      src={testimonial.image}
+                      alt={testimonial.name}
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 rounded-full object-cover"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate font-heading font-bold text-foreground">{testimonial.name}</p>
+                      <p className="mt-1 truncate text-xs font-bold uppercase tracking-widest text-sky-500">{testimonial.role}</p>
+                    </div>
+                  </div>
+                  <p className="relative text-base leading-relaxed text-muted-foreground">
+                    “{testimonial.quote}”
+                  </p>
+                </article>
+              ))}
             </div>
           </div>
         </div>
@@ -292,7 +322,7 @@ export function PromptToProfitSchoolsCoursePage() {
             </p>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-2">
+          <div className="grid min-w-0 gap-8 lg:grid-cols-2 lg:gap-12">
             <BrowserMockup title="The Man Cave Naija" url="themancavenaija.com" iframeSrc="https://themancavenaija.com/" />
             <BrowserMockup title="Kachi Game Arcade" url="kachigamearcade.netlify.app" iframeSrc="https://kachigamearcade.netlify.app" />
           </div>

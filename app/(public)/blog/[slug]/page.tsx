@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, ArrowRight, Calendar, Download, FileText, User } from "lucide-react"
+import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, Download, FileText, Sparkles, User } from "lucide-react"
 
 import { JsonLd } from "@/components/JsonLd"
 import { getBlogImageSrc, getContinueReadingPosts, getPostBySlug, parseBlogSeo } from "@/lib/blog"
@@ -28,6 +28,15 @@ function leadMagnetBullets(value: string | null | undefined) {
       : []
   } catch (_error) {
     return []
+  }
+}
+
+function blogTitleParts(value: string) {
+  const words = value.trim().split(/\s+/)
+  if (words.length <= 3) return { lead: value, accent: "" }
+  return {
+    lead: words.slice(0, -3).join(" "),
+    accent: words.slice(-3).join(" ")
   }
 }
 
@@ -59,6 +68,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const leadMagnetBenefits = leadMagnetBullets(leadMagnet?.bulletsJson)
   const imageSrc = getBlogImageSrc(post.blogImage)
   const continueReadingPosts = await getContinueReadingPosts(post, 3)
+  const titleParts = blogTitleParts(post.blogTitle)
 
   return (
     <main className="bg-background pb-24">
@@ -73,37 +83,39 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         ]}
       />
       {/* 1. Article Header & Meta */}
-      <header className="relative overflow-hidden bg-brand-ink pt-12 text-white lg:pt-20">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-sky/15 blur-[150px]"></div>
+      <header className="relative overflow-hidden bg-background pt-12 lg:pt-20">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
         
         <div className={`${sectionContainer} relative z-10 pb-12`}>
           <div className="mx-auto max-w-4xl text-center">
             <Link 
               href="/blog" 
-              className="group mb-8 inline-flex items-center text-sm font-bold text-slate-400 transition-colors hover:text-white"
+              className="group mb-8 inline-flex items-center text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" /> 
               Back to Publications
             </Link>
             
-            <h1 className="font-heading text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl lg:leading-[1.1]">
-              {post.blogTitle}
+            <h1 className="font-heading text-4xl font-black tracking-tight text-foreground sm:text-5xl lg:text-6xl lg:leading-[1.1]">
+              {titleParts.lead}
+              {titleParts.accent ? (
+                <> <span className="bg-gradient-to-r from-primary to-sky-500 bg-clip-text text-transparent">{titleParts.accent}</span></>
+              ) : null}
             </h1>
             
             {post.excerpt && (
-              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
                 {post.excerpt}
               </p>
             )}
 
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 border-t border-white/10 pt-8 text-sm font-semibold text-slate-300">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 border-t border-border pt-8 text-sm font-semibold text-muted-foreground">
               <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-brand-sky" />
+                <Calendar className="h-4 w-4 text-primary" />
                 {formatDate(post.createdAt)}
               </div>
               <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-brand-sky" />
+                <User className="h-4 w-4 text-primary" />
                 {post.blogBy || brand.personalName}
               </div>
             </div>
@@ -132,41 +144,69 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         
         {/* Lead Magnet (Elevated Premium Callout) */}
         {leadMagnet && (
-          <aside data-blog-lead-cta data-lead-magnet-slug={leadMagnet.slug} className="surface-raised mb-12 flex flex-col justify-between overflow-hidden bg-brand-ink text-white sm:flex-row sm:items-center">
-            <div className="p-6 sm:p-8">
-              <p className="eyebrow text-sky-400">Academy Resource</p>
-              <h2 className="mt-2 font-heading text-xl font-black tracking-tight sm:text-2xl">
-                {leadMagnet.offerHeadline || leadMagnet.title}
-              </h2>
-              {leadMagnet.description && (
-                <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  {leadMagnet.description}
+          <aside
+            data-blog-lead-cta
+            data-lead-magnet-slug={leadMagnet.slug}
+            className="relative isolate mb-14"
+          >
+            <div className="pointer-events-none absolute -inset-1 -z-10 rounded-2xl bg-gradient-to-br from-sky-400/45 via-primary/25 to-sky-300/10 blur-lg" />
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-brand-ink text-white shadow-2xl shadow-brand-ink/30 transition-transform duration-300 hover:-translate-y-1">
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:24px_24px]" />
+              <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-sky-400/15 blur-[80px]" />
+
+              <div className="relative p-7 sm:p-10">
+                <div className="flex items-start justify-between gap-5">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-300/10 text-sky-300 shadow-lg shadow-black/10">
+                    <FileText className="h-6 w-6" />
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-sky-300">
+                    <Sparkles className="h-3 w-3" />
+                    Free PDF
+                  </span>
+                </div>
+
+                <p className="mt-7 text-[10px] font-black uppercase tracking-[0.2em] text-sky-300">
+                  Academy resource
                 </p>
-              )}
-              {leadMagnetBenefits.length ? (
-                <ul className="mt-4 grid gap-2 text-sm text-slate-300">
-                  {leadMagnetBenefits.map((benefit) => (
-                    <li key={benefit} className="flex gap-2 leading-relaxed">
-                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-300" aria-hidden="true" />
-                      <span>{benefit}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-            {leadMagnetPdfUrl && (
-              <div className="border-t border-white/10 bg-white/5 p-6 sm:border-l sm:border-t-0 sm:p-8 flex items-center justify-center shrink-0">
-                <button
-                  type="button"
-                  data-lead-magnet-open
-                  data-lead-magnet-slug={leadMagnet.slug}
-                  className="btn-inverse w-full px-6 py-3 text-sm sm:w-auto"
-                >
-                  <Download className="mr-2 h-4 w-4" /> 
-                  {leadMagnet.buttonText || "Download"}
-                </button>
+                <h2 className="mt-2 font-heading text-2xl font-black leading-tight tracking-tight text-white sm:text-3xl">
+                  {leadMagnet.offerHeadline || leadMagnet.title}
+                </h2>
+
+                {leadMagnet.description && (
+                  <p className="mt-4 max-w-2xl text-sm font-medium leading-6 text-slate-300 sm:text-base">
+                    {leadMagnet.description}
+                  </p>
+                )}
+
+                {leadMagnetBenefits.length ? (
+                  <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+                    {leadMagnetBenefits.map((benefit) => (
+                      <li key={benefit} className="flex gap-3 text-sm font-medium leading-6 text-slate-200">
+                        <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-sky-300" aria-hidden="true" />
+                        <span>{benefit}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {leadMagnetPdfUrl && (
+                  <div className="mt-8 flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs font-medium leading-5 text-slate-400">
+                      Complimentary access.<br className="hidden sm:block" /> Delivered securely by email.
+                    </p>
+                    <button
+                      type="button"
+                      data-lead-magnet-open
+                      data-lead-magnet-slug={leadMagnet.slug}
+                      className="btn-inverse w-full shrink-0 px-6 py-3.5 text-sm shadow-lg shadow-black/20 sm:w-auto"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </aside>
         )}
 
@@ -184,7 +224,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                   title: leadMagnet.title,
                   offerHeadline: leadMagnet.offerHeadline,
                   description: leadMagnet.description,
-                  buttonText: leadMagnet.buttonText,
+                  buttonText: "Download",
                   bullets: leadMagnetBenefits,
                   pdfUrl: leadMagnetPdfUrl
                 }

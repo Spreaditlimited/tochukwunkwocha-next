@@ -617,7 +617,7 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
                 </p>
               </div>
               <div className="shrink-0">
-                <Link href="/projects" className="btn-primary flex w-full items-center justify-center bg-white px-8 py-4 text-base text-brand-ink hover:bg-slate-100 sm:w-auto">
+                <Link href="/projects?from=prompt-to-profit" className="btn-primary flex w-full items-center justify-center bg-white px-8 py-4 text-base text-brand-ink hover:bg-slate-100 sm:w-auto">
                   View Project Gallery
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
