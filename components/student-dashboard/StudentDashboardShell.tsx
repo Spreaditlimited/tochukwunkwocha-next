@@ -18,8 +18,6 @@ import {
   LockKeyhole,
   LogOut,
   Network,
-  PackageOpen,
-  ShoppingBag,
   UserRound,
   WalletCards,
   UsersRound
@@ -44,8 +42,6 @@ type StudentDashboardShellProps = {
 const navItems = [
   { href: "/dashboard", label: "Overview", key: "overview", icon: Home },
   { href: "/dashboard/courses", label: "Courses", key: "courses", icon: BookOpen },
-  { href: "/dashboard/shop", label: "Shop", key: "shop", icon: ShoppingBag },
-  { href: "/dashboard/purchases", label: "My Purchases", key: "purchases", icon: PackageOpen },
   { href: "/dashboard/installments", label: "Installments", key: "installments", icon: WalletCards },
   { href: "/dashboard/family", label: "Group Enrollment", key: "family", icon: UsersRound },
   { href: "/dashboard/domains", label: "Domains", key: "domains", icon: Globe },

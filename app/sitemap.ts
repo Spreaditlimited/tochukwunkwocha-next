@@ -4,7 +4,6 @@ import { getPublishedPosts } from "@/lib/blog"
 import { courses, services } from "@/lib/public-offers"
 import { listPublishedResources, resourceAudiences } from "@/lib/resources"
 import { absoluteUrl } from "@/lib/site-seo"
-import { listPublishedShopProducts } from "@/lib/shop"
 
 export const dynamic = "force-dynamic"
 
@@ -19,7 +18,6 @@ const staticRoutes = [
   "/resources",
   "/resources/videos",
   "/resources/prompts",
-  "/shop",
   "/contact",
   "/privacy-policy",
   "/terms-and-conditions"
@@ -27,10 +25,9 @@ const staticRoutes = [
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date()
-  const [posts, resources, products] = await Promise.all([
+  const [posts, resources] = await Promise.all([
     getPublishedPosts(500),
-    listPublishedResources({ limit: 500 }),
-    listPublishedShopProducts()
+    listPublishedResources({ limit: 500 })
   ])
 
   return [
@@ -63,12 +60,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: resource.updatedAt || resource.publishedAt || now,
       changeFrequency: "monthly" as const,
       priority: resource.featured ? 0.75 : 0.6
-    })),
-    ...products.map((product) => ({
-      url: absoluteUrl(`/shop/${product.slug}`),
-      lastModified: product.updatedAt || product.publishedAt || now,
-      changeFrequency: "monthly" as const,
-      priority: product.featured ? 0.85 : 0.7
     })),
     ...posts.map((post) => ({
       url: absoluteUrl(`/blog/${post.blogSlug}`),

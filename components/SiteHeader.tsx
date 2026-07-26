@@ -15,7 +15,6 @@ const mainNav = [
   { name: "Coaching", href: "/private-ai-build-coaching" },
   { name: "Student Projects", href: "/projects" },
   { name: "Resources", href: "/resources" },
-  { name: "Shop", href: "/shop" },
   { name: "Blog", href: "/blog" }
 ]
 

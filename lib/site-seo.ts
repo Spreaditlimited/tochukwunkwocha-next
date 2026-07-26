@@ -149,46 +149,6 @@ export function serviceJsonLd(service: {
   }
 }
 
-export function productJsonLd(product: {
-  title: string
-  description: string
-  path: string
-  image?: string | null
-  variants: Array<{
-    variantUuid: string
-    title: string
-    priceMinor: number
-    currency: string
-    available: boolean
-  }>
-}) {
-  return {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: product.title,
-    description: product.description,
-    url: absoluteUrl(product.path),
-    image: product.image ? [absoluteUrl(product.image)] : undefined,
-    brand: {
-      "@type": "Brand",
-      name: brand.name
-    },
-    offers: product.variants
-      .filter((variant) => variant.priceMinor > 0)
-      .map((variant) => ({
-        "@type": "Offer",
-        sku: variant.variantUuid,
-        name: variant.title,
-        price: (variant.priceMinor / 100).toFixed(2),
-        priceCurrency: variant.currency.toUpperCase(),
-        availability: variant.available
-          ? "https://schema.org/InStock"
-          : "https://schema.org/OutOfStock",
-        url: absoluteUrl(product.path)
-      }))
-  }
-}
-
 export function articleJsonLd(post: {
   blogTitle: string
   blogSlug: string

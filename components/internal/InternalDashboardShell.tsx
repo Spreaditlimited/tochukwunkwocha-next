@@ -24,7 +24,6 @@ import {
   School,
   Search,
   Settings,
-  ShoppingBag,
   ShieldCheck,
   Smartphone,
   MessageCircle,
@@ -55,7 +54,6 @@ const navSections = [
   {
     label: "Revenue",
     items: [
-      { href: "/internal/shop", label: "Shop", icon: ShoppingBag },
       { href: "/internal/manual-payments", label: "Enrollments", icon: CreditCard },
       { href: "/internal/installments", label: "Installments", icon: WalletCards },
       { href: "/internal/coupons", label: "Coupons", icon: Percent },

@@ -12,18 +12,13 @@
     "db:generate": "prisma generate",
     "db:setup:seo": "node scripts/setup-seo-tables.mjs",
     "db:setup:resources": "node scripts/setup-resource-tables.mjs",
-    "db:seed:resources": "node scripts/seed-resource-library.mjs",
-    "db:seed:shop": "node scripts/seed-shop-workbooks.mjs",
-    "shop:upload:workbooks": "node --env-file=.env scripts/upload-shop-workbooks-cloudinary.mjs",
-    "shop:verify:workbooks": "node --env-file=.env scripts/verify-shop-workbook-assets.mjs",
-    "shop:publish:workbooks": "node --env-file=.env scripts/publish-shop-workbooks.mjs"
+    "db:seed:resources": "node scripts/seed-resource-library.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/react": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
-    "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",
     "next": "^15.3.6",

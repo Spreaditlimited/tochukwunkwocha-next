@@ -4,7 +4,7 @@ import { getAdminSettingValue } from "@/lib/admin-settings"
 import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
-import { getConfiguredStripeFee, grossUpPaystackAmount, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
+import { getConfiguredStripeFee, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { getCourse } from "@/lib/public-offers"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
@@ -364,6 +364,13 @@ async function vatPercent(provider: CheckoutProvider) {
 async function grossUpStripeAmount(netMinor: number, currency: string) {
   const { bps, fixedMinor } = await getConfiguredStripeFee(currency)
   return calculateStripeGrossAmount(netMinor, bps, fixedMinor)
+}
+
+function grossUpPaystackAmount(netMinor: number) {
+  const safeNet = Math.max(0, Math.round(Number(netMinor || 0)))
+  const feeAtNet = Math.round(safeNet * 0.015) + (safeNet < 250_000 ? 0 : 10_000)
+  if (feeAtNet > 200_000) return safeNet + 200_000
+  return Math.ceil((safeNet + (safeNet < 250_000 ? 0 : 10_000)) / (1 - 0.015) + 1)
 }
 
 async function composePricingBreakdown(input: {
