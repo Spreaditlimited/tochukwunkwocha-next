@@ -53,6 +53,40 @@ async function findManualPayment(paymentUuid: string) {
   return rows[0] || null
 }
 
+async function findExistingApprovedIndividualEnrollment(input: {
+  email: string
+  courseSlug: string
+  excludeManualPaymentUuid: string
+}) {
+  const [manualRows, orderRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ sourceUuid: string; batchKey: string | null }>>`
+      SELECT payment_uuid AS sourceUuid, batch_key AS batchKey
+      FROM course_manual_payments
+      WHERE LOWER(TRIM(email)) = ${input.email}
+        AND LOWER(TRIM(course_slug)) = ${input.courseSlug}
+        AND status = 'approved'
+        AND COALESCE(buyer_type, 'student') <> 'family'
+        AND payment_uuid <> ${input.excludeManualPaymentUuid}
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    prisma.$queryRaw<Array<{ sourceUuid: string; batchKey: string | null }>>`
+      SELECT order_uuid AS sourceUuid, batch_key AS batchKey
+      FROM course_orders
+      WHERE LOWER(TRIM(email)) = ${input.email}
+        AND LOWER(TRIM(course_slug)) = ${input.courseSlug}
+        AND status = 'paid'
+        AND COALESCE(buyer_type, 'student') <> 'family'
+      ORDER BY id DESC
+      LIMIT 1
+    `
+  ])
+
+  if (manualRows[0]) return { sourceType: "manual payment", ...manualRows[0] }
+  if (orderRows[0]) return { sourceType: "online order", ...orderRows[0] }
+  return null
+}
+
 async function updateManualPaymentReview(input: {
   paymentUuid: string
   status: "approved" | "rejected"
@@ -193,8 +227,29 @@ export async function reviewManualPayment(input: {
   }
 
   const nextStatus = input.action === "approve" ? "approved" : "rejected"
+  const email = normalizeEmail(payment.email)
+  const courseSlug = clean(payment.course_slug, 120).toLowerCase()
+
   if (nextStatus === "approved") {
-    const courseSlug = clean(payment.course_slug, 120).toLowerCase()
+    if (!email) throw new Error("This payment has no valid student email and cannot be approved.")
+    if (!courseSlug) throw new Error("This payment has no valid course and cannot be approved.")
+    if (clean(payment.status, 40).toLowerCase() === "approved") {
+      throw new Error("This enrollment has already been approved.")
+    }
+
+    if (clean(payment.buyer_type, 40).toLowerCase() !== "family") {
+      const existingEnrollment = await findExistingApprovedIndividualEnrollment({
+        email,
+        courseSlug,
+        excludeManualPaymentUuid: paymentUuid
+      })
+      if (existingEnrollment) {
+        throw new Error(
+          `This email already has an approved enrollment for this course (${existingEnrollment.sourceType} ${existingEnrollment.sourceUuid}). Reject or correct the duplicate registration instead.`
+        )
+      }
+    }
+
     const batchKey = clean(payment.batch_key, 64)
     const seatCount = Math.max(1, toNumber(payment.seat_count, 1))
     if (batchKey) {
@@ -213,9 +268,6 @@ export async function reviewManualPayment(input: {
   if (nextStatus !== "approved") {
     return { ok: true as const, paymentUuid, status: nextStatus, accountCreated: false, familyProvisioned: null }
   }
-
-  const email = normalizeEmail(payment.email)
-  if (!email) throw new Error("Approved payment has no valid student email.")
 
   const existingAccount = await prisma.studentAccount.findUnique({ where: { email } })
   const account =

@@ -55,13 +55,21 @@ export async function reviewManualPaymentAction(formData: FormData) {
   const reviewNote = String(formData.get("reviewNote") || "").trim()
 
   if (action !== "approve" && action !== "reject") throw new Error("Invalid action")
-  await reviewManualPayment({
-    paymentUuid,
-    action: action as "approve" | "reject",
-    reviewedBy: admin.email || admin.adminUuid || "admin",
-    reviewNote
-  })
-  await setInternalToast({ title: action === "approve" ? "Payment approved" : "Payment rejected", message: "Manual payment review has been saved." })
+  try {
+    await reviewManualPayment({
+      paymentUuid,
+      action: action as "approve" | "reject",
+      reviewedBy: admin.email || admin.adminUuid || "admin",
+      reviewNote
+    })
+    await setInternalToast({ title: action === "approve" ? "Payment approved" : "Payment rejected", message: "Manual payment review has been saved." })
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: action === "approve" ? "Payment was not approved" : "Payment was not rejected",
+      message: error instanceof Error ? error.message : "The payment review could not be saved."
+    })
+  }
   revalidatePath("/internal/manual-payments")
 }
 
