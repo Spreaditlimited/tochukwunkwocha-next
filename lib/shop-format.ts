@@ -8,3 +8,14 @@ export function formatShopMoney(amountMinor: number, currency: string) {
     maximumFractionDigits: normalizedCurrency === "NGN" ? (showNairaKobo ? 2 : 0) : 2
   }).format(amountMinor / 100)
 }
+
+export function shopProductImageUrl(value: string | null | undefined) {
+  if (!value) return null
+  if (
+    value.startsWith("/shop/workbooks/") &&
+    value.endsWith("-cover.png")
+  ) {
+    return value.replace(/-cover\.png$/, "-mockup.png")
+  }
+  return value
+}

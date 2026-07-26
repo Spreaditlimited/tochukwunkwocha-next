@@ -50,7 +50,7 @@ Products, formats and prices can also be managed at `/internal/shop`.
 - `CLOUDINARY_API_KEY` — server-side Cloudinary API key.
 - `CLOUDINARY_API_SECRET` — server-side signing secret. Never expose this in browser code.
 
-Printed products are restricted to delivery within Nigeria in the first release. Digital products do not request a delivery address.
+Physical merchandise is restricted to delivery within Nigeria in the first release. Digital products do not request a delivery address.
 
 ## Payment safety
 

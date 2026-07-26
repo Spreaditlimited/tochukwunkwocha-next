@@ -1,6 +1,18 @@
 import Link from "next/link"
-import { ExternalLink, PackageCheck, Plus, Save, ShoppingBag } from "lucide-react"
+import {
+  CircleDollarSign,
+  ExternalLink,
+  Layers3,
+  PackageCheck,
+  Plus,
+  Save,
+  ShoppingBag
+} from "lucide-react"
 
+import {
+  DashboardStatCard,
+  DashboardStatsVisibility
+} from "@/components/dashboard/DashboardStatsVisibility"
 import { formatShopMoney, listAdminShopOrders, listAdminShopProducts } from "@/lib/shop"
 import { formatDate } from "@/lib/utils"
 import {
@@ -12,22 +24,50 @@ import {
 export const dynamic = "force-dynamic"
 
 const fieldClass =
-  "mt-2 w-full rounded-lg border border-input bg-background px-3.5 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-const labelClass = "block text-[10px] font-black uppercase tracking-widest text-muted-foreground"
+  "mt-2 w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+const labelClass = "block text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+
+function StatusPill({ status }: { status: string | null }) {
+  const value = String(status || "unknown").toLowerCase()
+  let tone = "border-border bg-muted text-muted-foreground"
+
+  if (["published", "paid", "delivered", "fulfilled"].includes(value)) {
+    tone = "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+  } else if (["draft", "pending", "processing", "shipped"].includes(value)) {
+    tone = "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+  } else if (["failed", "cancelled", "refunded"].includes(value)) {
+    tone = "border-destructive/20 bg-destructive/10 text-destructive"
+  }
+
+  return (
+    <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${tone}`}>
+      {value.replace(/_/g, " ")}
+    </span>
+  )
+}
 
 export default async function InternalShopPage() {
   const [products, orders] = await Promise.all([
     listAdminShopProducts(),
     listAdminShopOrders()
   ])
+  const publishedProducts = products.filter((product) => product.status === "published").length
+  const activeFormats = products.reduce(
+    (total, product) => total + product.variants.filter((variant) => variant.active).length,
+    0
+  )
+  const paidOrders = orders.filter((order) => order.paymentStatus === "paid").length
 
   return (
     <main className="space-y-8 pb-12">
-      <div className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="eyebrow text-primary">Commerce</p>
-          <h1 className="mt-2 flex items-center gap-3 font-heading text-3xl font-black text-foreground">
-            <ShoppingBag className="h-7 w-7 text-primary" /> Shop Management
+          <h1 className="mt-1 flex items-center gap-3 font-heading text-2xl font-black tracking-tight text-foreground sm:text-3xl">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ShoppingBag className="h-5 w-5" />
+            </span>
+            Shop Management
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
             Manage product content, selling formats, prices, digital files and physical deliveries.
@@ -38,13 +78,55 @@ export default async function InternalShopPage() {
         </Link>
       </div>
 
+      <DashboardStatsVisibility storageKey="tochukwu-internal-shop-stats">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <DashboardStatCard
+            statKey="All products"
+            label="All products"
+            value={products.length.toLocaleString("en")}
+            icon={<ShoppingBag className="h-5 w-5" />}
+            description="Products in the catalogue"
+          />
+          <DashboardStatCard
+            statKey="Published products"
+            label="Published products"
+            value={publishedProducts.toLocaleString("en")}
+            icon={<PackageCheck className="h-5 w-5" />}
+            description="Visible in the shop"
+          />
+          <DashboardStatCard
+            statKey="Active formats"
+            label="Active formats"
+            value={activeFormats.toLocaleString("en")}
+            icon={<Layers3 className="h-5 w-5" />}
+            description="Available selling options"
+          />
+          <DashboardStatCard
+            statKey="Paid orders"
+            label="Paid orders"
+            value={paidOrders.toLocaleString("en")}
+            icon={<CircleDollarSign className="h-5 w-5" />}
+            description={`${orders.length.toLocaleString("en")} total orders`}
+          />
+        </section>
+      </DashboardStatsVisibility>
+
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <article className="rounded-xl border border-border bg-card p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Plus className="h-5 w-5 text-primary" />
-            <h2 className="font-heading text-xl font-black text-foreground">Create a product</h2>
+        <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border bg-muted/20 p-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Plus className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-heading text-xl font-black text-foreground">Create a product</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add the catalogue content first, then configure its selling formats.
+                </p>
+              </div>
+            </div>
           </div>
-          <form action={saveShopProductAction} className="mt-6 grid gap-4 sm:grid-cols-2">
+          <form action={saveShopProductAction} className="grid gap-4 p-6 sm:grid-cols-2">
             <label className={`${labelClass} sm:col-span-2`}>Title<input name="title" className={fieldClass} required /></label>
             <label className={labelClass}>Slug<input name="slug" className={fieldClass} placeholder="expense-tracker-workbook" required /></label>
             <label className={labelClass}>Category<input name="category" defaultValue="workbooks" className={fieldClass} /></label>
@@ -58,22 +140,41 @@ export default async function InternalShopPage() {
             <label className={`${labelClass} sm:col-span-2`}>SEO description<textarea name="seoDescription" rows={2} className={fieldClass} /></label>
             <label className={labelClass}>Status<select name="status" className={fieldClass}><option value="draft">Draft</option><option value="published">Published</option></select></label>
             <label className="mt-7 flex items-center gap-2 text-sm font-bold text-foreground"><input name="featured" type="checkbox" /> Featured product</label>
-            <button className="btn-primary sm:col-span-2" type="submit"><Save className="h-4 w-4" /> Save product</button>
+            <button className="btn-primary h-12 justify-center sm:col-span-2" type="submit"><Save className="h-4 w-4" /> Save product</button>
           </form>
         </article>
 
-        <div className="space-y-5">
-          {products.map((product) => (
-            <article key={product.productUuid} className="rounded-xl border border-border bg-card p-6 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-primary">{product.status}</p>
-                  <h2 className="mt-1 font-heading text-xl font-black text-foreground">{product.title}</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">/shop/{product.slug}</p>
-                </div>
-                <Link href={`/shop/${product.slug}`} className="btn-secondary py-2 text-xs">Preview</Link>
+        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Layers3 className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-heading text-xl font-black text-foreground">Product catalogue</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Edit products and their selling formats.</p>
               </div>
-              <form action={saveShopProductAction} className="mt-5 grid gap-3 sm:grid-cols-2">
+            </div>
+            <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-muted-foreground">
+              {products.length} {products.length === 1 ? "product" : "products"}
+            </span>
+          </div>
+          <div className="max-h-[75vh] space-y-5 overflow-y-auto overscroll-contain bg-muted/10 p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20 xl:max-h-[calc(100vh-13rem)]">
+            {products.length ? products.map((product) => (
+              <article key={product.productUuid} className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-border bg-muted/20 p-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <StatusPill status={product.status} />
+                    <h3 className="mt-2 font-heading text-lg font-black text-foreground">{product.title}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">/shop/{product.slug}</p>
+                  </div>
+                <Link href={`/shop/${product.slug}`} className="btn-secondary shrink-0 py-2 text-xs">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Preview
+                </Link>
+              </div>
+              <div className="p-5">
+              <form action={saveShopProductAction} className="grid gap-3 sm:grid-cols-2">
                 <input type="hidden" name="productUuid" value={product.productUuid} />
                 <label className={labelClass}>Title<input name="title" defaultValue={product.title} className={fieldClass} required /></label>
                 <label className={labelClass}>Slug<input name="slug" defaultValue={product.slug} className={fieldClass} required /></label>
@@ -140,24 +241,42 @@ export default async function InternalShopPage() {
                   <button className="btn-secondary justify-center" type="submit"><Plus className="h-4 w-4" /> Add format</button>
                 </form>
               </div>
-            </article>
-          ))}
-        </div>
+              </div>
+              </article>
+            )) : (
+              <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
+                <ShoppingBag className="mx-auto h-8 w-8 text-muted-foreground/50" />
+                <h3 className="mt-3 font-heading text-lg font-bold text-foreground">No products yet</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Use the product form to create the first shop item.</p>
+              </div>
+            )}
+          </div>
+        </section>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
-        <div className="flex items-center gap-3">
-          <PackageCheck className="h-5 w-5 text-primary" />
-          <h2 className="font-heading text-xl font-black text-foreground">Recent orders</h2>
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <PackageCheck className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="font-heading text-xl font-black text-foreground">Recent orders</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Review payments and update merchandise deliveries.</p>
+            </div>
+          </div>
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-muted-foreground">
+            {orders.length} {orders.length === 1 ? "order" : "orders"}
+          </span>
         </div>
-        <div className="mt-5 space-y-4">
+        <div className="max-h-[44rem] space-y-4 overflow-y-auto overscroll-contain p-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
           {orders.length ? orders.map((order) => (
-            <article key={order.orderUuid} className="rounded-lg border border-border p-4">
+            <article key={order.orderUuid} className="rounded-xl border border-border bg-background p-5">
               <div className="grid gap-3 sm:grid-cols-4">
                 <div><p className="text-xs font-black text-primary">{order.orderNumber}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(order.createdAt)}</p></div>
                 <div><p className="text-sm font-black text-foreground">{order.customerName}</p><p className="text-xs text-muted-foreground">{order.customerEmail}</p></div>
-                <div><p className="text-sm font-black text-foreground">{formatShopMoney(order.totalMinor, order.currency)}</p><p className="text-xs text-muted-foreground">{order.paymentStatus}</p></div>
-                <div><p className="text-sm font-black text-foreground">{order.fulfillmentStatus}</p><p className="text-xs text-muted-foreground">{order.items.length} item(s)</p></div>
+                <div><p className="text-sm font-black text-foreground">{formatShopMoney(order.totalMinor, order.currency)}</p><div className="mt-1"><StatusPill status={order.paymentStatus} /></div></div>
+                <div><StatusPill status={order.fulfillmentStatus} /><p className="mt-1 text-xs text-muted-foreground">{order.items.length} item(s)</p></div>
               </div>
               {order.shipment ? (
                 <form action={updateShopShipmentAction} className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-5">
@@ -170,7 +289,13 @@ export default async function InternalShopPage() {
                 </form>
               ) : null}
             </article>
-          )) : <p className="text-sm text-muted-foreground">No shop orders yet.</p>}
+          )) : (
+            <div className="rounded-xl border border-dashed border-border bg-muted/10 p-10 text-center">
+              <PackageCheck className="mx-auto h-8 w-8 text-muted-foreground/50" />
+              <h3 className="mt-3 font-heading text-lg font-bold text-foreground">No shop orders yet</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Completed and pending orders will appear here.</p>
+            </div>
+          )}
         </div>
       </section>
     </main>

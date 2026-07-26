@@ -33,12 +33,13 @@ export default async function ShopCheckoutPage({ searchParams }: PageProps) {
   const session = await getStudentSession()
 
   return (
-    <main className="bg-muted/25 py-10 sm:py-14">
+    <main className="min-h-screen bg-muted/20 pb-24 pt-10 lg:pt-14">
       <div className="site-container">
-        <Link href={variant ? `/shop/${variant.product.slug}` : "/shop"} className="inline-flex items-center gap-2 text-sm font-black text-primary no-underline">
-          <ArrowLeft className="h-4 w-4" /> Back to {variant ? "product" : "shop"}
+        <Link href={variant ? `/shop/${variant.product.slug}` : "/shop"} className="group inline-flex items-center text-sm font-bold text-muted-foreground no-underline transition-colors hover:text-primary">
+          <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
+          Back to {variant ? "Product Details" : "Shop"}
         </Link>
-        <div className="mt-7">
+        <div className="mt-8">
           {variant && pricing ? (
             <ShopCheckoutForm
               variant={variant}

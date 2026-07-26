@@ -269,10 +269,10 @@ export async function createPendingShopOrder(input: {
   const city = clean(input.city, 120)
   const state = clean(input.state, 120)
   if (physical && (!country || !addressLine1 || !city || !state)) {
-    throw new Error("Enter the delivery address for this printed product.")
+    throw new Error("Enter the delivery address for this merchandise order.")
   }
   if (physical && !nigeriaCountry(country)) {
-    throw new Error("Printed workbooks are currently available for delivery within Nigeria.")
+    throw new Error("Physical merchandise is currently available for delivery within Nigeria.")
   }
 
   const configuredShipping = Math.max(
@@ -472,7 +472,7 @@ export async function fulfillPaidShopOrder(input: {
         ${
           refreshed.entitlements.length
             ? `<p>Your digital workbook is ready:</p><ul>${downloadLinks}</ul><p>You can also find purchases linked to your student email in <a href="${purchasesUrl}">My Purchases</a>.</p>`
-            : "<p>Your printed order is now being prepared for delivery.</p>"
+            : "<p>Your merchandise order is now being prepared for delivery.</p>"
         }`
     }).catch(() => null)
   }
