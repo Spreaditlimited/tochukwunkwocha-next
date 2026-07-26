@@ -6,6 +6,7 @@ import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
 import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
+import { fulfillPaidShopOrder, SHOP_PAYMENT_SCOPE } from "@/lib/shop"
 
 export const dynamic = "force-dynamic"
 
@@ -48,6 +49,22 @@ export async function POST(request: Request) {
 
   const metadata = session.metadata || {}
   const paymentScope = String(metadata.payment_scope || "").toLowerCase()
+  if (paymentScope === SHOP_PAYMENT_SCOPE) {
+    const orderUuid = String(session.client_reference_id || metadata.order_uuid || "").trim()
+    if (!orderUuid) {
+      return NextResponse.json({ ok: true, ignored: true, reason: "missing_shop_order_uuid" })
+    }
+    await fulfillPaidShopOrder({
+      orderUuid,
+      providerReference: String(session.id || ""),
+      providerOrderId: session.payment_intent ? String(session.payment_intent) : null,
+      paidAmountMinor: Number.isFinite(Number(session.amount_total))
+        ? Number(session.amount_total)
+        : null,
+      paidCurrency: session.currency ? String(session.currency) : null
+    })
+    return NextResponse.json({ ok: true, scope: SHOP_PAYMENT_SCOPE, orderUuid })
+  }
   if (paymentScope === "domain_registration") {
     const result = await completePaidDomainCheckout(String(session.id || ""))
     return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })

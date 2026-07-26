@@ -41,3 +41,10 @@ export function grossUpStripeAmount(netMinorInput: number, bpsInput: number, fix
 
   return totalMinor
 }
+
+export function grossUpPaystackAmount(netMinorInput: number) {
+  const netMinor = Math.max(0, Math.round(Number(netMinorInput || 0)))
+  const feeAtNet = Math.round(netMinor * 0.015) + (netMinor < 250_000 ? 0 : 10_000)
+  if (feeAtNet > 200_000) return netMinor + 200_000
+  return Math.ceil((netMinor + (netMinor < 250_000 ? 0 : 10_000)) / (1 - 0.015) + 1)
+}

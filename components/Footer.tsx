@@ -90,6 +90,11 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
+                  <Link href="/shop" className="text-sm text-slate-400 no-underline transition-colors hover:text-white">
+                    Shop
+                  </Link>
+                </li>
+                <li>
                   <Link href="/dashboard" className="text-sm text-slate-400 no-underline transition-colors hover:text-white">
                     Student Dashboard
                   </Link>

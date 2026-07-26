@@ -8,26 +8,26 @@ datasource db {
 }
 
 model TochukwuBlogPost {
-  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  pidBlog       String    @unique(map: "uniq_tochukwu_blog_pid") @map("pid_blog") @db.VarChar(64)
-  blogTitle     String    @map("blog_title") @db.VarChar(255)
-  blogContent   String?   @map("blog_content") @db.LongText
-  blogSlug      String    @unique(map: "uniq_tochukwu_blog_slug") @map("blog_slug") @db.VarChar(255)
-  blogPublished Boolean   @default(false) @map("blog_published")
-  blogFeatured  Boolean   @default(false) @map("blog_featured")
-  blogImage     String?   @map("blog_image") @db.VarChar(500)
-  blogBy        String?   @map("blog_by") @db.VarChar(120)
-  blogExt1      String?   @map("blog_ext1") @db.VarChar(700)
-  blogExt2      String?   @map("blog_ext2") @db.LongText
-  excerpt       String?   @db.Text
-  tagsJson      String?   @map("tags_json") @db.Text
-  seoJson       String?   @map("seo_json") @db.LongText
-  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt     DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  pidBlog       String   @unique(map: "uniq_tochukwu_blog_pid") @map("pid_blog") @db.VarChar(64)
+  blogTitle     String   @map("blog_title") @db.VarChar(255)
+  blogContent   String?  @map("blog_content") @db.LongText
+  blogSlug      String   @unique(map: "uniq_tochukwu_blog_slug") @map("blog_slug") @db.VarChar(255)
+  blogPublished Boolean  @default(false) @map("blog_published")
+  blogFeatured  Boolean  @default(false) @map("blog_featured")
+  blogImage     String?  @map("blog_image") @db.VarChar(500)
+  blogBy        String?  @map("blog_by") @db.VarChar(120)
+  blogExt1      String?  @map("blog_ext1") @db.VarChar(700)
+  blogExt2      String?  @map("blog_ext2") @db.LongText
+  excerpt       String?  @db.Text
+  tagsJson      String?  @map("tags_json") @db.Text
+  seoJson       String?  @map("seo_json") @db.LongText
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.DateTime(0)
 
-  leadMagnet TochukwuBlogLeadMagnet?
+  leadMagnet       TochukwuBlogLeadMagnet?
   seoOpportunities TochukwuSeoOpportunity[]
-  seoChanges TochukwuSeoContentChangeLog[]
+  seoChanges       TochukwuSeoContentChangeLog[]
 
   @@index([blogPublished, createdAt], map: "idx_tochukwu_blog_status_created")
   @@index([blogFeatured, createdAt], map: "idx_tochukwu_blog_featured")
@@ -82,18 +82,18 @@ model TochukwuBlogLeadMagnet {
 }
 
 model TochukwuSearchConsoleImportRun {
-  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  runUuid      String    @unique(map: "uniq_tochukwu_sc_run_uuid") @map("run_uuid") @db.VarChar(80)
-  source       String    @default("manual") @db.VarChar(40)
-  status       String    @default("pending") @db.VarChar(32)
-  startedAt    DateTime  @default(now()) @map("started_at") @db.DateTime(0)
-  completedAt  DateTime? @map("completed_at") @db.DateTime(0)
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  runUuid         String    @unique(map: "uniq_tochukwu_sc_run_uuid") @map("run_uuid") @db.VarChar(80)
+  source          String    @default("manual") @db.VarChar(40)
+  status          String    @default("pending") @db.VarChar(32)
+  startedAt       DateTime  @default(now()) @map("started_at") @db.DateTime(0)
+  completedAt     DateTime? @map("completed_at") @db.DateTime(0)
   sourceStartDate DateTime? @map("source_start_date") @db.Date
   sourceEndDate   DateTime? @map("source_end_date") @db.Date
-  rowCount     Int       @default(0) @map("row_count")
-  errorMessage String?   @map("error_message") @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt    DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  rowCount        Int       @default(0) @map("row_count")
+  errorMessage    String?   @map("error_message") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
   queryStats TochukwuSearchConsoleQueryStat[]
 
@@ -102,19 +102,19 @@ model TochukwuSearchConsoleImportRun {
 }
 
 model TochukwuSearchConsoleQueryStat {
-  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  statUuid     String   @unique(map: "uniq_tochukwu_sc_stat_uuid") @map("stat_uuid") @db.VarChar(80)
-  runUuid      String   @map("run_uuid") @db.VarChar(80)
-  pageUrl      String   @map("page_url") @db.Text
-  blogSlug     String?  @map("blog_slug") @db.VarChar(255)
-  query        String   @db.VarChar(500)
-  clicks       Int      @default(0)
-  impressions  Int      @default(0)
-  ctr          Decimal  @default(0) @db.Decimal(10, 6)
-  position     Decimal  @default(0) @db.Decimal(10, 4)
-  startDate    DateTime? @map("start_date") @db.Date
-  endDate      DateTime? @map("end_date") @db.Date
-  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  statUuid    String    @unique(map: "uniq_tochukwu_sc_stat_uuid") @map("stat_uuid") @db.VarChar(80)
+  runUuid     String    @map("run_uuid") @db.VarChar(80)
+  pageUrl     String    @map("page_url") @db.Text
+  blogSlug    String?   @map("blog_slug") @db.VarChar(255)
+  query       String    @db.VarChar(500)
+  clicks      Int       @default(0)
+  impressions Int       @default(0)
+  ctr         Decimal   @default(0) @db.Decimal(10, 6)
+  position    Decimal   @default(0) @db.Decimal(10, 4)
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
 
   run TochukwuSearchConsoleImportRun @relation(fields: [runUuid], references: [runUuid])
 
@@ -125,27 +125,27 @@ model TochukwuSearchConsoleQueryStat {
 }
 
 model TochukwuSeoOpportunity {
-  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  pidOpportunity String   @unique(map: "uniq_tochukwu_seo_opp_pid") @map("pid_opportunity") @db.VarChar(90)
-  pageUrl        String   @map("page_url") @db.Text
-  blogSlug       String?  @map("blog_slug") @db.VarChar(255)
-  pidBlog        String?  @map("pid_blog") @db.VarChar(64)
-  opportunityType String  @map("opportunity_type") @db.VarChar(40)
-  primaryQuery   String?  @map("primary_query") @db.VarChar(500)
-  clicks         Int      @default(0)
-  impressions    Int      @default(0)
-  ctr            Decimal  @default(0) @db.Decimal(10, 6)
-  position       Decimal  @default(0) @db.Decimal(10, 4)
-  confidence     Decimal  @default(0) @db.Decimal(10, 4)
-  status         String   @default("open") @db.VarChar(32)
-  recommendation String?  @db.Text
-  recommendedCta String?  @map("recommended_cta") @db.VarChar(80)
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  pidOpportunity  String    @unique(map: "uniq_tochukwu_seo_opp_pid") @map("pid_opportunity") @db.VarChar(90)
+  pageUrl         String    @map("page_url") @db.Text
+  blogSlug        String?   @map("blog_slug") @db.VarChar(255)
+  pidBlog         String?   @map("pid_blog") @db.VarChar(64)
+  opportunityType String    @map("opportunity_type") @db.VarChar(40)
+  primaryQuery    String?   @map("primary_query") @db.VarChar(500)
+  clicks          Int       @default(0)
+  impressions     Int       @default(0)
+  ctr             Decimal   @default(0) @db.Decimal(10, 6)
+  position        Decimal   @default(0) @db.Decimal(10, 4)
+  confidence      Decimal   @default(0) @db.Decimal(10, 4)
+  status          String    @default("open") @db.VarChar(32)
+  recommendation  String?   @db.Text
+  recommendedCta  String?   @map("recommended_cta") @db.VarChar(80)
   sourceStartDate DateTime? @map("source_start_date") @db.Date
-  sourceEndDate DateTime? @map("source_end_date") @db.Date
-  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt      DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  sourceEndDate   DateTime? @map("source_end_date") @db.Date
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
-  blog TochukwuBlogPost? @relation(fields: [pidBlog], references: [pidBlog])
+  blog    TochukwuBlogPost?             @relation(fields: [pidBlog], references: [pidBlog])
   changes TochukwuSeoContentChangeLog[]
 
   @@index([status, confidence], map: "idx_tochukwu_seo_opp_status")
@@ -169,7 +169,7 @@ model TochukwuSeoContentChangeLog {
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
   opportunity TochukwuSeoOpportunity? @relation(fields: [pidOpportunity], references: [pidOpportunity])
-  blog TochukwuBlogPost? @relation(fields: [pidBlog], references: [pidBlog])
+  blog        TochukwuBlogPost?       @relation(fields: [pidBlog], references: [pidBlog])
 
   @@index([pidOpportunity, createdAt], map: "idx_tochukwu_seo_change_opp")
   @@index([pidBlog, createdAt], map: "idx_tochukwu_seo_change_blog")
@@ -202,9 +202,199 @@ model StudentAccount {
   updatedAt                  DateTime  @map("updated_at") @db.DateTime(0)
   lastLoginAt                DateTime? @map("last_login_at") @db.DateTime(0)
 
-  sessions StudentSession[]
+  sessions   StudentSession[]
+  shopOrders ShopOrder[]
 
   @@map("student_accounts")
+}
+
+model ShopProduct {
+  id               BigInt    @id @default(autoincrement())
+  productUuid      String    @unique(map: "uniq_tochukwu_shop_product_uuid") @map("product_uuid") @db.VarChar(64)
+  slug             String    @unique(map: "uniq_tochukwu_shop_product_slug") @db.VarChar(190)
+  title            String    @db.VarChar(255)
+  subtitle         String?   @db.VarChar(255)
+  shortDescription String    @map("short_description") @db.Text
+  bodyContent      String?   @map("body_content") @db.LongText
+  coverImageUrl    String?   @map("cover_image_url") @db.Text
+  galleryJson      String?   @map("gallery_json") @db.LongText
+  category         String    @default("workbooks") @db.VarChar(80)
+  status           String    @default("draft") @db.VarChar(30)
+  featured         Boolean   @default(false)
+  seoTitle         String?   @map("seo_title") @db.VarChar(255)
+  seoDescription   String?   @map("seo_description") @db.VarChar(500)
+  faqJson          String?   @map("faq_json") @db.LongText
+  sortOrder        Int       @default(0) @map("sort_order")
+  publishedAt      DateTime? @map("published_at") @db.DateTime(0)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(0)
+
+  variants   ShopProductVariant[]
+  orderItems ShopOrderItem[]
+
+  @@index([status, sortOrder], map: "idx_tochukwu_shop_product_status_sort")
+  @@index([category, status], map: "idx_tochukwu_shop_product_category_status")
+  @@map("tochukwu_shop_products")
+}
+
+model ShopProductVariant {
+  id                     BigInt   @id @default(autoincrement())
+  variantUuid            String   @unique(map: "uniq_tochukwu_shop_variant_uuid") @map("variant_uuid") @db.VarChar(64)
+  productId              BigInt   @map("product_id")
+  sku                    String   @unique(map: "uniq_tochukwu_shop_variant_sku") @db.VarChar(100)
+  title                  String   @db.VarChar(160)
+  fulfillmentType        String   @map("fulfillment_type") @db.VarChar(20)
+  priceMinor             Int      @map("price_minor")
+  currency               String   @default("NGN") @db.VarChar(12)
+  compareAtMinor         Int?     @map("compare_at_minor")
+  stockQuantity          Int?     @map("stock_quantity")
+  inventoryPolicy        String   @default("deny") @map("inventory_policy") @db.VarChar(20)
+  digitalAssetKey        String?  @map("digital_asset_key") @db.Text
+  digitalFilename        String?  @map("digital_filename") @db.VarChar(255)
+  cloudinaryPublicId     String?  @map("cloudinary_public_id") @db.Text
+  cloudinaryResourceType String?  @map("cloudinary_resource_type") @db.VarChar(20)
+  cloudinaryDeliveryType String?  @map("cloudinary_delivery_type") @db.VarChar(20)
+  cloudinaryFormat       String?  @map("cloudinary_format") @db.VarChar(20)
+  cloudinaryVersion      String?  @map("cloudinary_version") @db.VarChar(40)
+  cloudinaryBytes        Int?     @map("cloudinary_bytes")
+  weightGrams            Int?     @map("weight_grams")
+  active                 Boolean  @default(true)
+  sortOrder              Int      @default(0) @map("sort_order")
+  createdAt              DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.DateTime(0)
+
+  product      ShopProduct              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  prices       ShopVariantPrice[]
+  orderItems   ShopOrderItem[]
+  entitlements ShopDigitalEntitlement[]
+
+  @@index([productId, active, sortOrder], map: "idx_tochukwu_shop_variant_product_active")
+  @@map("tochukwu_shop_product_variants")
+}
+
+model ShopVariantPrice {
+  id          BigInt   @id @default(autoincrement())
+  priceUuid   String   @unique(map: "uniq_tochukwu_shop_price_uuid") @map("price_uuid") @db.VarChar(64)
+  variantId   BigInt   @map("variant_id")
+  currency    String   @db.VarChar(12)
+  amountMinor Int      @map("amount_minor")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(0)
+
+  variant ShopProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, currency], map: "uniq_tochukwu_shop_price_variant_currency")
+  @@index([currency, active], map: "idx_tochukwu_shop_price_currency_active")
+  @@map("tochukwu_shop_variant_prices")
+}
+
+model ShopOrder {
+  id                  BigInt    @id @default(autoincrement())
+  orderUuid           String    @unique(map: "uniq_tochukwu_shop_order_uuid") @map("order_uuid") @db.VarChar(64)
+  orderNumber         String    @unique(map: "uniq_tochukwu_shop_order_number") @map("order_number") @db.VarChar(40)
+  studentAccountId    BigInt?   @map("student_account_id")
+  customerName        String    @map("customer_name") @db.VarChar(180)
+  customerEmail       String    @map("customer_email") @db.VarChar(190)
+  customerPhone       String?   @map("customer_phone") @db.VarChar(40)
+  customerCountry     String?   @map("customer_country") @db.VarChar(100)
+  currency            String    @db.VarChar(12)
+  subtotalMinor       Int       @map("subtotal_minor")
+  discountMinor       Int       @default(0) @map("discount_minor")
+  shippingMinor       Int       @default(0) @map("shipping_minor")
+  taxMinor            Int       @default(0) @map("tax_minor")
+  processingFeeMinor  Int       @default(0) @map("processing_fee_minor")
+  totalMinor          Int       @map("total_minor")
+  paymentProvider     String    @map("payment_provider") @db.VarChar(30)
+  providerReference   String?   @unique(map: "uniq_tochukwu_shop_provider_reference") @map("provider_reference") @db.VarChar(190)
+  providerOrderId     String?   @map("provider_order_id") @db.VarChar(190)
+  paymentStatus       String    @default("pending") @map("payment_status") @db.VarChar(30)
+  fulfillmentStatus   String    @default("unfulfilled") @map("fulfillment_status") @db.VarChar(30)
+  shippingAddressJson String?   @map("shipping_address_json") @db.LongText
+  paidAt              DateTime? @map("paid_at") @db.DateTime(0)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(0)
+
+  studentAccount StudentAccount?          @relation(fields: [studentAccountId], references: [id], onDelete: SetNull)
+  items          ShopOrderItem[]
+  entitlements   ShopDigitalEntitlement[]
+  shipment       ShopShipment?
+
+  @@index([customerEmail, createdAt], map: "idx_tochukwu_shop_order_email_created")
+  @@index([paymentStatus, createdAt], map: "idx_tochukwu_shop_order_payment_created")
+  @@index([fulfillmentStatus, createdAt], map: "idx_tochukwu_shop_order_fulfillment_created")
+  @@index([studentAccountId, createdAt], map: "idx_tochukwu_shop_order_student_created")
+  @@map("tochukwu_shop_orders")
+}
+
+model ShopOrderItem {
+  id                      BigInt   @id @default(autoincrement())
+  itemUuid                String   @unique(map: "uniq_tochukwu_shop_order_item_uuid") @map("item_uuid") @db.VarChar(64)
+  orderId                 BigInt   @map("order_id")
+  productId               BigInt?  @map("product_id")
+  variantId               BigInt?  @map("variant_id")
+  productTitleSnapshot    String   @map("product_title_snapshot") @db.VarChar(255)
+  productSlugSnapshot     String   @map("product_slug_snapshot") @db.VarChar(190)
+  variantTitleSnapshot    String   @map("variant_title_snapshot") @db.VarChar(160)
+  skuSnapshot             String   @map("sku_snapshot") @db.VarChar(100)
+  fulfillmentTypeSnapshot String   @map("fulfillment_type_snapshot") @db.VarChar(20)
+  unitPriceMinor          Int      @map("unit_price_minor")
+  quantity                Int      @default(1)
+  lineTotalMinor          Int      @map("line_total_minor")
+  createdAt               DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  order        ShopOrder                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      ShopProduct?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant      ShopProductVariant?      @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  entitlements ShopDigitalEntitlement[]
+
+  @@index([orderId], map: "idx_tochukwu_shop_order_item_order")
+  @@index([productId], map: "idx_tochukwu_shop_order_item_product")
+  @@index([variantId], map: "idx_tochukwu_shop_order_item_variant")
+  @@map("tochukwu_shop_order_items")
+}
+
+model ShopDigitalEntitlement {
+  id              BigInt    @id @default(autoincrement())
+  entitlementUuid String    @unique(map: "uniq_tochukwu_shop_entitlement_uuid") @map("entitlement_uuid") @db.VarChar(64)
+  orderId         BigInt    @map("order_id")
+  orderItemId     BigInt    @map("order_item_id")
+  variantId       BigInt?   @map("variant_id")
+  recipientEmail  String    @map("recipient_email") @db.VarChar(190)
+  status          String    @default("active") @db.VarChar(20)
+  downloadCount   Int       @default(0) @map("download_count")
+  lastDownloadAt  DateTime? @map("last_download_at") @db.DateTime(0)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(0)
+
+  order     ShopOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem ShopOrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  variant   ShopProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@unique([orderItemId, recipientEmail], map: "uniq_tochukwu_shop_entitlement_item_email")
+  @@index([recipientEmail, status], map: "idx_tochukwu_shop_entitlement_email_status")
+  @@map("tochukwu_shop_digital_entitlements")
+}
+
+model ShopShipment {
+  id             BigInt    @id @default(autoincrement())
+  shipmentUuid   String    @unique(map: "uniq_tochukwu_shop_shipment_uuid") @map("shipment_uuid") @db.VarChar(64)
+  orderId        BigInt    @unique(map: "uniq_tochukwu_shop_shipment_order") @map("order_id")
+  status         String    @default("processing") @db.VarChar(30)
+  carrier        String?   @db.VarChar(120)
+  service        String?   @db.VarChar(120)
+  trackingNumber String?   @map("tracking_number") @db.VarChar(190)
+  trackingUrl    String?   @map("tracking_url") @db.Text
+  adminNotes     String?   @map("admin_notes") @db.Text
+  shippedAt      DateTime? @map("shipped_at") @db.DateTime(0)
+  deliveredAt    DateTime? @map("delivered_at") @db.DateTime(0)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(0)
+
+  order ShopOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt], map: "idx_tochukwu_shop_shipment_status_created")
+  @@map("tochukwu_shop_shipments")
 }
 
 model StudentSession {
@@ -248,18 +438,18 @@ model CourseOrder {
 }
 
 model CourseManualPayment {
-  id          BigInt    @id @default(autoincrement())
-  paymentUuid String    @unique(map: "uniq_manual_payment_uuid") @map("payment_uuid") @db.VarChar(64)
-  courseSlug  String    @map("course_slug") @db.VarChar(120)
-  firstName   String    @map("first_name") @db.VarChar(160)
-  email       String    @db.VarChar(190)
-  currency    String    @default("NGN") @db.VarChar(12)
-  amountMinor Int       @map("amount_minor")
-  status      String    @default("pending_verification") @db.VarChar(32)
-  batchKey    String?   @map("batch_key") @db.VarChar(64)
-  batchLabel  String?   @map("batch_label") @db.VarChar(120)
-  createdAt   DateTime  @map("created_at") @db.DateTime(0)
-  updatedAt   DateTime  @map("updated_at") @db.DateTime(0)
+  id          BigInt   @id @default(autoincrement())
+  paymentUuid String   @unique(map: "uniq_manual_payment_uuid") @map("payment_uuid") @db.VarChar(64)
+  courseSlug  String   @map("course_slug") @db.VarChar(120)
+  firstName   String   @map("first_name") @db.VarChar(160)
+  email       String   @db.VarChar(190)
+  currency    String   @default("NGN") @db.VarChar(12)
+  amountMinor Int      @map("amount_minor")
+  status      String   @default("pending_verification") @db.VarChar(32)
+  batchKey    String?  @map("batch_key") @db.VarChar(64)
+  batchLabel  String?  @map("batch_label") @db.VarChar(120)
+  createdAt   DateTime @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime @map("updated_at") @db.DateTime(0)
 
   @@index([status, createdAt], map: "idx_manual_payment_status_created")
   @@index([email], map: "idx_manual_payment_email")
