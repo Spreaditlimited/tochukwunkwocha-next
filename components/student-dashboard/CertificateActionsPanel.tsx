@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { FormEvent, ReactNode, useState } from "react"
-import { AlertTriangle, Award, CheckCircle2, Link2, Loader2, UserCheck, X } from "lucide-react"
+import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react"
+import { AlertTriangle, Award, CheckCircle2, Link2, Loader2, MessageSquareText, Send, UserCheck, X } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
@@ -15,22 +15,49 @@ type CourseOption = {
   completionPercent: number
 }
 
+type ProofReview = {
+  assignmentId: string
+  status: string
+  websiteUrl: string
+  adminFeedback: string
+  submittedAt: string | null
+  updatedAt: string | null
+  reviewedAt: string | null
+  messages: Array<{
+    id: number
+    authorType: "student" | "admin" | "system"
+    authorName: string
+    messageType: string
+    body: string
+    createdAt: string | null
+  }>
+}
+
 export function CertificateActionsPanel({
   certificateNameConfirmedAt,
   certificateName,
   courses,
+  initialCourseSlug,
   certificateContent
 }: {
   certificateNameConfirmedAt: string | null
   certificateName: string
   courses: CourseOption[]
+  initialCourseSlug?: string
   certificateContent?: ReactNode
 }) {
   const [confirmedAt, setConfirmedAt] = useState(certificateNameConfirmedAt)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
-  const [courseSlug, setCourseSlug] = useState(courses[0]?.courseSlug || "")
+  const [courseSlug, setCourseSlug] = useState(
+    courses.some((course) => course.courseSlug === initialCourseSlug)
+      ? initialCourseSlug || ""
+      : courses[0]?.courseSlug || ""
+  )
   const [websiteUrl, setWebsiteUrl] = useState("")
-  const [busy, setBusy] = useState<"name" | "proof" | null>(null)
+  const [proof, setProof] = useState<ProofReview | null>(null)
+  const [proofLoading, setProofLoading] = useState(false)
+  const [studentMessage, setStudentMessage] = useState("")
+  const [busy, setBusy] = useState<"name" | "proof" | "message" | null>(null)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const selectedCourse = courses.find((course) => course.courseSlug === courseSlug)
@@ -39,6 +66,36 @@ export function CertificateActionsPanel({
     selectedCourse.totalLessons > 0 &&
     selectedCourse.completedLessons >= selectedCourse.totalLessons
   )
+  const proofStatus = String(proof?.status || "").toLowerCase()
+  const canSubmitProof = !proof || ["needs_revision", "rejected"].includes(proofStatus)
+  const isRevision = proofStatus === "needs_revision"
+
+  const loadProof = useCallback(async () => {
+    if (!courseSlug) {
+      setProof(null)
+      return
+    }
+    setProofLoading(true)
+    try {
+      const response = await fetch(`/api/student/certificate/proof?courseSlug=${encodeURIComponent(courseSlug)}`, {
+        cache: "no-store"
+      })
+      const json = await response.json()
+      if (!response.ok || !json.ok) throw new Error(json.error || "Could not load certificate proof review.")
+      const nextProof = (json.proof || null) as ProofReview | null
+      setProof(nextProof)
+      setWebsiteUrl(nextProof && ["needs_revision", "rejected"].includes(nextProof.status) ? nextProof.websiteUrl : "")
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Could not load certificate proof review."
+      setError(errorMessage)
+    } finally {
+      setProofLoading(false)
+    }
+  }, [courseSlug])
+
+  useEffect(() => {
+    void loadProof()
+  }, [loadProof])
 
   async function confirmName() {
     setBusy("name")
@@ -76,12 +133,43 @@ export function CertificateActionsPanel({
       const json = await response.json()
       if (!response.ok || !json.ok) throw new Error(json.error || "Could not submit certificate proof.")
       setWebsiteUrl("")
-      setMessage("Certificate proof submitted for admin review.")
-      showStudentToast({ type: "success", title: "Certificate proof submitted", message: "Your project proof has been sent for admin review." })
+      const successMessage = json.proof?.resubmitted
+        ? "Your revised certificate proof has been submitted for admin review."
+        : "Certificate proof submitted for admin review."
+      setMessage(successMessage)
+      showStudentToast({ type: "success", title: json.proof?.resubmitted ? "Revised proof submitted" : "Certificate proof submitted", message: successMessage })
+      await loadProof()
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Could not submit certificate proof."
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Certificate proof failed", message: errorMessage })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function sendProofMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!studentMessage.trim()) return
+    setBusy("message")
+    setMessage("")
+    setError("")
+    try {
+      const response = await fetch("/api/student/certificate/proof/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseSlug, message: studentMessage })
+      })
+      const json = await response.json()
+      if (!response.ok || !json.ok) throw new Error(json.error || "Could not send your message.")
+      setStudentMessage("")
+      setMessage("Your message has been sent to Learning Support.")
+      showStudentToast({ type: "success", title: "Message sent", message: "Learning Support has received your message." })
+      await loadProof()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Could not send your message."
+      setError(errorMessage)
+      showStudentToast({ type: "error", title: "Message failed", message: errorMessage })
     } finally {
       setBusy(null)
     }
@@ -144,7 +232,7 @@ export function CertificateActionsPanel({
   )
 
   const proofCard = (
-    <form onSubmit={submitProof} className="flex flex-col justify-between rounded-xl border border-border bg-background p-6 transition-colors hover:border-primary/20 sm:p-8">
+    <div id="proof-review" className="flex flex-col justify-between rounded-xl border border-border bg-background p-6 transition-colors hover:border-primary/20 sm:p-8">
         <div>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -174,10 +262,108 @@ export function CertificateActionsPanel({
                 {selectedCourse?.completedLessons || 0}/{selectedCourse?.totalLessons || 0} ({selectedCourse?.completionPercent || 0}%).
               </p>
             </div>
-            
-            <label className="block">
+
+            {proofLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/10 p-4 text-sm font-medium text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading your proof review…
+              </div>
+            ) : proof ? (
+              <section className="rounded-xl border border-border bg-card">
+                <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Current Review</p>
+                    <p className="mt-1 break-all text-sm font-bold text-foreground">{proof.websiteUrl}</p>
+                  </div>
+                  <span className={`inline-flex w-fit rounded-md border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
+                    proofStatus === "approved"
+                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : proofStatus === "needs_revision"
+                        ? "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : proofStatus === "rejected"
+                          ? "border-destructive/20 bg-destructive/10 text-destructive"
+                          : "border-primary/20 bg-primary/10 text-primary"
+                  }`}>
+                    {proofStatus.replace(/_/g, " ")}
+                  </span>
+                </div>
+
+                {proof.adminFeedback ? (
+                  <div className="border-b border-amber-500/20 bg-amber-500/5 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">Latest Admin Feedback</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{proof.adminFeedback}</p>
+                  </div>
+                ) : null}
+
+                <div className="p-4">
+                  <div className="flex items-center gap-2">
+                    <MessageSquareText className="h-4 w-4 text-primary" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Private Proof Conversation</p>
+                  </div>
+                  <div className="mt-3 max-h-72 space-y-3 overflow-auto pr-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
+                    {proof.messages.length ? proof.messages.map((threadMessage) => (
+                      <article
+                        key={threadMessage.id}
+                        className={`max-w-[94%] rounded-xl border p-3 ${
+                          threadMessage.authorType === "student"
+                            ? "ml-auto border-primary/20 bg-primary/5"
+                            : threadMessage.authorType === "admin"
+                              ? "mr-auto border-emerald-500/20 bg-emerald-500/5"
+                              : "mx-auto border-border bg-muted/20"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                            {threadMessage.authorType === "student"
+                              ? "You"
+                              : threadMessage.authorType === "admin"
+                                ? threadMessage.authorName || "Learning Support"
+                                : "System"}
+                          </p>
+                          {threadMessage.createdAt ? (
+                            <span className="text-[9px] font-medium text-muted-foreground">
+                              {new Date(threadMessage.createdAt).toLocaleString()}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">{threadMessage.body}</p>
+                      </article>
+                    )) : (
+                      <p className="py-6 text-center text-sm font-medium text-muted-foreground">
+                        No conversation messages yet.
+                      </p>
+                    )}
+                  </div>
+
+                  <form onSubmit={sendProofMessage} className="mt-4 border-t border-border pt-4">
+                    <label className="block">
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Message Learning Support</span>
+                      <textarea
+                        value={studentMessage}
+                        onChange={(event) => setStudentMessage(event.target.value)}
+                        rows={3}
+                        required
+                        placeholder="Ask a question or respond to the feedback..."
+                        disabled={busy !== null}
+                        className="w-full resize-none rounded-md border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-60"
+                      />
+                    </label>
+                    <button type="submit" disabled={busy !== null || !studentMessage.trim()} className="btn-secondary mt-3 w-full justify-center sm:w-auto">
+                      {busy === "message" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                      Send Message
+                    </button>
+                  </form>
+                </div>
+              </section>
+            ) : null}
+          </div>
+        </div>
+
+        <form onSubmit={submitProof} className="mt-6 border-t border-border pt-6">
+          {canSubmitProof ? (
+            <label className="mb-4 block">
               <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                <Link2 className="h-3 w-3" /> Published Project URL
+                <Link2 className="h-3 w-3" /> {isRevision ? "Revised Published Project URL" : "Published Project URL"}
               </span>
               <input
                 value={websiteUrl}
@@ -186,20 +372,23 @@ export function CertificateActionsPanel({
                 placeholder="https://your-project.example.com"
                 type="url"
                 required
-                disabled={busy !== null || !confirmedAt || !selectedCourseComplete}
+                disabled={busy !== null || !confirmedAt || !selectedCourseComplete || proofLoading}
               />
             </label>
-          </div>
-        </div>
-
-        <div className="mt-6 border-t border-border pt-6">
+          ) : null}
           <button 
             type="submit" 
-            disabled={!confirmedAt || !courses.length || !selectedCourseComplete || busy !== null}
+            disabled={!confirmedAt || !courses.length || !selectedCourseComplete || busy !== null || proofLoading || !canSubmitProof}
             className="btn-secondary flex w-full items-center justify-center sm:w-auto"
           >
             {busy === "proof" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Submit Project Proof
+            {isRevision
+              ? "Submit Revised Proof"
+              : proofStatus === "approved"
+                ? "Proof Approved"
+                : ["submitted", "pending", "in_review"].includes(proofStatus)
+                  ? "Proof Under Review"
+                  : "Submit Project Proof"}
           </button>
           {!confirmedAt && (
             <p className="mt-3 text-xs font-medium text-amber-600 dark:text-amber-400">
@@ -211,8 +400,13 @@ export function CertificateActionsPanel({
               Finish all lessons to enable proof submission.
             </p>
           ) : null}
-        </div>
-      </form>
+          {confirmedAt && selectedCourseComplete && proofStatus === "needs_revision" ? (
+            <p className="mt-3 text-xs font-semibold leading-relaxed text-amber-600 dark:text-amber-400">
+              Make the requested changes, then submit the revised live project link above.
+            </p>
+          ) : null}
+        </form>
+      </div>
   )
 
   const alerts = (

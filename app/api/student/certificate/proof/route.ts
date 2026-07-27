@@ -7,6 +7,12 @@ import {
   getCertificateCourseCompletion,
   getLearnerCertificateBatchKey
 } from "@/lib/certificate-eligibility"
+import {
+  addCertificateProofMessage,
+  ensureCertificateProofConversationTable,
+  listCertificateProofMessages,
+  notifyCertificateProofAdmins
+} from "@/lib/certificate-proof-conversation"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { requireStudent } from "@/lib/student-auth"
@@ -111,9 +117,21 @@ async function courseFeatures(courseSlug: string) {
   return rows[0] || null
 }
 
-async function latestProofStatus(accountId: bigint, email: string, courseSlug: string, batchKey: string) {
-  const rows = await prisma.$queryRaw<{ status: string | null }[]>`
-    SELECT status
+type LatestProof = {
+  id: bigint
+  status: string | null
+  submissionLink: string | null
+  adminFeedback: string | null
+  reviewedAt: Date | null
+  createdAt: Date | null
+  updatedAt: Date | null
+}
+
+async function latestProof(accountId: bigint, email: string, courseSlug: string, batchKey: string) {
+  const rows = await prisma.$queryRaw<LatestProof[]>`
+    SELECT id, status, submission_link AS submissionLink,
+      admin_feedback AS adminFeedback, reviewed_at AS reviewedAt,
+      created_at AS createdAt, updated_at AS updatedAt
     FROM tochukwu_learning_assignments
     WHERE account_id = ${accountId}
       AND LOWER(student_email) COLLATE utf8mb4_general_ci = ${email}
@@ -124,7 +142,51 @@ async function latestProofStatus(accountId: bigint, email: string, courseSlug: s
     ORDER BY id DESC
     LIMIT 1
   `
-  return clean(rows[0]?.status, 32).toLowerCase()
+  return rows[0] || null
+}
+
+export async function GET(request: Request) {
+  try {
+    const session = await requireStudent()
+    const url = new URL(request.url)
+    const courseSlug = normalizeCourseSlug(url.searchParams.get("courseSlug") || url.searchParams.get("course_slug"))
+    const email = session.account.email.toLowerCase()
+    if (!courseSlug) return NextResponse.json({ ok: false, error: "Course is required." }, { status: 400 })
+    if (!(await hasCourseAccess(session.account.id, email, courseSlug))) {
+      return NextResponse.json({ ok: false, error: "You do not have active access to this course." }, { status: 403 })
+    }
+    await ensureCertificateEligibilityColumns()
+    await ensureCertificateProofConversationTable()
+    const batchKey = await getLearnerCertificateBatchKey(session.account.id, email, courseSlug)
+    const proof = await latestProof(session.account.id, email, courseSlug, batchKey)
+    const messages = proof
+      ? await listCertificateProofMessages(proof.id, {
+          accountId: session.account.id,
+          markStudentRead: true
+        })
+      : []
+    return NextResponse.json({
+      ok: true,
+      proof: proof ? {
+        assignmentId: proof.id.toString(),
+        status: clean(proof.status, 32).toLowerCase(),
+        websiteUrl: clean(proof.submissionLink, 1500),
+        adminFeedback: clean(proof.adminFeedback, 8000),
+        submittedAt: proof.createdAt?.toISOString() || null,
+        updatedAt: proof.updatedAt?.toISOString() || null,
+        reviewedAt: proof.reviewedAt?.toISOString() || null,
+        messages: messages.map((message) => ({
+          ...message,
+          createdAt: message.createdAt?.toISOString() || null
+        }))
+      } : null
+    })
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Could not load certificate proof review." },
+      { status: 500 }
+    )
+  }
 }
 
 export async function POST(request: Request) {
@@ -159,12 +221,14 @@ export async function POST(request: Request) {
     }
 
     await ensureCertificateEligibilityColumns()
+    await ensureCertificateProofConversationTable()
     const batchKey = await getLearnerCertificateBatchKey(session.account.id, email, courseSlug)
-    const previousStatus = await latestProofStatus(session.account.id, email, courseSlug, batchKey)
+    const previousProof = await latestProof(session.account.id, email, courseSlug, batchKey)
+    const previousStatus = clean(previousProof?.status, 32).toLowerCase()
     if (previousStatus === "approved") {
       return NextResponse.json({ ok: false, error: "Your certificate proof is already approved." }, { status: 400 })
     }
-    if (["submitted", "pending"].includes(previousStatus)) {
+    if (["submitted", "pending", "in_review"].includes(previousStatus)) {
       return NextResponse.json({ ok: false, error: "Your submitted proof is pending admin review." }, { status: 400 })
     }
 
@@ -174,23 +238,87 @@ export async function POST(request: Request) {
       ...completion,
       source: "student_certificate_proof_submission"
     })
-    await prisma.$executeRaw`
-      INSERT INTO tochukwu_learning_assignments
-        (assignment_uuid, course_slug, account_id, student_email, student_name, submission_kind, submission_text,
-         submission_link, status, certificate_batch_key, certificate_eligible_at_submission, certificate_eligibility_checked_at,
-         certificate_eligibility_snapshot_json, created_at, updated_at)
-      VALUES
-        (${assignmentUuid}, ${courseSlug}, ${session.account.id}, ${email}, ${session.account.fullName},
-         'link', ${CERTIFICATE_PROOF_MARKER}, ${websiteUrl}, 'submitted', ${batchKey}, 1, ${now},
-         ${eligibilitySnapshot}, ${now}, ${now})
-    `
+    let assignmentId: bigint
+    let resubmitted = false
+    if (previousProof && previousStatus === "needs_revision") {
+      assignmentId = previousProof.id
+      resubmitted = true
+      await prisma.$executeRaw`
+        UPDATE tochukwu_learning_assignments
+        SET submission_link = ${websiteUrl},
+            status = 'submitted',
+            reviewed_by = NULL,
+            reviewed_at = NULL,
+            certificate_eligible_at_submission = 1,
+            certificate_eligibility_checked_at = ${now},
+            certificate_eligibility_snapshot_json = ${eligibilitySnapshot},
+            updated_at = ${now}
+        WHERE id = ${assignmentId}
+          AND account_id = ${session.account.id}
+        LIMIT 1
+      `
+      await prisma.$executeRaw`
+        INSERT INTO tochukwu_learning_assignment_events
+          (assignment_id, actor_type, actor_ref, event_type, event_note, metadata_json, created_at)
+        VALUES
+          (${assignmentId}, 'student', ${email}, 'resubmitted', 'Revised certificate proof submitted',
+           ${JSON.stringify({ websiteUrl })}, ${now})
+      `.catch(() => null)
+    } else {
+      await prisma.$executeRaw`
+        INSERT INTO tochukwu_learning_assignments
+          (assignment_uuid, course_slug, account_id, student_email, student_name, submission_kind, submission_text,
+           submission_link, status, certificate_batch_key, certificate_eligible_at_submission, certificate_eligibility_checked_at,
+           certificate_eligibility_snapshot_json, created_at, updated_at)
+        VALUES
+          (${assignmentUuid}, ${courseSlug}, ${session.account.id}, ${email}, ${session.account.fullName},
+           'link', ${CERTIFICATE_PROOF_MARKER}, ${websiteUrl}, 'submitted', ${batchKey}, 1, ${now},
+           ${eligibilitySnapshot}, ${now}, ${now})
+      `
+      const inserted = await prisma.$queryRaw<Array<{ id: bigint }>>`
+        SELECT id
+        FROM tochukwu_learning_assignments
+        WHERE assignment_uuid = ${assignmentUuid}
+        LIMIT 1
+      `
+      assignmentId = inserted[0]?.id
+      if (!assignmentId) throw new Error("Certificate proof was saved but could not be reloaded.")
+    }
+    await addCertificateProofMessage({
+      assignmentId,
+      courseSlug,
+      accountId: session.account.id,
+      authorType: "system",
+      authorRef: email,
+      authorName: session.account.fullName,
+      messageType: resubmitted ? "resubmission" : "submission",
+      body: resubmitted
+        ? `The student submitted a revised project proof: ${websiteUrl}`
+        : `The student submitted project proof: ${websiteUrl}`
+    })
+    await notifyCertificateProofAdmins({
+      assignmentId,
+      studentName: session.account.fullName,
+      studentEmail: email,
+      courseSlug,
+      subject: resubmitted ? "Revised Certificate Proof Submitted" : "New Certificate Proof Submitted",
+      message: resubmitted
+        ? `A revised project URL was submitted:\n${websiteUrl}`
+        : `A project URL was submitted:\n${websiteUrl}`
+    }).catch((error) => {
+      console.warn("certificate_proof_admin_notification_failed", {
+        assignmentId: assignmentId.toString(),
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
 
     return NextResponse.json({
       ok: true,
       proof: {
         status: "submitted",
         submittedAt: now.toISOString(),
-        websiteUrl
+        websiteUrl,
+        resubmitted
       },
       course: {
         courseSlug,

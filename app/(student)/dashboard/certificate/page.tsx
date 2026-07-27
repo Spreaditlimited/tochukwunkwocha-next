@@ -141,10 +141,11 @@ function CertificateDocumentView({
 export default async function StudentCertificatesPage({
   searchParams
 }: {
-  searchParams?: Promise<{ certificate_no?: string; certificateNo?: string }>
+  searchParams?: Promise<{ certificate_no?: string; certificateNo?: string; course?: string }>
 }) {
   const params = searchParams ? await searchParams : {}
   const requestedCertificateNo = String(params.certificate_no || params.certificateNo || "").trim().toUpperCase()
+  const requestedCourseSlug = String(params.course || "").trim().toLowerCase()
   if (requestedCertificateNo) {
     const certificate = await getStudentCertificatePublic(requestedCertificateNo)
     return <CertificateDocumentView certificateNo={requestedCertificateNo} certificate={certificate} />
@@ -286,6 +287,7 @@ export default async function StudentCertificatesPage({
           certificateNameConfirmedAt={session.account.certificateNameConfirmedAt?.toISOString() || null}
           certificateName={session.account.fullName}
           courses={certificateProofCourses}
+          initialCourseSlug={requestedCourseSlug}
           certificateContent={certificateContent}
         />
       </div>

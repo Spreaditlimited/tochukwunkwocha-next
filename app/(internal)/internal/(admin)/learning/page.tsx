@@ -11,6 +11,7 @@ import {
   Mail, 
   MessageSquareText, 
   RotateCcw,
+  Send,
   Settings2,
   ShieldAlert,
   Smartphone,
@@ -21,6 +22,7 @@ import { CERTIFICATE_PROOF_MARKER, listLearningSupportData } from "@/lib/admin-l
 import { formatDate } from "@/lib/utils"
 import {
   resendStudentResetLinkAction,
+  replyToCertificateProofAction,
   resendCertificateApprovalEmailAction,
   resetStudentDevicesAction,
   reviewAssignmentAction,
@@ -65,7 +67,7 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 export default async function InternalLearningSupportPage() {
-  const { courses, features, assignments, attachments, students } = await listLearningSupportData()
+  const { courses, features, assignments, attachments, assignmentMessages, students } = await listLearningSupportData()
   const alumniParticipationOptions = [
     { value: "none", label: "None (Hidden)" },
     { value: "read_only", label: "Read Only" },
@@ -90,6 +92,11 @@ export default async function InternalLearningSupportPage() {
   for (const attachment of attachments) {
     const key = String(attachment.assignmentId)
     attachmentMap.set(key, [...(attachmentMap.get(key) || []), attachment])
+  }
+  const assignmentMessageMap = new Map<string, typeof assignmentMessages>()
+  for (const message of assignmentMessages) {
+    const key = String(message.assignmentId)
+    assignmentMessageMap.set(key, [...(assignmentMessageMap.get(key) || []), message])
   }
   
   const pendingCount = assignments.filter((item) => ["submitted", "in_review"].includes(item.status)).length
@@ -282,15 +289,17 @@ export default async function InternalLearningSupportPage() {
           <div className="grid gap-8">
             {assignments.length ? assignments.map((assignment) => {
               const itemAttachments = attachmentMap.get(String(assignment.id)) || []
+              const itemMessages = assignmentMessageMap.get(String(assignment.id)) || []
+              const isCertificateProof = assignment.submissionKind === "link"
+                && assignment.submissionText === CERTIFICATE_PROOF_MARKER
               const certificateUrl = assignment.certificateNo
                 ? `/dashboard/certificate?certificate_no=${encodeURIComponent(assignment.certificateNo)}`
                 : ""
               const isApprovedCertificateProof = assignment.status === "approved"
-                && assignment.submissionKind === "link"
-                && assignment.submissionText === CERTIFICATE_PROOF_MARKER
+                && isCertificateProof
                 
               return (
-                <article key={String(assignment.id)} className="rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-primary/20">
+                <article id={`assignment-${String(assignment.id)}`} key={String(assignment.id)} className="scroll-mt-6 rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-primary/20">
                   
                   {/* Identity Header */}
                   <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/10 p-6 lg:flex-row lg:items-center">
@@ -404,13 +413,16 @@ export default async function InternalLearningSupportPage() {
                               placeholder="Provide actionable feedback to the learner..." 
                               className="w-full resize-none rounded-md border border-input bg-background/50 px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20" 
                             />
+                            <span className="mt-2 block text-xs font-medium leading-relaxed text-muted-foreground">
+                              New or updated feedback is required whenever you change the evaluation status. It will be shown to the learner and included in their notification email.
+                            </span>
                           </label>
                         </div>
                         
                         <div className="mt-6 flex flex-col justify-between gap-4 border-t border-border pt-6 sm:flex-row sm:items-center">
                           <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-muted/10 px-4 py-2 transition-colors hover:bg-muted/30">
                             <input name="sendApprovalEmail" type="checkbox" className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
-                            <span className="text-sm font-bold text-foreground">Dispatch Notification Email</span>
+                            <span className="text-sm font-bold text-foreground">Send Status Email Again</span>
                           </label>
                           <button className="btn-primary w-full justify-center shadow-sm sm:w-auto" type="submit">
                             Save Evaluation
@@ -420,6 +432,72 @@ export default async function InternalLearningSupportPage() {
                     </div>
                     
                   </div>
+
+                  {isCertificateProof ? (
+                    <section className="border-t border-border bg-muted/10 p-6">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="eyebrow text-primary">Private Review Thread</p>
+                          <h4 className="mt-1 font-heading text-lg font-black text-foreground">Proof Conversation</h4>
+                        </div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Status-change emails are sent automatically. Use the checkbox above only to resend one.
+                        </p>
+                      </div>
+
+                      <div className="mt-5 max-h-80 space-y-3 overflow-auto rounded-xl border border-border bg-background p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
+                        {itemMessages.length ? itemMessages.map((message) => {
+                          const studentMessage = message.authorType === "student"
+                          const unread = studentMessage && !message.readByAdminAt
+                          return (
+                            <article
+                              key={String(message.id)}
+                              className={`max-w-[92%] rounded-xl border p-4 ${
+                                studentMessage
+                                  ? "mr-auto border-primary/20 bg-primary/5"
+                                  : message.authorType === "admin"
+                                    ? "ml-auto border-emerald-500/20 bg-emerald-500/5"
+                                    : "mx-auto border-border bg-muted/20"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                  {message.authorType === "admin" ? message.authorName || "Learning Support" : message.authorType === "student" ? assignment.studentName || "Student" : "System"}
+                                </p>
+                                {unread ? (
+                                  <span className="rounded-full bg-primary px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-primary-foreground">New</span>
+                                ) : null}
+                                <span className="text-[10px] font-medium text-muted-foreground">{formatDate(message.createdAt)}</span>
+                              </div>
+                              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">{message.body}</p>
+                            </article>
+                          )
+                        }) : (
+                          <p className="py-8 text-center text-sm font-medium text-muted-foreground">
+                            No conversation messages yet. Feedback saved during the next review will appear here.
+                          </p>
+                        )}
+                      </div>
+
+                      <form action={replyToCertificateProofAction} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <input type="hidden" name="assignmentId" value={String(assignment.id)} />
+                        <label className="min-w-0 flex-1">
+                          <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reply to Student</span>
+                          <textarea
+                            name="message"
+                            rows={3}
+                            required
+                            placeholder="Write a private reply about this certificate proof..."
+                            className="w-full resize-none rounded-md border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
+                        </label>
+                        <button type="submit" className="btn-primary justify-center sm:mb-0">
+                          <Send className="mr-2 h-4 w-4" />
+                          Send Reply
+                        </button>
+                      </form>
+                    </section>
+                  ) : null}
                 </article>
               )
             }) : (

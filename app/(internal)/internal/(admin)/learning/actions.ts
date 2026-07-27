@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
 import {
   formBool,
+  replyToCertificateProof,
   resendCertificateApprovalEmail,
   resendStudentResetLink,
   resetStudentDevices,
@@ -68,6 +69,22 @@ export async function reviewAssignmentAction(formData: FormData) {
   })
   revalidateTag("public-student-projects")
   revalidatePath("/projects")
+  revalidatePath(PATH)
+}
+
+export async function replyToCertificateProofAction(formData: FormData) {
+  await requireAdmin("/internal/learning")
+  const result = await replyToCertificateProof({
+    assignmentId: String(formData.get("assignmentId") || ""),
+    message: String(formData.get("message") || "")
+  })
+  await setInternalToast({
+    type: result.email.sent ? "success" : "error",
+    title: result.email.sent ? "Reply sent" : "Reply saved; email failed",
+    message: result.email.sent
+      ? "The learner can now see the reply and has been notified by email."
+      : result.email.error
+  })
   revalidatePath(PATH)
 }
 

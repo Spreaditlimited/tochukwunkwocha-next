@@ -1,0 +1,20 @@
+CREATE TABLE `tochukwu_learning_assignment_messages` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `message_uuid` VARCHAR(64) NOT NULL,
+  `assignment_id` BIGINT NOT NULL,
+  `course_slug` VARCHAR(120) NOT NULL,
+  `account_id` BIGINT NOT NULL,
+  `author_type` VARCHAR(24) NOT NULL,
+  `author_ref` VARCHAR(220) NULL,
+  `author_name` VARCHAR(180) NULL,
+  `message_type` VARCHAR(32) NOT NULL DEFAULT 'message',
+  `body` TEXT NOT NULL,
+  `read_by_student_at` DATETIME(0) NULL,
+  `read_by_admin_at` DATETIME(0) NULL,
+  `created_at` DATETIME(0) NOT NULL,
+  UNIQUE INDEX `uniq_tochukwu_learning_assignment_message_uuid`(`message_uuid`),
+  INDEX `idx_tochukwu_learning_assignment_message_thread`(`assignment_id`, `created_at`),
+  INDEX `idx_tochukwu_learning_assignment_message_admin`(`read_by_admin_at`, `created_at`),
+  INDEX `idx_tochukwu_learning_assignment_message_student`(`account_id`, `read_by_student_at`, `created_at`),
+  PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

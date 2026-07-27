@@ -145,7 +145,7 @@ async function main() {
       `
 
       const inserted = await transaction.$queryRaw`
-        SELECT assignment_uuid AS assignmentUuid
+        SELECT id, assignment_uuid AS assignmentUuid
         FROM tochukwu_learning_assignments
         WHERE assignment_uuid = ${assignmentUuid}
         LIMIT 1
@@ -153,6 +153,84 @@ async function main() {
       if (!inserted.length) {
         throw new Error("The transaction could not read the temporary proof submission.")
       }
+      const assignmentId = inserted[0].id
+
+      await transaction.$executeRawUnsafe(`
+        CREATE TEMPORARY TABLE tochukwu_learning_assignment_messages (
+          id BIGINT NOT NULL AUTO_INCREMENT,
+          message_uuid VARCHAR(64) NOT NULL,
+          assignment_id BIGINT NOT NULL,
+          course_slug VARCHAR(120) NOT NULL,
+          account_id BIGINT NOT NULL,
+          author_type VARCHAR(24) NOT NULL,
+          author_ref VARCHAR(220) NULL,
+          author_name VARCHAR(180) NULL,
+          message_type VARCHAR(32) NOT NULL DEFAULT 'message',
+          body TEXT NOT NULL,
+          read_by_student_at DATETIME NULL,
+          read_by_admin_at DATETIME NULL,
+          created_at DATETIME NOT NULL,
+          PRIMARY KEY (id),
+          UNIQUE KEY uniq_tochukwu_learning_assignment_message_uuid (message_uuid),
+          KEY idx_tochukwu_learning_assignment_message_thread (assignment_id, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      await transaction.$executeRaw`
+        INSERT INTO tochukwu_learning_assignment_messages
+          (message_uuid, assignment_id, course_slug, account_id, author_type,
+           author_ref, author_name, message_type, body, read_by_student_at,
+           read_by_admin_at, created_at)
+        VALUES
+          (${`smoke_admin_${crypto.randomUUID().replaceAll("-", "")}`}, ${assignmentId},
+           ${courseSlug}, ${account.id}, 'admin', 'smoke-admin',
+           'Learning Support', 'revision_requested', 'Please revise the project proof.',
+           ${now}, NULL, ${now})
+      `
+      await transaction.$executeRaw`
+        UPDATE tochukwu_learning_assignments
+        SET status = 'needs_revision',
+            admin_feedback = 'Please revise the project proof.',
+            reviewed_at = ${now},
+            updated_at = ${now}
+        WHERE id = ${assignmentId}
+        LIMIT 1
+      `
+      await transaction.$executeRaw`
+        INSERT INTO tochukwu_learning_assignment_messages
+          (message_uuid, assignment_id, course_slug, account_id, author_type,
+           author_ref, author_name, message_type, body, read_by_student_at,
+           read_by_admin_at, created_at)
+        VALUES
+          (${`smoke_student_${crypto.randomUUID().replaceAll("-", "")}`}, ${assignmentId},
+           ${courseSlug}, ${account.id}, 'student', ${email},
+           ${account.fullName}, 'student_message', 'I have made the requested changes.',
+           NULL, ${now}, ${now})
+      `
+      await transaction.$executeRaw`
+        UPDATE tochukwu_learning_assignments
+        SET submission_link = 'https://certificate-proof-revision-smoke-test.invalid/',
+            status = 'submitted',
+            reviewed_by = NULL,
+            reviewed_at = NULL,
+            updated_at = ${now}
+        WHERE id = ${assignmentId}
+        LIMIT 1
+      `
+      const workflow = await transaction.$queryRaw`
+        SELECT a.status, a.submission_link AS submissionLink,
+          (SELECT COUNT(*) FROM tochukwu_learning_assignment_messages m WHERE m.assignment_id = a.id) AS messageCount
+        FROM tochukwu_learning_assignments a
+        WHERE a.id = ${assignmentId}
+        LIMIT 1
+      `
+      if (
+        workflow[0]?.status !== "submitted"
+        || workflow[0]?.submissionLink !== "https://certificate-proof-revision-smoke-test.invalid/"
+        || Number(workflow[0]?.messageCount || 0) !== 2
+      ) {
+        throw new Error("The revision conversation smoke workflow did not reach the expected state.")
+      }
+      await transaction.$executeRawUnsafe("DROP TEMPORARY TABLE tochukwu_learning_assignment_messages")
 
       throw new Error(rollbackMarker)
     })
@@ -180,6 +258,7 @@ async function main() {
   console.log(`Enrollment sources found: ${rows.length}`)
   console.log(`Resolved batch key: ${batchKey || "(empty legacy batch)"}`)
   console.log("Temporary proof insert: passed and rolled back")
+  console.log("Revision thread and resubmission workflow: passed and rolled back")
   console.log("Database leftovers: 0")
 }
 

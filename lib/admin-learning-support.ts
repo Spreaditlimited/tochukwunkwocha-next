@@ -9,6 +9,11 @@ import {
 } from "@/lib/certificate-eligibility"
 import { ensureCertificateVerificationColumns, getLatestApprovedStudentProject } from "@/lib/certificate-verification"
 import { sendEmail } from "@/lib/email"
+import {
+  addCertificateProofMessage,
+  ensureCertificateProofConversationTable,
+  notifyCertificateProofStudent
+} from "@/lib/certificate-proof-conversation"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
@@ -158,6 +163,7 @@ export async function ensureLearningSupportTables() {
   `)
   await ensureCertificateEligibilityColumns()
   await ensureCertificateVerificationColumns()
+  await ensureCertificateProofConversationTable()
 }
 
 export async function listLearningSupportData(filters?: { courseSlug?: string; status?: string; search?: string }) {
@@ -248,6 +254,35 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
     WHERE assignment_id IN (${Prisma.join(ids)})
     ORDER BY assignment_id ASC, sort_order ASC, id ASC
   `).catch(() => []) : []
+  const assignmentMessages = ids.length
+    ? await prisma.$queryRaw<Array<{
+        id: bigint
+        messageUuid: string
+        assignmentId: bigint
+        authorType: string
+        authorName: string | null
+        messageType: string
+        body: string
+        readByAdminAt: Date | null
+        createdAt: Date | null
+      }>>(Prisma.sql`
+        SELECT id, message_uuid AS messageUuid, assignment_id AS assignmentId,
+          author_type AS authorType, author_name AS authorName,
+          message_type AS messageType, body, read_by_admin_at AS readByAdminAt,
+          created_at AS createdAt
+        FROM tochukwu_learning_assignment_messages
+        WHERE assignment_id IN (${Prisma.join(ids)})
+        ORDER BY assignment_id ASC, id ASC
+      `).catch(() => [])
+    : []
+  if (ids.length) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE tochukwu_learning_assignment_messages
+      SET read_by_admin_at = COALESCE(read_by_admin_at, ${new Date()})
+      WHERE assignment_id IN (${Prisma.join(ids)})
+        AND author_type = 'student'
+    `).catch(() => null)
+  }
   const transcriptRequests = await prisma.$queryRaw<Array<{
     id: bigint
     accountId: bigint
@@ -283,7 +318,7 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
     ORDER BY sa.updated_at DESC
     LIMIT 80
   `.catch(() => [])
-  return { courses, features, assignments: filtered, attachments, transcriptRequests, students }
+  return { courses, features, assignments: filtered, attachments, assignmentMessages, transcriptRequests, students }
 }
 
 export async function saveCourseFeatures(input: {
@@ -461,9 +496,10 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
   const admin = await requireAdmin("/internal/learning")
   const assignmentId = BigInt(String(input.assignmentId || "0"))
   if (assignmentId <= BigInt(0)) throw new Error("assignment_id is required.")
-  const before = await prisma.$queryRaw<Array<{ status: string; studentEmail: string; studentName: string | null; courseSlug: string; submissionKind: string; submissionText: string | null; submissionLink: string | null }>>`
+  const before = await prisma.$queryRaw<Array<{ status: string; studentEmail: string; studentName: string | null; courseSlug: string; submissionKind: string; submissionText: string | null; submissionLink: string | null; accountId: bigint; adminFeedback: string | null }>>`
     SELECT status, student_email AS studentEmail, student_name AS studentName, course_slug AS courseSlug,
-      submission_kind AS submissionKind, submission_text AS submissionText, submission_link AS submissionLink
+      submission_kind AS submissionKind, submission_text AS submissionText, submission_link AS submissionLink,
+      account_id AS accountId, admin_feedback AS adminFeedback
     FROM tochukwu_learning_assignments
     WHERE id = ${assignmentId}
     LIMIT 1
@@ -471,6 +507,11 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
   if (!before.length) throw new Error("Assignment not found.")
   const status = normalizeAssignmentStatus(input.status)
   const feedback = clean(input.feedback, 8000)
+  const statusChanged = before[0].status !== status
+  const previousFeedback = clean(before[0].adminFeedback, 8000)
+  if (statusChanged && (!feedback || feedback === previousFeedback)) {
+    throw new Error("New or updated admin feedback is required whenever the submission status changes.")
+  }
   const now = new Date()
   await prisma.$executeRaw`
     UPDATE tochukwu_learning_assignments
@@ -490,7 +531,25 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
   `.catch(() => null)
   const item = before[0]
   const certificateProof = item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER
-  const becameApproved = item.status !== status && status === "approved"
+  const feedbackChanged = previousFeedback !== feedback
+  const becameApproved = statusChanged && status === "approved"
+  if (certificateProof && (statusChanged || feedbackChanged)) {
+    const recordsFeedback = Boolean(feedback) && (feedbackChanged || status === "needs_revision")
+    await addCertificateProofMessage({
+      assignmentId,
+      courseSlug: item.courseSlug,
+      accountId: item.accountId,
+      authorType: "admin",
+      authorRef: admin.email || admin.adminUuid,
+      authorName: admin.fullName,
+      messageType: recordsFeedback
+        ? status === "needs_revision"
+          ? "revision_requested"
+          : "admin_feedback"
+        : "status_update",
+      body: recordsFeedback ? feedback : `The proof status was updated to ${status.replace(/_/g, " ")}.`
+    })
+  }
   let certificate = { issued: false, certificateNo: "", certificateUrl: "", reason: "", error: "" }
   if (status === "approved" && certificateProof && (becameApproved || input.sendApprovalEmail)) {
     try {
@@ -507,14 +566,17 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
     }
   }
   const email = { attempted: false, sent: false, error: "" }
-  if ((input.sendApprovalEmail || becameApproved) && item.studentEmail) {
+  if ((input.sendApprovalEmail || statusChanged || (certificateProof && feedbackChanged)) && item.studentEmail) {
     email.attempted = true
     const certificateUrl = certificate.certificateUrl
     const statusLabel = status.replace(/_/g, " ")
     const courseLabel = escapeHtml(item.courseSlug)
     const feedbackHtml = feedback ? `<p><strong>Feedback:</strong><br/>${escapeHtml(feedback).replace(/\r?\n/g, "<br/>")}</p>` : ""
     const websiteHtml = item.submissionLink
-      ? `<p><strong>Approved website:</strong> <a href="${escapeHtml(item.submissionLink)}" style="color:#0d4f9a;font-weight:700;">${escapeHtml(item.submissionLink)}</a></p>`
+      ? `<p><strong>Submitted website:</strong> <a href="${escapeHtml(item.submissionLink)}" style="color:#0d4f9a;font-weight:700;">${escapeHtml(item.submissionLink)}</a></p>`
+      : ""
+    const revisionHtml = status === "needs_revision"
+      ? "<p>Please review the feedback, make the requested changes, and submit your revised project link from the certificate proof area.</p>"
       : ""
     const certificateHtml = certificateUrl
       ? `<p>Your certificate is now available.</p><p><a href="${escapeHtml(certificateUrl)}" style="display:inline-block;border-radius:10px;background:#0d4f9a;color:#ffffff;font-weight:800;text-decoration:none;padding:12px 18px;">Download your certificate</a></p>`
@@ -524,9 +586,13 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
     try {
       const delivery = await sendEmail({
         to: item.studentEmail,
-        subject: certificateUrl ? "Your Website Proof Was Approved - Certificate Ready" : `Your learning support status changed to ${status.replace(/_/g, " ")}`,
-        html: `<p>Hello ${escapeHtml(item.studentName || "Student")},</p><p>Your learning support submission for <strong>${courseLabel}</strong> is now <strong>${escapeHtml(statusLabel)}</strong>.</p>${websiteHtml}${feedbackHtml}${certificateHtml}<p><a href="${siteBaseUrl()}/dashboard/courses" style="color:#0d4f9a;font-weight:700;">Open your dashboard</a></p>`,
-        text: `Hello ${item.studentName || "Student"},\n\nYour submission for ${item.courseSlug} is now ${status}.\n${item.submissionLink ? `Approved website: ${item.submissionLink}\n` : ""}${feedback ? `Feedback: ${feedback}\n` : ""}${certificateUrl ? `Certificate: ${certificateUrl}\n` : ""}\nTochukwu Tech and AI Academy`
+        subject: certificateUrl
+          ? "Your Website Proof Was Approved - Certificate Ready"
+          : status === "needs_revision"
+            ? "Revision Required for Your Certificate Proof"
+            : `Your learning support status changed to ${status.replace(/_/g, " ")}`,
+        html: `<p>Hello ${escapeHtml(item.studentName || "Student")},</p><p>Your learning support submission for <strong>${courseLabel}</strong> is now <strong>${escapeHtml(statusLabel)}</strong>.</p>${websiteHtml}${feedbackHtml}${revisionHtml}${certificateHtml}<p><a href="${siteBaseUrl()}/dashboard/certificate?course=${encodeURIComponent(item.courseSlug)}#proof-review" style="color:#0d4f9a;font-weight:700;">Open your certificate proof review</a></p>`,
+        text: `Hello ${item.studentName || "Student"},\n\nYour submission for ${item.courseSlug} is now ${status}.\n${item.submissionLink ? `Submitted website: ${item.submissionLink}\n` : ""}${feedback ? `Feedback: ${feedback}\n` : ""}${status === "needs_revision" ? "Please make the requested changes and submit your revised project link from the certificate proof area.\n" : ""}${certificateUrl ? `Certificate: ${certificateUrl}\n` : ""}\nOpen your review: ${siteBaseUrl()}/dashboard/certificate?course=${encodeURIComponent(item.courseSlug)}#proof-review\n\nTochukwu Tech and AI Academy`
       })
       email.sent = delivery.ok
       email.error = delivery.ok ? "" : delivery.error || "Email provider did not send the message."
@@ -550,6 +616,68 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
             : ""
     },
     email
+  }
+}
+
+export async function replyToCertificateProof(input: { assignmentId: string; message: string }) {
+  await ensureLearningSupportTables()
+  const admin = await requireAdmin("/internal/learning")
+  const assignmentId = BigInt(String(input.assignmentId || "0"))
+  const message = clean(input.message, 8000)
+  if (assignmentId <= BigInt(0)) throw new Error("assignment_id is required.")
+  if (message.length < 2) throw new Error("Reply is too short.")
+  const rows = await prisma.$queryRaw<Array<{
+    accountId: bigint
+    courseSlug: string
+    studentEmail: string
+    studentName: string | null
+    submissionKind: string
+    submissionText: string | null
+  }>>`
+    SELECT account_id AS accountId, course_slug AS courseSlug,
+      student_email AS studentEmail, student_name AS studentName,
+      submission_kind AS submissionKind, submission_text AS submissionText
+    FROM tochukwu_learning_assignments
+    WHERE id = ${assignmentId}
+    LIMIT 1
+  `
+  const assignment = rows[0]
+  if (!assignment) throw new Error("Assignment not found.")
+  if (assignment.submissionKind !== "link" || assignment.submissionText !== CERTIFICATE_PROOF_MARKER) {
+    throw new Error("Replies in this area are limited to certificate proof submissions.")
+  }
+  await addCertificateProofMessage({
+    assignmentId,
+    courseSlug: assignment.courseSlug,
+    accountId: assignment.accountId,
+    authorType: "admin",
+    authorRef: admin.email || admin.adminUuid,
+    authorName: admin.fullName,
+    messageType: "admin_reply",
+    body: message
+  })
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_learning_assignment_events
+      (assignment_id, actor_type, actor_ref, event_type, event_note, metadata_json, created_at)
+    VALUES
+      (${assignmentId}, 'admin', ${admin.email || admin.adminUuid}, 'message_sent',
+       ${message.slice(0, 800)}, ${JSON.stringify({ source: "certificate_proof_review" })}, ${new Date()})
+  `.catch(() => null)
+  const delivery = await notifyCertificateProofStudent({
+    studentEmail: assignment.studentEmail,
+    studentName: assignment.studentName || "Student",
+    courseSlug: assignment.courseSlug,
+    subject: "New Reply About Your Certificate Proof",
+    message
+  }).catch((error) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : "Email delivery failed."
+  }))
+  return {
+    email: {
+      sent: delivery.ok,
+      error: delivery.ok ? "" : delivery.error || "Email provider did not send the message."
+    }
   }
 }
 
