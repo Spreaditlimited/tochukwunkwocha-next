@@ -13,6 +13,8 @@ import {
   Trophy
 } from "lucide-react"
 
+import type { SiteShowcase } from "@/lib/site-showcases"
+
 function BrowserMockup({ title, url, iframeSrc }: { title: string; url: string; iframeSrc?: string }) {
   return (
     <div className="group min-w-0 max-w-full">
@@ -86,7 +88,7 @@ const parentTestimonials = [
   }
 ]
 
-export function PromptToProfitSchoolsCoursePage() {
+export function PromptToProfitSchoolsCoursePage({ studentWebsites }: { studentWebsites: SiteShowcase[] }) {
   const [view, setView] = useState<"landing" | "intro" | "questions" | "lead" | "result">("landing")
   const [currentQ, setCurrentQ] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -310,7 +312,7 @@ export function PromptToProfitSchoolsCoursePage() {
         </div>
       </section>
 
-      <section className="bg-brand-ink py-20 text-white lg:py-28">
+      <section id="student-websites" className="scroll-mt-24 bg-brand-ink py-20 text-white lg:py-28">
         <div className={sectionContainer}>
           <div className="mx-auto mb-16 max-w-3xl text-center">
             <p className="eyebrow text-sky-500">Proof of Concept</p>
@@ -323,8 +325,9 @@ export function PromptToProfitSchoolsCoursePage() {
           </div>
 
           <div className="grid min-w-0 gap-8 lg:grid-cols-2 lg:gap-12">
-            <BrowserMockup title="The Man Cave Naija" url="themancavenaija.com" iframeSrc="https://themancavenaija.com/" />
-            <BrowserMockup title="Kachi Game Arcade" url="kachigamearcade.netlify.app" iframeSrc="https://kachigamearcade.netlify.app" />
+            {studentWebsites.map((site) => (
+              <BrowserMockup key={site.showcaseUuid} title={site.title} url={site.displayUrl} iframeSrc={site.url} />
+            ))}
           </div>
         </div>
       </section>

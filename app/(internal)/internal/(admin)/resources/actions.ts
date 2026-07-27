@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
 import { generateResourceDraftFromForm, upsertBundleFromForm, upsertResourceFromForm } from "@/lib/resources"
+import { upsertSiteShowcaseFromForm } from "@/lib/site-showcases"
 
 export async function saveResourceAction(formData: FormData) {
   await requireAdmin("/internal/resources")
@@ -62,6 +63,30 @@ export async function generateResourceDraftAction(formData: FormData) {
       message: error instanceof Error ? error.message : "Check the fields and try again."
     })
     target = "/internal/resources?error=generation"
+  }
+  redirect(target)
+}
+
+export async function saveSiteShowcaseAction(formData: FormData) {
+  await requireAdmin("/internal/resources")
+  let target = "/internal/resources#website-showcases"
+  try {
+    const site = await upsertSiteShowcaseFromForm(formData)
+    revalidatePath("/courses/prompt-to-profit")
+    revalidatePath("/courses/prompt-to-profit-schools")
+    revalidatePath("/internal/resources")
+    await setInternalToast({
+      title: "Showcase website saved",
+      message: `${site.title} and its public visibility have been updated.`
+    })
+    target = `/internal/resources?showcase=${encodeURIComponent(site.showcaseUuid)}#website-showcases`
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Showcase website not saved",
+      message: error instanceof Error ? error.message : "Check the website details and try again."
+    })
+    target = "/internal/resources?error=showcase#website-showcases"
   }
   redirect(target)
 }

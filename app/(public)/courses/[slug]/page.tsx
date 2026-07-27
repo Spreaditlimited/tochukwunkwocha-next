@@ -12,6 +12,7 @@ import { JsonLd } from "@/components/JsonLd"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { getCourse, resolveCourseSlug } from "@/lib/public-offers"
+import { listPublishedSiteShowcases } from "@/lib/site-showcases"
 import { breadcrumbJsonLd, buildMetadata, courseJsonLd } from "@/lib/site-seo"
 
 type CoursePageProps = {
@@ -50,11 +51,14 @@ export default async function CoursePage({ params }: CoursePageProps) {
     : null
 
   if (course?.slug === "prompt-to-profit") {
-    const courseSettings = await getPublicCourseSettings(course.checkoutCourseSlug)
+    const [courseSettings, studentWebsites] = await Promise.all([
+      getPublicCourseSettings(course.checkoutCourseSlug),
+      listPublishedSiteShowcases("prompt-to-profit")
+    ])
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <PromptToProfitCoursePage course={course} courseSettings={courseSettings} />
+        <PromptToProfitCoursePage course={course} courseSettings={courseSettings} studentWebsites={studentWebsites} />
       </>
     )
   }
@@ -78,10 +82,11 @@ export default async function CoursePage({ params }: CoursePageProps) {
   }
 
   if (course?.slug === "prompt-to-profit-schools") {
+    const studentWebsites = await listPublishedSiteShowcases("prompt-to-profit-schools")
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <PromptToProfitSchoolsCoursePage />
+        <PromptToProfitSchoolsCoursePage studentWebsites={studentWebsites} />
       </>
     )
   }

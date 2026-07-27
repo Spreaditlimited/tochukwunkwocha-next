@@ -27,6 +27,7 @@ import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
+import type { SiteShowcase } from "@/lib/site-showcases"
 
 type Course = NonNullable<ReturnType<typeof getCourse>>
 
@@ -52,7 +53,15 @@ function formatCoursePrice(settings: PublicCourseSettings | null) {
   )
 }
 
-export async function PromptToProfitCoursePage({ course, courseSettings }: { course: Course; courseSettings: PublicCourseSettings | null }) {
+export async function PromptToProfitCoursePage({
+  course,
+  courseSettings,
+  studentWebsites
+}: {
+  course: Course
+  courseSettings: PublicCourseSettings | null
+  studentWebsites: SiteShowcase[]
+}) {
   const introductionVideo = await getPublicVideoSlot("prompt-to-profit-basic-intro")
   const openBatches = courseSettings?.openBatches || []
   const displayedPrice = formatCoursePrice(courseSettings)
@@ -186,29 +195,6 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
     {
       q: "What if I get stuck?",
       a: "Support is available through the live sessions, the student discussion area, and the recorded lessons, which you can revisit whenever you need them."
-    }
-  ]
-
-  const studentWebsites = [
-    {
-      title: "Student website 1",
-      url: "https://splendorous-marzipan-6befc0.netlify.app/",
-      displayUrl: "splendorous-marzipan-6befc0.netlify.app"
-    },
-    {
-      title: "Student website 2",
-      url: "https://olytribe.com.ng",
-      displayUrl: "olytribe.com.ng"
-    },
-    {
-      title: "Student website 3",
-      url: "https://themancavenaija.com",
-      displayUrl: "themancavenaija.com"
-    },
-    {
-      title: "Student website 4",
-      url: "https://naijakitchenflavor.netlify.app",
-      displayUrl: "naijakitchenflavor.netlify.app"
     }
   ]
 
@@ -548,7 +534,7 @@ export async function PromptToProfitCoursePage({ course, courseSettings }: { cou
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-brand-ink py-20 text-white lg:py-32">
+      <section id="student-websites" className="relative scroll-mt-24 overflow-hidden bg-brand-ink py-20 text-white lg:py-32">
         <div className="pointer-events-none absolute left-1/2 top-[30%] z-0 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-600/10 blur-[120px]" />
         <div className="pointer-events-none absolute bottom-0 right-0 z-0 h-[600px] w-[600px] rounded-full bg-primary/5 blur-[100px]" />
 

@@ -5,6 +5,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Globe2,
   Layers,
   MessageSquare,
   PackagePlus,
@@ -29,10 +30,11 @@ import {
   resourceTypeLabel,
   resourceTypes
 } from "@/lib/resources"
+import { listAdminSiteShowcases, siteShowcasePlacements } from "@/lib/site-showcases"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { formatDate } from "@/lib/utils"
-import { generateResourceDraftAction, saveResourceAction, saveResourceBundleAction } from "./actions"
+import { generateResourceDraftAction, saveResourceAction, saveResourceBundleAction, saveSiteShowcaseAction } from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -55,9 +57,10 @@ function typeIcon(type: string) {
 export default async function InternalResourcesPage({ searchParams }: PageProps) {
   const params = await searchParams || {}
   const q = param(params, "q")
-  const [resources, bundles] = await Promise.all([
+  const [resources, bundles, showcases] = await Promise.all([
     listAdminResources(q),
-    listAdminBundles()
+    listAdminBundles(),
+    listAdminSiteShowcases()
   ])
 
   const publishedCount = resources.filter((resource) => resource.status === "published").length
@@ -88,7 +91,7 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
             Resources & Toolkits
           </h1>
   <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            Manage prompt playbooks and videos for specific Nigerian audiences.
+            Manage prompt playbooks, videos, toolkits, and the student websites shown on public course pages.
           </p>
         </div>
         <Link href="/resources" className="btn-secondary shrink-0">
@@ -109,6 +112,155 @@ export default async function InternalResourcesPage({ searchParams }: PageProps)
         ))}
       </section>
       </DashboardStatsVisibility>
+
+      <section id="website-showcases" className="scroll-mt-24 space-y-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="eyebrow text-primary">Public Course Content</p>
+            <h2 className="mt-1 font-heading text-xl font-black text-foreground">Student Website Showcases</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              Manage the websites embedded on the Prompt to Profit course pages. Lower order numbers appear first.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/courses/prompt-to-profit#student-websites" className="btn-secondary shrink-0" target="_blank" rel="noreferrer">
+              Prompt to Profit <ExternalLink className="h-4 w-4" />
+            </Link>
+            <Link href="/courses/prompt-to-profit-schools#student-websites" className="btn-secondary shrink-0" target="_blank" rel="noreferrer">
+              Schools <ExternalLink className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {siteShowcasePlacements.map((placement) => {
+            const placementSites = showcases.filter((site) => site.placementKey === placement.key)
+            return (
+              <article key={placement.key} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Globe2 className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <h3 className="font-heading text-lg font-black text-foreground">{placement.label}</h3>
+                      <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                        {placementSites.filter((site) => site.isActive).length} visible of {placementSites.length} websites
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 p-5 xl:grid-cols-2">
+                  {placementSites.length ? placementSites.map((site) => (
+                    <form key={site.showcaseUuid} action={saveSiteShowcaseAction} className="rounded-xl border border-border bg-background p-5 shadow-sm">
+                      <input type="hidden" name="showcaseUuid" value={site.showcaseUuid} />
+                      <input type="hidden" name="placementKey" value={site.placementKey} />
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-heading text-sm font-black text-foreground">{site.title}</p>
+                          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{site.displayUrl}</p>
+                        </div>
+                        <span className={site.isActive
+                          ? "inline-flex shrink-0 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400"
+                          : "inline-flex shrink-0 rounded-md border border-border bg-muted/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+                        }>
+                          {site.isActive ? "Visible" : "Hidden"}
+                        </span>
+                      </div>
+
+                      <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_8rem]">
+                        <label className="block">
+                          <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Website Title</span>
+                          <input name="title" defaultValue={site.title} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" required />
+                        </label>
+                        <label className="block">
+                          <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Order</span>
+                          <input name="sortOrder" type="number" min="0" max="9999" step="1" defaultValue={site.sortOrder} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" required />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Website URL</span>
+                          <input name="siteUrl" type="url" defaultValue={site.url} className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" required />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Browser Address</span>
+                          <input name="displayUrl" defaultValue={site.displayUrl} className="w-full rounded-xl border border-input bg-background px-4 py-3 font-mono text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="example.com" />
+                        </label>
+                      </div>
+
+                      <div className="mt-5 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+                        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+                          <input name="isActive" type="checkbox" defaultChecked={site.isActive} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                          <span className="text-sm font-bold text-foreground">Show publicly</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <Link href={site.url} target="_blank" rel="noreferrer" className="btn-secondary">
+                            Preview <ExternalLink className="h-4 w-4" />
+                          </Link>
+                          <button className="btn-primary" type="submit">
+                            <Save className="h-4 w-4" />
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )) : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/10 p-10 text-center xl:col-span-2">
+                      <p className="text-sm font-semibold text-muted-foreground">No websites have been added to this showcase.</p>
+                    </div>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+
+        <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border bg-muted/20 p-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Plus className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="font-heading text-lg font-black text-foreground">Add Showcase Website</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Add another student website to either course page.</p>
+              </div>
+            </div>
+          </div>
+          <form action={saveSiteShowcaseAction} className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course Page</span>
+              <PremiumPicker name="placementKey" options={siteShowcasePlacements.map((placement) => ({ value: placement.key, label: placement.label }))} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Website Title</span>
+              <input name="title" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Student project name" required />
+            </label>
+            <label className="block xl:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Website URL</span>
+              <input name="siteUrl" type="url" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="https://example.com" required />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Browser Address</span>
+              <input name="displayUrl" className="w-full rounded-xl border border-input bg-background px-4 py-3 font-mono text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Optional — generated from the website URL when empty" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Order</span>
+              <input name="sortOrder" type="number" min="0" max="9999" step="1" defaultValue="50" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary" required />
+            </label>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end xl:justify-end">
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+                <input name="isActive" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
+                <span className="text-sm font-bold text-foreground">Show publicly</span>
+              </label>
+              <button className="btn-primary h-12 justify-center" type="submit">
+                <Plus className="h-4 w-4" />
+                Add Website
+              </button>
+            </div>
+          </form>
+        </article>
+      </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
