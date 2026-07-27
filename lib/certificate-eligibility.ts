@@ -65,10 +65,18 @@ export async function ensureCertificateEligibilityColumns() {
 
 export async function getLearnerCertificateBatchKey(accountId: bigint, email: string, courseSlug: string) {
   const normalizedEmail = String(email || "").trim().toLowerCase()
-  const rows = await prisma.$queryRaw<Array<{ batchKey: string | null; enrolledAt: Date | null }>>(Prisma.sql`
-    SELECT batchKey, enrolledAt
-    FROM (
-      SELECT e.batch_key AS batchKey, COALESCE(e.paid_at, e.updated_at, e.created_at) AS enrolledAt
+  type EnrollmentBatchRow = {
+    batchKey: string | null
+    enrolledAt: Date | null
+  }
+
+  // Keep the enrollment sources in separate queries. Some production tables
+  // use different utf8mb4 collations for batch_key; combining those columns in
+  // a UNION makes MySQL reject the query before it can return a result.
+  const [familyRows, orderRows, manualRows] = await Promise.all([
+    prisma.$queryRaw<EnrollmentBatchRow[]>(Prisma.sql`
+      SELECT e.batch_key AS batchKey,
+             COALESCE(e.paid_at, e.updated_at, e.created_at) AS enrolledAt
       FROM family_child_enrollments e
       JOIN family_children c ON c.id = e.child_id
       JOIN family_accounts f ON f.id = e.family_id
@@ -77,29 +85,41 @@ export async function getLearnerCertificateBatchKey(accountId: bigint, email: st
         AND f.status = 'active'
         AND e.status = 'active'
         AND e.course_slug = ${courseSlug}
-
-      UNION ALL
-
-      SELECT o.batch_key AS batchKey, COALESCE(o.paid_at, o.updated_at, o.created_at) AS enrolledAt
+      ORDER BY enrolledAt DESC
+      LIMIT 1
+    `),
+    prisma.$queryRaw<EnrollmentBatchRow[]>(Prisma.sql`
+      SELECT o.batch_key AS batchKey,
+             COALESCE(o.paid_at, o.updated_at, o.created_at) AS enrolledAt
       FROM course_orders o
       WHERE LOWER(o.email) = ${normalizedEmail}
         AND o.course_slug = ${courseSlug}
         AND o.status = 'paid'
         AND COALESCE(o.buyer_type, 'student') <> 'family'
-
-      UNION ALL
-
-      SELECT m.batch_key AS batchKey, COALESCE(m.reviewed_at, m.updated_at, m.created_at) AS enrolledAt
+      ORDER BY enrolledAt DESC
+      LIMIT 1
+    `),
+    prisma.$queryRaw<EnrollmentBatchRow[]>(Prisma.sql`
+      SELECT m.batch_key AS batchKey,
+             COALESCE(m.reviewed_at, m.updated_at, m.created_at) AS enrolledAt
       FROM course_manual_payments m
       WHERE LOWER(m.email) = ${normalizedEmail}
         AND m.course_slug = ${courseSlug}
         AND m.status = 'approved'
         AND COALESCE(m.buyer_type, 'student') <> 'family'
-    ) enrollments
-    ORDER BY enrolledAt DESC
-    LIMIT 1
-  `)
-  return String(rows[0]?.batchKey || "").trim().toLowerCase().slice(0, 64)
+      ORDER BY enrolledAt DESC
+      LIMIT 1
+    `)
+  ])
+
+  const latest = [...familyRows, ...orderRows, ...manualRows]
+    .sort((left, right) => {
+      const leftTime = left.enrolledAt ? new Date(left.enrolledAt).getTime() : 0
+      const rightTime = right.enrolledAt ? new Date(right.enrolledAt).getTime() : 0
+      return rightTime - leftTime
+    })[0]
+
+  return String(latest?.batchKey || "").trim().toLowerCase().slice(0, 64)
 }
 
 export async function getCertificateCourseCompletion(

@@ -16,7 +16,8 @@
     "db:seed:shop": "node scripts/seed-shop-workbooks.mjs",
     "shop:upload:workbooks": "node --env-file=.env scripts/upload-shop-workbooks-cloudinary.mjs",
     "shop:verify:workbooks": "node --env-file=.env scripts/verify-shop-workbook-assets.mjs",
-    "shop:publish:workbooks": "node --env-file=.env scripts/publish-shop-workbooks.mjs"
+    "shop:publish:workbooks": "node --env-file=.env scripts/publish-shop-workbooks.mjs",
+    "smoke:certificate-proof": "node --env-file=.env scripts/smoke-certificate-proof.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

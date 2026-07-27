@@ -113,6 +113,8 @@ def workbook_metadata(cover_lines: list[str], note: str) -> dict[str, str]:
             "Build a Complete Invoice Management Application with AI",
         "Appointment Booking System":
             "Build a Complete Appointment Scheduling Application with AI",
+        "Sales Tracker":
+            "Build a Complete Sales Tracking Application with AI",
         "Expense Tracker":
             "Build a Complete Expense Tracking Application with AI",
     }
@@ -127,9 +129,15 @@ def workbook_metadata(cover_lines: list[str], note: str) -> dict[str, str]:
             value = following.strip()
             if not value:
                 continue
-            time_match = re.fullmatch(r"(\d+)\s+minutes?", value, re.IGNORECASE)
+            time_match = re.fullmatch(
+                r"(\d+)(?:\s*[–-]\s*(\d+))?\s+minutes?",
+                value,
+                re.IGNORECASE,
+            )
             if time_match:
-                minutes.append(int(time_match.group(1)))
+                lower_minutes = int(time_match.group(1))
+                upper_minutes = int(time_match.group(2) or lower_minutes)
+                minutes.append((lower_minutes + upper_minutes) / 2)
             break
     total_hours = sum(minutes) / 60 if minutes else 0
     if total_hours:
