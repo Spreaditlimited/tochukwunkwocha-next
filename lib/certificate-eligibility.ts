@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 
+import { getLearningCourseForStudent } from "@/lib/learning-player"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -101,27 +102,27 @@ export async function getLearnerCertificateBatchKey(accountId: bigint, email: st
   return String(rows[0]?.batchKey || "").trim().toLowerCase().slice(0, 64)
 }
 
-export async function getCertificateCourseCompletion(accountId: bigint, courseSlug: string) {
-  const rows = await prisma.$queryRaw<Array<{
-    totalLessons: number | bigint | null
-    completedLessons: number | bigint | null
-  }>>(Prisma.sql`
-    SELECT
-      COUNT(l.id) AS totalLessons,
-      SUM(CASE WHEN p.is_completed = 1 THEN 1 ELSE 0 END) AS completedLessons
-    FROM tochukwu_learning_lessons l
-    JOIN tochukwu_learning_modules m ON m.id = l.module_id
-    JOIN tochukwu_learning_course_modules cm ON cm.module_id = m.id
-    LEFT JOIN tochukwu_learning_lesson_progress p
-      ON p.lesson_id = l.id
-     AND p.account_id = ${accountId}
-    WHERE cm.course_slug = ${courseSlug}
-      AND l.is_active = 1
-      AND cm.is_active = 1
-  `)
+export async function getCertificateCourseCompletion(
+  accountId: bigint,
+  email: string,
+  courseSlug: string
+) {
+  const result = await getLearningCourseForStudent({
+    accountId,
+    email,
+    courseSlug
+  })
+
+  if (!result.ok) {
+    return {
+      totalLessons: 0,
+      completedLessons: 0
+    }
+  }
+
   return {
-    totalLessons: Number(rows[0]?.totalLessons || 0),
-    completedLessons: Number(rows[0]?.completedLessons || 0)
+    totalLessons: result.course.progress.totalLessons,
+    completedLessons: result.course.progress.completedLessons
   }
 }
 

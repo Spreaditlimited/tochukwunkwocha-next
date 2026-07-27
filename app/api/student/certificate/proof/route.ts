@@ -149,7 +149,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Certificate proof is not required for this course." }, { status: 400 })
     }
 
-    const completion = await getCertificateCourseCompletion(session.account.id, courseSlug)
+    const completion = await getCertificateCourseCompletion(
+      session.account.id,
+      session.account.email,
+      courseSlug
+    )
     if (completion.totalLessons <= 0 || completion.completedLessons < completion.totalLessons) {
       return NextResponse.json({ ok: false, error: "Complete all lessons before submitting certificate proof." }, { status: 400 })
     }

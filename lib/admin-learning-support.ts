@@ -376,7 +376,11 @@ async function issueCertificateIfEligible(assignmentId: bigint) {
     return { issued: false, certificateNo: "", certificateUrl: "", reason: "recipient_name_missing" }
   }
   if (Number(item.certificateEligibleAtSubmission || 0) !== 1) {
-    const completion = await getCertificateCourseCompletion(item.accountId, item.courseSlug)
+    const completion = await getCertificateCourseCompletion(
+      item.accountId,
+      item.studentEmail,
+      item.courseSlug
+    )
     if (completion.totalLessons <= 0 || completion.completedLessons < completion.totalLessons) {
       return { issued: false, certificateNo: "", certificateUrl: "", reason: "course_incomplete" }
     }
