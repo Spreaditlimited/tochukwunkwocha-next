@@ -730,15 +730,22 @@ export async function createCourseOrder(input: {
   await addColumnIfMissing("course_orders", "fbclid", "TEXT NULL")
   await addColumnIfMissing("course_orders", "client_ip", "VARCHAR(80) NULL")
   await addColumnIfMissing("course_orders", "user_agent", "VARCHAR(500) NULL")
+  await addColumnIfMissing("course_orders", "course_amount_minor", "INT NULL")
+  await addColumnIfMissing("course_orders", "vat_amount_minor", "INT NULL")
+  await addColumnIfMissing("course_orders", "vat_percent", "DECIMAL(8,3) NULL")
+  await addColumnIfMissing("course_orders", "processing_fee_minor", "INT NULL")
 
   await prisma.$executeRaw`
     INSERT INTO course_orders
       (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
+       course_amount_minor, vat_amount_minor, vat_percent, processing_fee_minor,
        discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, status, batch_key, batch_label,
        fbp, fbc, fbclid, client_ip, user_agent, created_at, updated_at)
     VALUES
       (${orderUuid}, ${input.courseSlug}, ${input.firstName}, ${input.email}, ${input.phone || null}, ${input.country || null},
-       ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor}, ${input.pricing.discountMinor},
+       ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor},
+       ${input.pricing.courseAmountMinor}, ${input.pricing.vatAmountMinor}, ${input.pricing.vatPercent}, ${input.pricing.processingFeeMinor},
+       ${input.pricing.discountMinor},
        ${input.pricing.finalAmountMinor}, ${input.pricing.couponCode || null}, ${input.pricing.couponId || null}, ${input.provider},
        ${input.buyerType || "student"}, ${input.seatCount || 1}, 'pending', ${input.batch?.batchKey || null}, ${input.batch?.batchLabel || null},
        ${String(input.fbp || "").trim().slice(0, 190) || null}, ${String(input.fbc || "").trim().slice(0, 190) || null},
@@ -862,15 +869,22 @@ export async function createManualPayment(input: {
   await addColumnIfMissing("course_manual_payments", "fbclid", "TEXT NULL")
   await addColumnIfMissing("course_manual_payments", "client_ip", "VARCHAR(80) NULL")
   await addColumnIfMissing("course_manual_payments", "user_agent", "VARCHAR(500) NULL")
+  await addColumnIfMissing("course_manual_payments", "course_amount_minor", "INT NULL")
+  await addColumnIfMissing("course_manual_payments", "vat_amount_minor", "INT NULL")
+  await addColumnIfMissing("course_manual_payments", "vat_percent", "DECIMAL(8,3) NULL")
+  await addColumnIfMissing("course_manual_payments", "processing_fee_minor", "INT NULL")
 
   await prisma.$executeRaw`
     INSERT INTO course_manual_payments
       (payment_uuid, course_slug, batch_key, batch_label, first_name, email, phone, country, currency, amount_minor,
-       base_amount_minor, discount_minor, final_amount_minor, coupon_code, coupon_id, transfer_reference, proof_url,
+       base_amount_minor, course_amount_minor, vat_amount_minor, vat_percent, processing_fee_minor,
+       discount_minor, final_amount_minor, coupon_code, coupon_id, transfer_reference, proof_url,
        proof_public_id, buyer_type, seat_count, status, fbp, fbc, fbclid, client_ip, user_agent, created_at, updated_at)
     VALUES
       (${paymentUuid}, ${input.courseSlug}, ${input.batch?.batchKey || null}, ${input.batch?.batchLabel || null}, ${input.firstName}, ${input.email}, ${input.phone || null}, ${input.country || null},
-       ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor}, ${input.pricing.discountMinor},
+       ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor},
+       ${input.pricing.courseAmountMinor}, ${input.pricing.vatAmountMinor}, ${input.pricing.vatPercent}, ${input.pricing.processingFeeMinor},
+       ${input.pricing.discountMinor},
        ${input.pricing.finalAmountMinor}, ${input.pricing.couponCode || null}, ${input.pricing.couponId || null},
        ${input.transferReference || null}, ${input.proofUrl}, ${input.proofPublicId || null}, ${input.buyerType || "student"}, ${input.seatCount || 1}, 'pending_verification',
        ${String(input.fbp || "").trim().slice(0, 190) || null}, ${String(input.fbc || "").trim().slice(0, 190) || null},

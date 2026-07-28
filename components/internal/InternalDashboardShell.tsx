@@ -16,6 +16,7 @@ import {
   Hammer,
   HandCoins,
   LayoutDashboard,
+  Landmark,
   ListChecks,
   LogOut,
   Megaphone,
@@ -55,6 +56,7 @@ const navSections = [
   {
     label: "Revenue",
     items: [
+      { href: "/internal/financials", label: "Financials", icon: Landmark },
       { href: "/internal/shop", label: "Shop", icon: ShoppingBag },
       { href: "/internal/manual-payments", label: "Enrollments", icon: CreditCard },
       { href: "/internal/installments", label: "Installments", icon: WalletCards },

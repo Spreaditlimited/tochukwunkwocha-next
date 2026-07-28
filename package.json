@@ -17,7 +17,9 @@
     "shop:upload:workbooks": "node --env-file=.env scripts/upload-shop-workbooks-cloudinary.mjs",
     "shop:verify:workbooks": "node --env-file=.env scripts/verify-shop-workbook-assets.mjs",
     "shop:publish:workbooks": "node --env-file=.env scripts/publish-shop-workbooks.mjs",
-    "smoke:certificate-proof": "node --env-file=.env scripts/smoke-certificate-proof.mjs"
+    "smoke:certificate-proof": "node --env-file=.env scripts/smoke-certificate-proof.mjs",
+    "smoke:business-financials": "node scripts/smoke-business-financials.mjs",
+    "smoke:admin-group-enrollment": "node scripts/smoke-admin-group-enrollment.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",
@@ -26,9 +28,11 @@
     "@tiptap/starter-kit": "^2.27.2",
     "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.475.0",
     "next": "^15.3.6",
     "nodemailer": "^9.0.3",
+    "pdfkit": "^0.19.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.0.1"
@@ -36,6 +40,7 @@
   "devDependencies": {
     "@types/node": "20.17.17",
     "@types/nodemailer": "^8.0.1",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
     "autoprefixer": "^10.4.20",

@@ -6,6 +6,7 @@ export const INTERNAL_PAGE_OPTIONS = [
   { path: "/internal", label: "Overview" },
   { path: "/internal/blog", label: "Blog CMS" },
   { path: "/internal/resources", label: "Resources" },
+  { path: "/internal/financials", label: "Business Financials" },
   { path: "/internal/manual-payments", label: "Manual Payments" },
   { path: "/internal/installments", label: "Installments" },
   { path: "/internal/coupons", label: "Coupons" },

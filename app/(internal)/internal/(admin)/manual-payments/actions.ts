@@ -76,7 +76,14 @@ export async function reviewManualPaymentAction(formData: FormData) {
 export async function addExternalStudentPaymentAction(formData: FormData) {
   const admin = await requireAdmin("/internal/manual-payments")
   try {
-    await addExternalStudentPayment({
+    let groupLearners: unknown[] = []
+    try {
+      const parsed = JSON.parse(String(formData.get("groupLearnersJson") || "[]"))
+      groupLearners = Array.isArray(parsed) ? parsed : []
+    } catch {
+      throw new Error("The learner assignment details could not be read. Please review them and try again.")
+    }
+    const result = await addExternalStudentPayment({
       courseSlug: String(formData.get("courseSlug") || ""),
       batchKey: String(formData.get("batchKey") || ""),
       firstName: String(formData.get("firstName") || ""),
@@ -90,9 +97,20 @@ export async function addExternalStudentPaymentAction(formData: FormData) {
       couponCode: String(formData.get("couponCode") || ""),
       buyerType: String(formData.get("buyerType") || "student"),
       seatCount: Number(formData.get("seatCount") || 1),
+      groupLearners,
       reviewedBy: admin.email || admin.adminUuid || "admin"
     })
-    await setInternalToast({ title: "External payment added", message: "The student payment record has been created and provisioned." })
+    const accessMessage = result.buyerType === "family"
+      ? `${result.seatsCredited} group seat${result.seatsCredited === 1 ? "" : "s"} credited. ${result.learnersAssigned} assigned now; ${result.seatsAvailable} available for the parent.`
+      : "The student payment record has been created and access has been provisioned."
+    const emailMessage = result.activationEmailSent
+      ? ""
+      : " Access is active, but the activation email was not sent. Use the activation-email resend tool."
+    await setInternalToast({
+      type: result.activationEmailSent ? "success" : "info",
+      title: result.buyerType === "family" ? "Group access provisioned" : "External payment added",
+      message: `${accessMessage}${emailMessage}`
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not provision this student."
     await setInternalToast({

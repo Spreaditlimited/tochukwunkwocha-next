@@ -46,6 +46,7 @@ import {
   sendWhatsAppCampaignAction,
   updateManualPaymentEmailAction
 } from "./actions"
+import { ExternalGroupAssignmentFields } from "./ExternalGroupAssignmentFields"
 
 export const dynamic = "force-dynamic"
 
@@ -323,21 +324,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Country</span>
               <input name="country" defaultValue="Nigeria" placeholder="Nigeria" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
             </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Buyer Type</span>
-              <PremiumPicker
-                name="buyerType"
-                defaultValue="student"
-                options={[
-                  { value: "student", label: "Single Learner" },
-                  { value: "family", label: "Family / Group" }
-                ]}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Seats</span>
-              <input name="seatCount" type="number" min="1" step="1" defaultValue="1" placeholder="1" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
+            <ExternalGroupAssignmentFields />
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Coupon Code</span>
               <input name="couponCode" placeholder="Optional" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium uppercase outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />

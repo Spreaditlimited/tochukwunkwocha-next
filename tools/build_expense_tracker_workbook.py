@@ -115,6 +115,10 @@ def workbook_metadata(cover_lines: list[str], note: str) -> dict[str, str]:
             "Build a Complete Appointment Scheduling Application with AI",
         "Sales Tracker":
             "Build a Complete Sales Tracking Application with AI",
+        "Supplier Management System":
+            "Build a Complete Supplier Management Application with AI",
+        "Order Management System":
+            "Build a Complete Order Management Application with AI",
         "Expense Tracker":
             "Build a Complete Expense Tracking Application with AI",
     }
@@ -768,6 +772,11 @@ def render_item(item: dict[str, str | int | bool]) -> str:
 
     attrs[0] += f' {kind}{callout_class}"'
     attrs.append('data-kind="body"')
+    if kind in {"paragraph", "bullet"} and callout == "learning":
+        # Keep each short What You Learned section together. Otherwise a
+        # nearly full page can retain its heading and introduction while
+        # pushing all of the learning bullets onto an almost blank page.
+        attrs.append('data-keep-with-next="true"')
     text = str(item.get("text", ""))
     if kind == "glossary":
         term, definition = text.split(" :: ", 1)

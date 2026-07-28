@@ -120,6 +120,36 @@ async function updateManualPaymentReview(input: {
   }
 }
 
+async function appendManualPaymentReviewNote(paymentUuid: string, note: string) {
+  const timestamp = new Date()
+  await prisma.$executeRaw`
+    UPDATE course_manual_payments
+    SET review_note = CASE
+          WHEN COALESCE(review_note, '') = '' THEN ${clean(note, 500)}
+          ELSE CONCAT(review_note, '\n', ${clean(note, 500)})
+        END,
+        updated_at = ${timestamp}
+    WHERE payment_uuid = ${paymentUuid}
+    LIMIT 1
+  `.catch(() => 0)
+}
+
+async function returnApprovedPaymentToPending(paymentUuid: string, reason: string) {
+  const timestamp = new Date()
+  await prisma.$executeRaw`
+    UPDATE course_manual_payments
+    SET status = 'pending_verification',
+        review_note = CASE
+          WHEN COALESCE(review_note, '') = '' THEN ${`[PROVISIONING_FAILED] ${clean(reason, 430)}`}
+          ELSE CONCAT(review_note, '\n', ${`[PROVISIONING_FAILED] ${clean(reason, 430)}`})
+        END,
+        updated_at = ${timestamp}
+    WHERE payment_uuid = ${paymentUuid}
+      AND status = 'approved'
+    LIMIT 1
+  `.catch(() => 0)
+}
+
 async function createAffiliateCommissionForOrder(orderUuid: string) {
   if (String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") return
 
@@ -269,24 +299,64 @@ export async function reviewManualPayment(input: {
     return { ok: true as const, paymentUuid, status: nextStatus, accountCreated: false, familyProvisioned: null }
   }
 
-  const existingAccount = await prisma.studentAccount.findUnique({ where: { email } })
-  const account =
-    existingAccount ||
-    (await findOrCreateStudentAccount({
-      fullName: clean(payment.first_name, 180) || "Student",
-      email,
-      phone: clean(payment.phone, 80) || undefined
-    }))
+  let existingAccount = null
+  let account
+  try {
+    existingAccount = await prisma.studentAccount.findUnique({ where: { email } })
+    account =
+      existingAccount ||
+      (await findOrCreateStudentAccount({
+        fullName: clean(payment.first_name, 180) || "Student",
+        email,
+        phone: clean(payment.phone, 80) || undefined
+      }))
+  } catch (error) {
+    await returnApprovedPaymentToPending(paymentUuid, error instanceof Error ? error.message : "The parent account could not be prepared.")
+    throw error
+  }
+
+  let familyProvisioned: Awaited<ReturnType<typeof provisionFamilyOrder>> | null = null
+  if (clean(payment.buyer_type, 40).toLowerCase() === "family") {
+    try {
+      familyProvisioned = await provisionFamilyOrder({
+        sourceType: "manual_payment",
+        sourceUuid: paymentUuid,
+        parentAccountId: account.id,
+        parentName: account.fullName || clean(payment.first_name, 180) || "Student",
+        parentEmail: account.email,
+        parentPhone: account.phoneE164 || clean(payment.phone, 80),
+        courseSlug: clean(payment.course_slug, 120),
+        batchKey: clean(payment.batch_key, 64),
+        batchLabel: clean(payment.batch_label, 120),
+        quantity: Math.max(1, toNumber(payment.seat_count, 1))
+      })
+      if (!familyProvisioned.ok) {
+        throw new Error(familyProvisioned.error || "The group seats could not be credited.")
+      }
+    } catch (error) {
+      await returnApprovedPaymentToPending(paymentUuid, error instanceof Error ? error.message : "The group seats could not be credited.")
+      throw error
+    }
+  }
 
   const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
   const resetToken = reset?.token || null
+  let activationEmailSent = false
   if (resetToken) {
-    await sendStudentAccountReadyEmail({
-      email,
-      fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-      courseSlug: clean(payment.course_slug, 120),
-      resetToken
-    })
+    try {
+      await sendStudentAccountReadyEmail({
+        email,
+        fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+        courseSlug: clean(payment.course_slug, 120),
+        resetToken
+      })
+      activationEmailSent = true
+    } catch (error) {
+      await appendManualPaymentReviewNote(
+        paymentUuid,
+        `[ACTIVATION_EMAIL_FAILED] ${error instanceof Error ? error.message : "The activation email could not be sent."}`
+      )
+    }
   }
   await syncEnrollmentToBrevo({
     fullName: account.fullName || clean(payment.first_name, 180) || "Student",
@@ -310,23 +380,7 @@ export async function reviewManualPayment(input: {
     email,
     currency: clean(payment.currency, 10) || "NGN",
     discountMinor: toNumber(payment.discount_minor)
-  })
-
-  let familyProvisioned: Awaited<ReturnType<typeof provisionFamilyOrder>> | null = null
-  if (clean(payment.buyer_type, 40).toLowerCase() === "family") {
-    familyProvisioned = await provisionFamilyOrder({
-      sourceType: "manual_payment",
-      sourceUuid: paymentUuid,
-      parentAccountId: account.id,
-      parentName: account.fullName || clean(payment.first_name, 180) || "Student",
-      parentEmail: account.email,
-      parentPhone: account.phoneE164 || clean(payment.phone, 80),
-      courseSlug: clean(payment.course_slug, 120),
-      batchKey: clean(payment.batch_key, 64),
-      batchLabel: clean(payment.batch_label, 120),
-      quantity: Math.max(1, toNumber(payment.seat_count, 1))
-    })
-  }
+  }).catch(() => null)
 
   await createAffiliateCommissionForOrder(paymentUuid)
   await sendManualPaymentMetaPurchase({
@@ -340,6 +394,7 @@ export async function reviewManualPayment(input: {
     status: nextStatus,
     accountCreated: !existingAccount,
     resetToken,
+    activationEmailSent,
     familyProvisioned
   }
 }

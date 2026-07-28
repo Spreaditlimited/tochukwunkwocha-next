@@ -15,6 +15,8 @@ import { createStudentPasswordResetToken } from "@/lib/student-auth"
 import { sendEmail } from "@/lib/email"
 import { sendManualPaymentMetaPurchase as dispatchManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { addColumnIfMissing } from "@/lib/schema-guards"
+import { normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
+import { familyEnrollmentEnabledForCourse } from "@/lib/payments/course-checkout"
 
 export type EnrollmentPaymentRow = {
   paymentUuid: string
@@ -919,6 +921,7 @@ export async function addExternalStudentPayment(input: {
   couponCode?: string
   buyerType?: string
   seatCount?: number
+  groupLearners?: unknown
   reviewedBy: string
 }) {
   const courseSlug = normalizeCourse(input.courseSlug)
@@ -927,7 +930,21 @@ export async function addExternalStudentPayment(input: {
   const phone = normalizePhone(input.phone)
   const buyerType = clean(input.buyerType, 40).toLowerCase() === "family" ? "family" : "student"
   const seatCount = buyerType === "family" ? Math.max(2, toInt(input.seatCount, 2)) : 1
+  const groupLearners = buyerType === "family" ? normalizeFamilyChildren(input.groupLearners) : []
   if (!courseSlug || !firstName || !email || !phone) throw new Error("Course, name, valid email, and phone are required.")
+  if (buyerType === "family" && !familyEnrollmentEnabledForCourse(courseSlug)) {
+    throw new Error("Group enrollment is not available for this course.")
+  }
+  if (groupLearners.length > seatCount) {
+    throw new Error(`You can assign no more than ${seatCount} learners from this group purchase.`)
+  }
+  const learnerEmails = groupLearners.map((learner) => normalizeEmail(learner.email)).filter(Boolean)
+  if (learnerEmails.includes(email)) {
+    throw new Error("The parent email cannot also be used as a learner email.")
+  }
+  if (new Set(learnerEmails).size !== learnerEmails.length) {
+    throw new Error("Each learner email must be unique.")
+  }
 
   const context = await checkoutContext({
     courseSlug,
@@ -951,16 +968,66 @@ export async function addExternalStudentPayment(input: {
     proofPublicId: clean(input.proofPublicId, 255) || null,
     batch: context.batch,
     buyerType,
-    seatCount
+    seatCount: context.seatCount
   })
-  await reviewManualPayment({
+  try {
+    if (groupLearners.length) {
+      const saved = await savePendingFamilyChildren({
+        sourceType: "manual_payment",
+        sourceUuid: paymentUuid,
+        courseSlug,
+        batchKey: context.batch?.batchKey || null,
+        batchLabel: context.batch?.batchLabel || null,
+        children: groupLearners
+      })
+      if (saved.length !== groupLearners.length) {
+        throw new Error("Not all learner assignments could be prepared.")
+      }
+    }
+  } catch (error) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        DELETE e FROM family_child_enrollments e
+        JOIN family_children c ON c.id = e.child_id
+        WHERE c.source_type = 'manual_payment' AND c.source_uuid = ${paymentUuid}
+      `
+      await tx.$executeRaw`
+        DELETE FROM family_children
+        WHERE source_type = 'manual_payment' AND source_uuid = ${paymentUuid}
+      `
+      await tx.$executeRaw`
+        DELETE FROM course_manual_payments
+        WHERE payment_uuid = ${paymentUuid} AND status = 'pending_verification'
+      `
+    })
+    throw error
+  }
+  const review = await reviewManualPayment({
     paymentUuid,
     action: "approve",
     reviewedBy: input.reviewedBy,
     reviewNote: `[ADMIN_ADD_STUDENT] Added by admin as external bank payment.${input.adminNote ? ` Note: ${clean(input.adminNote, 500)}` : ""}`
   })
+  if (buyerType === "family") {
+    if (!review.familyProvisioned) {
+      throw new Error("The group seat result was not returned.")
+    }
+    const learnersAssigned = Number(review.familyProvisioned.provisioned || 0)
+    if (learnersAssigned !== groupLearners.length) {
+      throw new Error(`Only ${learnersAssigned} of ${groupLearners.length} requested learners were assigned.`)
+    }
+  }
   await upsertWhatsAppContact({ email, fullName: firstName, phone, courseSlug, source: "admin_add_student", optedIn: true }).catch(() => null)
-  return { paymentUuid }
+  const seatsCredited = buyerType === "family" ? Number(review.familyProvisioned?.credited || 0) : 1
+  const learnersAssigned = buyerType === "family" ? Number(review.familyProvisioned?.provisioned || 0) : 1
+  return {
+    paymentUuid,
+    buyerType,
+    seatsCredited,
+    learnersAssigned,
+    seatsAvailable: buyerType === "family" ? Math.max(0, context.seatCount - learnersAssigned) : 0,
+    activationEmailSent: review.activationEmailSent
+  }
 }
 
 export async function updateManualPaymentEmail(input: { paymentUuid: string; newEmail: string; actor: string }) {
