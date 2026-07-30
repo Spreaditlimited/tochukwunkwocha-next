@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/paystack-reconciliation",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/payment-notifications",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

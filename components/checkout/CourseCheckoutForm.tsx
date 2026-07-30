@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -22,7 +22,7 @@ import { PremiumPicker } from "@/components/PremiumPicker"
 import { SeatCountStepper } from "@/components/SeatCountStepper"
 import { readAffiliateReferralCode, storeAffiliateReferralCode } from "@/components/AffiliateReferralCapture"
 import { TrademarkText } from "@/components/TrademarkText"
-import { getRecaptchaToken } from "@/lib/browser-recaptcha"
+import { getRecaptchaToken, preloadRecaptcha } from "@/lib/browser-recaptcha"
 import { resolveCheckoutCourseSlug, type Course } from "@/lib/public-offers"
 
 type Provider = "paystack" | "stripe" | "manual_transfer" | "installment"
@@ -194,18 +194,105 @@ class CheckoutRequestError extends Error {
   }
 }
 
-async function postJson<T>(url: string, body: Record<string, unknown>) {
+async function postJson<T>(url: string, body: Record<string, unknown>, signal?: AbortSignal) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   })
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.ok) {
     throw new CheckoutRequestError(json?.error || "Request failed", String(json?.code || ""))
   }
   return json as T
+}
+
+type PaymentProofAuthorization = {
+  uploadUrl: string
+  apiKey: string
+  publicId: string
+  resourceType: string
+  timestamp: number
+  overwrite: boolean
+  signature: string
+  proofToken: string
+}
+
+type CloudinaryUploadResult = {
+  secure_url?: string
+  public_id?: string
+  resource_type?: string
+  version?: number
+  signature?: string
+  error?: { message?: string }
+}
+
+async function compressPaymentProofImage(file: File) {
+  if (!file.type.startsWith("image/") || file.size < 1024 * 1024 || typeof createImageBitmap !== "function") {
+    return file
+  }
+  try {
+    const image = await createImageBitmap(file)
+    const maxDimension = 2200
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height))
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.max(1, Math.round(image.width * scale))
+    canvas.height = Math.max(1, Math.round(image.height * scale))
+    const context = canvas.getContext("2d")
+    if (!context) {
+      image.close()
+      return file
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    image.close()
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.84))
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", {
+      type: "image/jpeg",
+      lastModified: file.lastModified
+    })
+  } catch {
+    return file
+  }
+}
+
+function uploadDirectToCloudinary(
+  file: File,
+  authorization: PaymentProofAuthorization,
+  onProgress: (progress: number) => void
+) {
+  return new Promise<CloudinaryUploadResult>((resolve, reject) => {
+    const upload = new XMLHttpRequest()
+    upload.open("POST", authorization.uploadUrl)
+    upload.timeout = 30_000
+    upload.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100))))
+    }
+    upload.onerror = () => reject(new Error("The direct upload connection failed."))
+    upload.ontimeout = () => reject(new Error("The direct upload took too long."))
+    upload.onload = () => {
+      let result: CloudinaryUploadResult | null = null
+      try {
+        result = JSON.parse(upload.responseText || "null") as CloudinaryUploadResult | null
+      } catch {}
+      if (upload.status < 200 || upload.status >= 300 || !result?.secure_url || !result.public_id) {
+        reject(new Error(result?.error?.message || "Cloudinary could not upload the payment proof."))
+        return
+      }
+      onProgress(100)
+      resolve(result)
+    }
+    const body = new FormData()
+    body.set("file", file)
+    body.set("api_key", authorization.apiKey)
+    body.set("public_id", authorization.publicId)
+    body.set("timestamp", String(authorization.timestamp))
+    body.set("overwrite", String(authorization.overwrite))
+    body.set("signature", authorization.signature)
+    upload.send(body)
+  })
 }
 
 export function CourseCheckoutForm({ course }: { course: Course }) {
@@ -229,13 +316,20 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   const [transferReference, setTransferReference] = useState("")
   const [proofUrl, setProofUrl] = useState("")
   const [proofPublicId, setProofPublicId] = useState("")
+  const [proofResourceType, setProofResourceType] = useState("")
+  const [proofVersion, setProofVersion] = useState(0)
+  const [proofSignature, setProofSignature] = useState("")
+  const [proofToken, setProofToken] = useState("")
   const [proofFileName, setProofFileName] = useState("")
+  const [proofUploadProgress, setProofUploadProgress] = useState(0)
   const [isUploadingProof, setIsUploadingProof] = useState(false)
   const [installmentAmount, setInstallmentAmount] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const autoSelectedBatchRef = useRef("")
   const isNigeriaCheckout = isNigeriaCountry(country)
+  const pricingEmail = couponCode.trim() ? email : ""
 
   const paymentOptions = useMemo(
     () =>
@@ -279,69 +373,90 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   }, [])
 
   useEffect(() => {
+    void preloadRecaptcha().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    if (autoSelectedBatchRef.current && autoSelectedBatchRef.current === batchKey) {
+      return
+    }
     setPricing(null)
     setManualDetails(null)
   }, [batchKey, buyerType, country, couponCode, provider, seatCount])
 
   useEffect(() => {
     if (provider === "manual_transfer") return
+    if (autoSelectedBatchRef.current && autoSelectedBatchRef.current === batchKey) {
+      autoSelectedBatchRef.current = ""
+      return
+    }
     let cancelled = false
-    postJson<{ batches: CheckoutBatch[]; pricing: PricingPayload }>("/api/checkout/config", {
-      courseSlug: checkoutCourseSlug,
-      returnSlug: publicCourseSlug,
-      country,
-      provider: cardProvider,
-      email,
-      couponCode,
-      buyerType,
-      seatCount: buyerType === "family" ? seatCount : 1,
-      batchKey,
-      installment: provider === "installment"
-    })
-      .then((result) => {
-        if (cancelled) return
-        setBatches(result.batches || [])
-        if (!batchKey && result.batches?.[0]?.batchKey) {
-          setBatchKey(result.batches[0].batchKey)
-          return
-        }
-        setPricing(result.pricing)
-      })
-      .catch((error) => {
-        if (!cancelled) setErrorMessage(error.message)
-      })
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => {
+      postJson<{ batches: CheckoutBatch[]; pricing: PricingPayload }>("/api/checkout/config", {
+        courseSlug: checkoutCourseSlug,
+        returnSlug: publicCourseSlug,
+        country,
+        provider: cardProvider,
+        email: pricingEmail,
+        couponCode,
+        buyerType,
+        seatCount: buyerType === "family" ? seatCount : 1,
+        batchKey,
+        installment: provider === "installment"
+      }, controller.signal)
+        .then((result) => {
+          if (cancelled) return
+          setBatches(result.batches || [])
+          setPricing(result.pricing)
+          if (!batchKey && result.batches?.[0]?.batchKey) {
+            autoSelectedBatchRef.current = result.batches[0].batchKey
+            setBatchKey(result.batches[0].batchKey)
+          }
+        })
+        .catch((error) => {
+          if (!cancelled && error?.name !== "AbortError") setErrorMessage(error.message)
+        })
+    }, 250)
     return () => {
       cancelled = true
+      window.clearTimeout(timeout)
+      controller.abort()
     }
-  }, [batchKey, buyerType, cardProvider, checkoutCourseSlug, country, couponCode, email, provider, publicCourseSlug, seatCount])
+  }, [batchKey, buyerType, cardProvider, checkoutCourseSlug, country, couponCode, pricingEmail, provider, publicCourseSlug, seatCount])
 
   useEffect(() => {
     if (provider !== "manual_transfer") return
     if (!isNigeriaCheckout) return
     let cancelled = false
-    postJson<{ details: ManualDetails }>("/api/checkout/manual-config", {
-      courseSlug: checkoutCourseSlug,
-      returnSlug: publicCourseSlug,
-      country,
-      email,
-      couponCode,
-      buyerType,
-      seatCount: buyerType === "family" ? seatCount : 1,
-      batchKey
-    })
-      .then((result) => {
-        if (!cancelled) {
-          setManualDetails(result.details)
-          setPricing(result.details.pricing)
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) setErrorMessage(error.message)
-      })
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => {
+      postJson<{ details: ManualDetails }>("/api/checkout/manual-config", {
+        courseSlug: checkoutCourseSlug,
+        returnSlug: publicCourseSlug,
+        country,
+        email: pricingEmail,
+        couponCode,
+        buyerType,
+        seatCount: buyerType === "family" ? seatCount : 1,
+        batchKey
+      }, controller.signal)
+        .then((result) => {
+          if (!cancelled) {
+            setManualDetails(result.details)
+            setPricing(result.details.pricing)
+          }
+        })
+        .catch((error) => {
+          if (!cancelled && error?.name !== "AbortError") setErrorMessage(error.message)
+        })
+    }, 250)
     return () => {
       cancelled = true
+      window.clearTimeout(timeout)
+      controller.abort()
     }
-  }, [batchKey, buyerType, checkoutCourseSlug, country, couponCode, email, isNigeriaCheckout, provider, publicCourseSlug, seatCount])
+  }, [batchKey, buyerType, checkoutCourseSlug, country, couponCode, isNigeriaCheckout, pricingEmail, provider, publicCourseSlug, seatCount])
 
   const applyCoupon = async () => {
     setCouponMessage("")
@@ -393,21 +508,58 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
     setProofFileName(file.name)
     setProofUrl("")
     setProofPublicId("")
+    setProofResourceType("")
+    setProofVersion(0)
+    setProofSignature("")
+    setProofToken("")
+    setProofUploadProgress(0)
     setIsUploadingProof(true)
     try {
-      const body = new FormData()
-      body.set("file", file)
-      const response = await fetch("/api/uploads/payment-proof", {
-        method: "POST",
-        body
-      })
-      const json = await response.json().catch(() => null)
-      if (!response.ok || !json?.ok) throw new Error(json?.error || "Could not upload payment proof.")
-      setProofUrl(String(json.url || ""))
-      setProofPublicId(String(json.publicId || ""))
+      if (file.size <= 0 || file.size > 8 * 1024 * 1024) {
+        throw new Error("Proof file must be 8MB or smaller.")
+      }
+      const preparedFile = await compressPaymentProofImage(file)
+      const authorization = await postJson<PaymentProofAuthorization & { ok: true }>(
+        "/api/uploads/payment-proof/signature",
+        { type: preparedFile.type, size: preparedFile.size }
+      )
+      let result: CloudinaryUploadResult
+      try {
+        result = await uploadDirectToCloudinary(preparedFile, authorization, setProofUploadProgress)
+      } catch {
+        // Keep the original relay as a compatibility fallback for restrictive
+        // networks or browser extensions that block direct Cloudinary uploads.
+        setProofUploadProgress(0)
+        const body = new FormData()
+        body.set("file", preparedFile)
+        const response = await fetch("/api/uploads/payment-proof", {
+          method: "POST",
+          body
+        })
+        const json = await response.json().catch(() => null)
+        if (!response.ok || !json?.ok) throw new Error(json?.error || "Could not upload payment proof.")
+        result = {
+          secure_url: String(json.url || ""),
+          public_id: String(json.publicId || ""),
+          resource_type: String(json.resourceType || ""),
+          version: Number(json.version || 0),
+          signature: String(json.signature || "")
+        }
+        authorization.proofToken = String(json.proofToken || "")
+      }
+      setProofUrl(String(result.secure_url || ""))
+      setProofPublicId(String(result.public_id || ""))
+      if (result.signature && result.version) {
+        setProofResourceType(String(result.resource_type || authorization.resourceType))
+        setProofVersion(Number(result.version))
+        setProofSignature(String(result.signature))
+        setProofToken(authorization.proofToken)
+      }
+      setProofUploadProgress(100)
       setStatusMessage("Payment proof uploaded.")
     } catch (error) {
       setProofFileName("")
+      setProofUploadProgress(0)
       setErrorMessage(error instanceof Error ? error.message : "Could not upload payment proof.")
     } finally {
       setIsUploadingProof(false)
@@ -446,6 +598,10 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               transferReference,
               proofUrl,
               proofPublicId,
+              proofResourceType,
+              proofVersion,
+              proofSignature,
+              proofToken,
               batchKey,
               buyerType,
               seatCount: buyerType === "family" ? seatCount : 1,
@@ -745,7 +901,20 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                           }}
                         />
                       </span>
-                      {isUploadingProof ? <p className="mt-2 text-xs font-semibold text-muted-foreground">Uploading proof...</p> : null}
+                      {isUploadingProof ? (
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between gap-3 text-xs font-semibold text-muted-foreground">
+                            <span>Uploading proof...</span>
+                            <span>{proofUploadProgress > 0 ? `${proofUploadProgress}%` : "Preparing"}</span>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary transition-[width] duration-200"
+                              style={{ width: `${Math.max(4, proofUploadProgress)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                       {proofUrl ? <p className="mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">Proof uploaded and ready to submit.</p> : null}
                     </label>
                   </div>
@@ -791,7 +960,12 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               </section>
 
               <div>
-                <button className="btn-primary w-full py-4 text-base shadow-lg shadow-primary/20" type="submit" disabled={isSubmitting || !displayPrice} aria-busy={!displayPrice || isSubmitting}>
+                <button
+                  className="btn-primary w-full py-4 text-base shadow-lg shadow-primary/20"
+                  type="submit"
+                  disabled={isSubmitting || isUploadingProof || !displayPrice || (provider === "manual_transfer" && !proofUrl)}
+                  aria-busy={!displayPrice || isSubmitting || isUploadingProof}
+                >
                   {isSubmitting
                     ? "Processing..."
                     : !displayPrice

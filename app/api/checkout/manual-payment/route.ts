@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 
-import { sendStudentPendingManualPaymentEmail } from "@/lib/enrollment-notifications"
 import {
   checkoutContext,
   createManualPayment,
@@ -12,20 +11,13 @@ import {
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
+import { trustedPaymentProof } from "@/lib/payment-proof-upload"
+import {
+  enqueueManualPaymentNotification,
+  processPaymentNotificationOutbox
+} from "@/lib/payment-notification-outbox"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
 import { createStudentPasswordResetToken, createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
-import { sendManualPaymentSubmittedWhatsApp } from "@/lib/transactional-whatsapp"
-
-function trustedUploadedProof(proofUrl: string, proofPublicId: string) {
-  const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim()
-  if (!cloudName || !proofPublicId.startsWith("tochukwunkwocha-site/manual-payments/")) return false
-  try {
-    const url = new URL(proofUrl)
-    return url.protocol === "https:" && url.hostname === "res.cloudinary.com" && url.pathname.startsWith(`/${cloudName}/`)
-  } catch {
-    return false
-  }
-}
 
 async function existingPaymentForProof(proofPublicId: string) {
   if (!proofPublicId) return null
@@ -63,18 +55,52 @@ async function openPendingStudentSession(input: {
     phone: input.phone
   })
   const reset = existingAccount ? null : await createStudentPasswordResetToken(input.email, { neverExpires: true }).catch(() => null)
-  if (!existingAccount) {
-    await sendStudentPendingManualPaymentEmail({
-      email: input.email,
-      fullName: input.fullName,
-      courseSlug: input.courseSlug,
-      resetToken: reset?.token || null,
-      dashboardPath: input.dashboardPath
-    }).catch(() => null)
-  }
   const session = await createStudentSessionForAccount(account)
   await setStudentSessionCookie(session.token)
-  return { accountCreated: !existingAccount, resetTokenCreated: Boolean(reset?.token) }
+  return {
+    accountCreated: !existingAccount,
+    resetTokenCreated: Boolean(reset?.token),
+    resetToken: reset?.token || null
+  }
+}
+
+async function queueManualPaymentNotifications(input: {
+  paymentUuid: string
+  email: string
+  fullName: string
+  phone: string
+  courseSlug: string
+  dashboardPath: string
+  accountCreated: boolean
+  resetToken: string | null
+}) {
+  let eventUuid = ""
+  try {
+    eventUuid = await enqueueManualPaymentNotification({
+      paymentUuid: input.paymentUuid,
+      email: input.email,
+      fullName: input.fullName,
+      phone: input.phone,
+      courseSlug: input.courseSlug,
+      dashboardPath: input.dashboardPath,
+      resetToken: input.resetToken,
+      sendEmail: input.accountCreated
+    })
+  } catch (error) {
+    console.error("[manual-payment] could not enqueue notifications", {
+      paymentUuid: input.paymentUuid,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return
+  }
+  after(async () => {
+    await processPaymentNotificationOutbox({ eventUuid }).catch((error) => {
+      console.error("[manual-payment] deferred notification delivery failed", {
+        eventUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+  })
 }
 
 export async function POST(request: Request) {
@@ -95,18 +121,47 @@ export async function POST(request: Request) {
     if (!/^https:\/\//i.test(proofUrl)) {
       return NextResponse.json({ ok: false, error: "Upload a valid payment proof before submitting." }, { status: 400 })
     }
+    const trustedProof = trustedPaymentProof({
+      proofUrl,
+      proofPublicId,
+      proofResourceType: body.proofResourceType,
+      proofVersion: body.proofVersion,
+      proofSignature: body.proofSignature,
+      proofToken: body.proofToken
+    })
+    if (!trustedProof) {
+      return NextResponse.json({ ok: false, error: "Payment proof validation failed. Upload the file again." }, { status: 400 })
+    }
 
     const existingPayment = await existingPaymentForProof(proofPublicId)
     if (existingPayment?.paymentUuid) {
       const existingGroupEnrollment = String(existingPayment.buyerType || "").toLowerCase() === "family"
+      const dashboardPath = existingGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
       const pendingSession = await openPendingStudentSession({
         fullName: firstName,
         email,
         phone,
         courseSlug,
-        dashboardPath: existingGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
+        dashboardPath
       })
-      return NextResponse.json({ ok: true, paymentUuid: existingPayment.paymentUuid, alreadySubmitted: true, pendingReview: true, ...pendingSession })
+      await queueManualPaymentNotifications({
+        paymentUuid: existingPayment.paymentUuid,
+        email,
+        fullName: firstName,
+        phone,
+        courseSlug,
+        dashboardPath,
+        accountCreated: pendingSession.accountCreated,
+        resetToken: pendingSession.resetToken
+      })
+      return NextResponse.json({
+        ok: true,
+        paymentUuid: existingPayment.paymentUuid,
+        alreadySubmitted: true,
+        pendingReview: true,
+        accountCreated: pendingSession.accountCreated,
+        resetTokenCreated: pendingSession.resetTokenCreated
+      })
     }
 
     const recaptcha = await verifyRecaptchaToken({
@@ -128,7 +183,6 @@ export async function POST(request: Request) {
       })
 
       const fallbackRequested = body.allowProofFallback === true
-      const trustedProof = trustedUploadedProof(proofUrl, proofPublicId)
       const withinRateLimit = fallbackRequested && trustedProof
         ? await proofFallbackWithinRateLimit(email)
         : false
@@ -178,7 +232,8 @@ export async function POST(request: Request) {
       fbc: String(body.fbc || ""),
       fbclid: String(body.fbclid || ""),
       clientIp: clientIpFromRequest(request),
-      userAgent: request.headers.get("user-agent") || ""
+      userAgent: request.headers.get("user-agent") || "",
+      affiliateCode: body.affiliateCode
     })
     if (usedProofFallback) {
       await prisma.$executeRaw`
@@ -189,7 +244,7 @@ export async function POST(request: Request) {
         LIMIT 1
       `.catch(() => undefined)
     }
-    await recordAffiliateAttribution({
+    const affiliateTask = recordAffiliateAttribution({
       sourceUuid: paymentUuid,
       courseSlug,
       affiliateCode: body.affiliateCode,
@@ -198,8 +253,14 @@ export async function POST(request: Request) {
       buyerCurrency: result.pricing.currency,
       orderAmountMinor: result.pricing.finalAmountMinor,
       requestHeaders: request.headers
+    }).catch((error) => {
+      console.error("[manual-payment] affiliate attribution deferred for reconciliation", {
+        paymentUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
     })
-    await upsertWhatsAppContact({
+    const whatsappContactTask = upsertWhatsAppContact({
       email,
       fullName: firstName,
       phone,
@@ -208,21 +269,35 @@ export async function POST(request: Request) {
       optedIn: body.whatsappOptIn === true
     })
     const isGroupEnrollment = String(result.buyerType || "").toLowerCase() === "family"
+    const dashboardPath = isGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
     const pendingSession = await openPendingStudentSession({
       fullName: firstName,
       email,
       phone,
       courseSlug,
-      dashboardPath: isGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
+      dashboardPath
     })
-    await sendManualPaymentSubmittedWhatsApp({
-      phone,
+    await Promise.all([affiliateTask, whatsappContactTask])
+    await queueManualPaymentNotifications({
+      paymentUuid,
+      email,
       fullName: firstName,
+      phone,
       courseSlug,
-      dashboardPath: isGroupEnrollment ? "/dashboard/family?manual_payment=pending" : "/dashboard/courses?manual_payment=pending"
-    }).catch(() => null)
+      dashboardPath,
+      accountCreated: pendingSession.accountCreated,
+      resetToken: pendingSession.resetToken
+    })
 
-    return NextResponse.json({ ok: true, paymentUuid, pricing: result.pricing, proofFallback: usedProofFallback, pendingReview: true, ...pendingSession })
+    return NextResponse.json({
+      ok: true,
+      paymentUuid,
+      pricing: result.pricing,
+      proofFallback: usedProofFallback,
+      pendingReview: true,
+      accountCreated: pendingSession.accountCreated,
+      resetTokenCreated: pendingSession.resetTokenCreated
+    })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not submit manual payment" }, { status: 500 })
   }

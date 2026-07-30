@@ -61,3 +61,9 @@ export async function getRecaptchaToken(action: string) {
     })
   })
 }
+
+export async function preloadRecaptcha() {
+  if (typeof window === "undefined") return
+  const siteKey = await getSiteKey()
+  if (siteKey) await loadScript(siteKey)
+}

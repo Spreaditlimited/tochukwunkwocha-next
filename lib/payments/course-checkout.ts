@@ -1,13 +1,12 @@
 import crypto, { randomUUID } from "crypto"
 
-import { getAdminSettingValue } from "@/lib/admin-settings"
+import { getAdminSettingValues } from "@/lib/admin-settings"
 import { buildAffiliateSeatCommissions } from "@/lib/affiliate-commission-calculator"
 import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { getConfiguredStripeFee, grossUpPaystackAmount, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { getCourse } from "@/lib/public-offers"
-import { addColumnIfMissing } from "@/lib/schema-guards"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 
 export type CheckoutProvider = "paystack" | "stripe"
@@ -63,6 +62,7 @@ type CourseBatchRow = {
   brevo_list_id: string | null
   seat_limit: number | bigint | null
   batch_start_at: Date | string | null
+  enrolled_count: number | bigint | null
 }
 
 type CouponRow = {
@@ -263,19 +263,36 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
   const courseSlug = normalizeCourse(courseSlugInput)
   if (await courseUsesImmediateAccess(courseSlug)) return []
   const rows = await prisma.$queryRaw<CourseBatchRow[]>`
-    SELECT course_slug, batch_key, batch_label, status, is_active, brevo_list_id, seat_limit, batch_start_at
-    FROM course_batches
-    WHERE course_slug = ${courseSlug}
-      AND (is_active = 1 OR (${courseSlug} = ${HOLIDAY_COURSE_SLUG} AND status = 'open'))
-    ORDER BY is_active DESC, batch_start_at IS NULL ASC, batch_start_at ASC, created_at DESC
+    SELECT cb.course_slug, cb.batch_key, cb.batch_label, cb.status, cb.is_active, cb.brevo_list_id,
+           cb.seat_limit, cb.batch_start_at,
+           (
+             COALESCE((
+               SELECT SUM(CASE WHEN co.seat_count IS NULL OR co.seat_count < 1 THEN 1 ELSE co.seat_count END)
+               FROM course_orders co
+               WHERE co.course_slug COLLATE utf8mb4_unicode_ci = cb.course_slug COLLATE utf8mb4_unicode_ci
+                 AND co.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
+                 AND co.status = 'paid'
+             ), 0)
+             +
+             COALESCE((
+               SELECT SUM(CASE WHEN mp.seat_count IS NULL OR mp.seat_count < 1 THEN 1 ELSE mp.seat_count END)
+               FROM course_manual_payments mp
+               WHERE mp.course_slug COLLATE utf8mb4_unicode_ci = cb.course_slug COLLATE utf8mb4_unicode_ci
+                 AND mp.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
+                 AND mp.status = 'approved'
+             ), 0)
+           ) AS enrolled_count
+    FROM course_batches cb
+    WHERE cb.course_slug = ${courseSlug}
+      AND (cb.is_active = 1 OR (${courseSlug} = ${HOLIDAY_COURSE_SLUG} AND cb.status = 'open'))
+    ORDER BY cb.is_active DESC, cb.batch_start_at IS NULL ASC, cb.batch_start_at ASC, cb.created_at DESC
   `
 
-  const batches: CheckoutBatch[] = []
-  for (const row of rows) {
+  return rows.map((row) => {
     const key = normalizeBatchKey(row.batch_key)
-    const enrolledCount = await countEnrolledSeats(courseSlug, key)
+    const enrolledCount = toInt(row.enrolled_count)
     const seatLimit = row.seat_limit === null || row.seat_limit === undefined ? null : Math.max(0, toInt(row.seat_limit))
-    batches.push({
+    return {
       courseSlug,
       batchKey: key,
       batchLabel: String(row.batch_label || key),
@@ -286,9 +303,8 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
       enrolledCount,
       remainingSeats: seatLimit === null ? null : Math.max(0, seatLimit - enrolledCount),
       batchStartAt: mysqlWallDateTime(row.batch_start_at)
-    })
-  }
-  return batches
+    }
+  })
 }
 
 export async function resolveCheckoutBatch(courseSlugInput: string, batchKeyInput?: unknown) {
@@ -304,30 +320,6 @@ export async function resolveCheckoutBatch(courseSlugInput: string, batchKeyInpu
   return batches[0]
 }
 
-async function countEnrolledSeats(courseSlug: string, batchKey: string) {
-  if (!batchKey) return 0
-  const rows = await prisma.$queryRaw<Array<{ enrolled_count: number | bigint | null }>>`
-    SELECT (
-      COALESCE((
-        SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
-        FROM course_orders
-        WHERE course_slug = ${courseSlug}
-          AND batch_key = ${batchKey}
-          AND status = 'paid'
-      ), 0)
-      +
-      COALESCE((
-        SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
-        FROM course_manual_payments
-        WHERE course_slug = ${courseSlug}
-          AND batch_key = ${batchKey}
-          AND status = 'approved'
-      ), 0)
-    ) AS enrolled_count
-  `
-  return toInt(rows[0]?.enrolled_count)
-}
-
 export async function assertBatchCapacity(batch: CheckoutBatch | null, seatCount: number) {
   if (!batch) return
   if (batch.remainingSeats !== null && seatCount > batch.remainingSeats) {
@@ -335,9 +327,9 @@ export async function assertBatchCapacity(batch: CheckoutBatch | null, seatCount
   }
 }
 
-async function adminCoursePriceMinor(courseSlug: string, currency: string) {
+function adminCoursePriceKey(courseSlug: string, currency: string) {
   const slug = normalizeCourse(courseSlug)
-  const key =
+  return (
     slug === "prompt-to-production"
       ? currency === "NGN"
         ? "PROMPT_TO_PRODUCTION_PRICE_NGN_MINOR"
@@ -351,15 +343,7 @@ async function adminCoursePriceMinor(courseSlug: string, currency: string) {
             ? "PROMPT_TO_PROFIT_PRICE_GBP"
             : ""
         : ""
-  if (!key) return 0
-  const raw = Number(await getAdminSettingValue(key))
-  if (!Number.isFinite(raw) || raw <= 0) return 0
-  return key.endsWith("_GBP") ? Math.round(raw * 100) : Math.round(raw)
-}
-
-async function vatPercent(provider: CheckoutProvider) {
-  const raw = Number(await getAdminSettingValue(provider === "stripe" ? "INTL_VAT_PERCENT" : "SITE_VAT_PERCENT"))
-  return Number.isFinite(raw) && raw >= 0 ? raw : provider === "stripe" ? 20 : 7.5
+  )
 }
 
 async function grossUpStripeAmount(netMinor: number, currency: string) {
@@ -407,22 +391,32 @@ async function composePricingBreakdown(input: {
 export async function basePricing(input: { courseSlug: string; country?: string; provider?: CheckoutProvider; seatCount?: number; installment?: boolean; manualTransfer?: boolean }) {
   const courseSlug = normalizeCourse(input.courseSlug)
   const provider = input.provider || providerForCountry(input.country)
-  const learningCourse = await findLearningCourse(courseSlug)
+  const currency = provider === "paystack" ? "NGN" : stripeCurrencyForCountry(input.country)
+  const priceKey = adminCoursePriceKey(courseSlug, currency)
+  const vatKey = provider === "stripe" ? "INTL_VAT_PERCENT" : "SITE_VAT_PERCENT"
+  const [learningCourse, settings] = await Promise.all([
+    findLearningCourse(courseSlug),
+    getAdminSettingValues([priceKey, "INSTALLMENT_SURCHARGE_PERCENT", vatKey].filter(Boolean))
+  ])
 
   if (learningCourse && Number(learningCourse.is_enrollment_locked || 0) === 1) {
     throw new Error("Enrollment is currently locked for this course.")
   }
 
-  const currency = provider === "paystack" ? "NGN" : stripeCurrencyForCountry(input.country)
   const configuredMinor =
     currency === "NGN"
       ? toInt(learningCourse?.price_ngn_minor)
       : currency === "GBP"
         ? toInt(learningCourse?.price_gbp_minor)
         : currency === "EUR"
-          ? toInt(learningCourse?.price_eur_minor)
+        ? toInt(learningCourse?.price_eur_minor)
           : toInt(learningCourse?.price_usd_minor)
-  const adminMinor = await adminCoursePriceMinor(courseSlug, currency)
+  const adminPrice = Number(priceKey ? settings[priceKey] : 0)
+  const adminMinor = Number.isFinite(adminPrice) && adminPrice > 0
+    ? priceKey.endsWith("_GBP")
+      ? Math.round(adminPrice * 100)
+      : Math.round(adminPrice)
+    : 0
   const seatCount = Math.max(1, Number(input.seatCount || 1))
   const unitMinor = configuredMinor > 0 ? configuredMinor : adminMinor
   if (unitMinor <= 0) {
@@ -430,10 +424,15 @@ export async function basePricing(input: { courseSlug: string; country?: string;
   }
   const groupPricing = groupPricingForSeats(courseSlug, unitMinor, seatCount, currency)
   const courseMinor = groupPricing.amountMinor
-  const installmentSurchargeRaw = Number(await getAdminSettingValue("INSTALLMENT_SURCHARGE_PERCENT"))
+  const installmentSurchargeRaw = Number(settings.INSTALLMENT_SURCHARGE_PERCENT)
   const installmentSurcharge = input.installment && Number.isFinite(installmentSurchargeRaw) ? Math.max(0, installmentSurchargeRaw) : 0
   const installmentCourseMinor = Math.round(courseMinor * (1 + installmentSurcharge / 100))
-  const taxPercent = await vatPercent(provider)
+  const configuredTax = Number(settings[vatKey])
+  const taxPercent = Number.isFinite(configuredTax) && configuredTax >= 0
+    ? configuredTax
+    : provider === "stripe"
+      ? 20
+      : 7.5
   const breakdown = await composePricingBreakdown({
     provider,
     currency,
@@ -578,7 +577,16 @@ export async function evaluateCoupon(input: {
   }
 }
 
-export async function pricingWithCoupon(input: { courseSlug: string; country?: string; provider?: CheckoutProvider; email?: string; couponCode?: string }) {
+export async function pricingWithCoupon(input: {
+  courseSlug: string
+  country?: string
+  provider?: CheckoutProvider
+  email?: string
+  couponCode?: string
+  seatCount?: number
+  installment?: boolean
+  manualTransfer?: boolean
+}) {
   const base = await basePricing(input)
   let pricing: CheckoutPricing = {
     ...base,
@@ -607,7 +615,9 @@ export async function pricingWithCoupon(input: { courseSlug: string; country?: s
       currency: base.currency,
       courseMinor: Number(base.courseAmountMinor || 0),
       taxPercent: Number(base.vatPercent || 0),
-      discountMinor: evaluated.pricing.discountMinor
+      discountMinor: evaluated.pricing.discountMinor,
+      installment: input.installment,
+      manualTransfer: input.manualTransfer
     })
     pricing = {
       ...base,
@@ -646,7 +656,14 @@ export async function checkoutContext(input: {
   if (input.requireExplicitHolidayBatch && courseSlug === HOLIDAY_COURSE_SLUG && !normalizeBatchKey(input.batchKey)) {
     throw new Error("Please choose a batch.")
   }
-  const batch = await resolveCheckoutBatch(courseSlug, input.batchKey)
+  const batches = await listCheckoutBatches(courseSlug)
+  const requestedBatchKey = normalizeBatchKey(input.batchKey)
+  const batch = requestedBatchKey
+    ? batches.find((candidate) => candidate.batchKey === requestedBatchKey) || null
+    : batches[0] || null
+  if (requestedBatchKey && !batch) {
+    throw new Error("Selected batch is unavailable. Please choose another batch.")
+  }
   if (input.requireActiveBatch && !(await courseUsesImmediateAccess(courseSlug)) && !batch) {
     throw new Error("No active batch is available for this course.")
   }
@@ -656,54 +673,12 @@ export async function checkoutContext(input: {
     country: input.country,
     provider,
     email: input.email,
-    couponCode: input.couponCode
+    couponCode: input.couponCode,
+    seatCount,
+    installment: input.installment,
+    manualTransfer: input.manualTransfer
   })
-  if (seatCount > 1 || input.installment || input.manualTransfer) {
-    const base = await basePricing({ courseSlug, country: input.country, provider, seatCount, installment: input.installment, manualTransfer: input.manualTransfer })
-    let pricing: CheckoutPricing = {
-      ...base,
-      currency: base.currency,
-      baseAmountMinor: base.baseAmountMinor,
-      discountMinor: 0,
-      finalAmountMinor: base.finalAmountMinor,
-      groupDiscountMinor: base.groupDiscountMinor,
-      groupUnitAmountMinor: base.groupUnitAmountMinor,
-      standardUnitAmountMinor: base.standardUnitAmountMinor,
-      couponCode: null,
-      couponId: null
-    }
-    let coupon: Awaited<ReturnType<typeof evaluateCoupon>>["coupon"] | null = null
-    if (input.couponCode) {
-      const evaluated = await evaluateCoupon({
-        couponCode: input.couponCode,
-        courseSlug,
-        email: input.email,
-        currency: base.currency,
-        baseAmountMinor: base.baseAmountMinor
-      })
-      const recomposed = await composePricingBreakdown({
-        provider,
-        currency: base.currency,
-        courseMinor: Number(base.courseAmountMinor || 0),
-        taxPercent: Number(base.vatPercent || 0),
-        discountMinor: evaluated.pricing.discountMinor,
-        installment: input.installment,
-        manualTransfer: input.manualTransfer
-      })
-      pricing = {
-        ...base,
-        ...recomposed,
-        couponCode: evaluated.pricing.couponCode,
-        couponId: evaluated.pricing.couponId,
-        groupDiscountMinor: base.groupDiscountMinor,
-        groupUnitAmountMinor: base.groupUnitAmountMinor,
-        standardUnitAmountMinor: base.standardUnitAmountMinor
-      }
-      coupon = evaluated.coupon
-    }
-    return { ...base, pricing, coupon, batch, buyerType, seatCount }
-  }
-  return { ...result, batch, buyerType, seatCount }
+  return { ...result, batch, batches, buyerType, seatCount }
 }
 
 export async function createCourseOrder(input: {
@@ -722,26 +697,17 @@ export async function createCourseOrder(input: {
   fbclid?: string
   clientIp?: string
   userAgent?: string
+  affiliateCode?: string
 }) {
   const orderUuid = randomUUID()
   const now = new Date()
-
-  await addColumnIfMissing("course_orders", "fbp", "VARCHAR(190) NULL")
-  await addColumnIfMissing("course_orders", "fbc", "VARCHAR(190) NULL")
-  await addColumnIfMissing("course_orders", "fbclid", "TEXT NULL")
-  await addColumnIfMissing("course_orders", "client_ip", "VARCHAR(80) NULL")
-  await addColumnIfMissing("course_orders", "user_agent", "VARCHAR(500) NULL")
-  await addColumnIfMissing("course_orders", "course_amount_minor", "INT NULL")
-  await addColumnIfMissing("course_orders", "vat_amount_minor", "INT NULL")
-  await addColumnIfMissing("course_orders", "vat_percent", "DECIMAL(8,3) NULL")
-  await addColumnIfMissing("course_orders", "processing_fee_minor", "INT NULL")
 
   await prisma.$executeRaw`
     INSERT INTO course_orders
       (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
        course_amount_minor, vat_amount_minor, vat_percent, processing_fee_minor,
        discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, status, batch_key, batch_label,
-       fbp, fbc, fbclid, client_ip, user_agent, created_at, updated_at)
+       fbp, fbc, fbclid, client_ip, user_agent, affiliate_code, affiliate_attribution_status, created_at, updated_at)
     VALUES
       (${orderUuid}, ${input.courseSlug}, ${input.firstName}, ${input.email}, ${input.phone || null}, ${input.country || null},
        ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor},
@@ -752,6 +718,8 @@ export async function createCourseOrder(input: {
        ${String(input.fbp || "").trim().slice(0, 190) || null}, ${String(input.fbc || "").trim().slice(0, 190) || null},
        ${String(input.fbclid || "").trim().slice(0, 2000) || null},
        ${String(input.clientIp || "").trim().slice(0, 80) || null}, ${String(input.userAgent || "").trim().slice(0, 500) || null},
+       ${String(input.affiliateCode || "").trim().toUpperCase().slice(0, 40) || null},
+       ${String(input.affiliateCode || "").trim() ? "pending" : "rejected"},
        ${now}, ${now})
   `
 
@@ -861,26 +829,18 @@ export async function createManualPayment(input: {
   fbclid?: string
   clientIp?: string
   userAgent?: string
+  affiliateCode?: string
 }) {
   const paymentUuid = `mp_${randomUUID().replace(/-/g, "")}`
   const now = new Date()
-
-  await addColumnIfMissing("course_manual_payments", "fbp", "VARCHAR(190) NULL")
-  await addColumnIfMissing("course_manual_payments", "fbc", "VARCHAR(190) NULL")
-  await addColumnIfMissing("course_manual_payments", "fbclid", "TEXT NULL")
-  await addColumnIfMissing("course_manual_payments", "client_ip", "VARCHAR(80) NULL")
-  await addColumnIfMissing("course_manual_payments", "user_agent", "VARCHAR(500) NULL")
-  await addColumnIfMissing("course_manual_payments", "course_amount_minor", "INT NULL")
-  await addColumnIfMissing("course_manual_payments", "vat_amount_minor", "INT NULL")
-  await addColumnIfMissing("course_manual_payments", "vat_percent", "DECIMAL(8,3) NULL")
-  await addColumnIfMissing("course_manual_payments", "processing_fee_minor", "INT NULL")
 
   await prisma.$executeRaw`
     INSERT INTO course_manual_payments
       (payment_uuid, course_slug, batch_key, batch_label, first_name, email, phone, country, currency, amount_minor,
        base_amount_minor, course_amount_minor, vat_amount_minor, vat_percent, processing_fee_minor,
        discount_minor, final_amount_minor, coupon_code, coupon_id, transfer_reference, proof_url,
-       proof_public_id, buyer_type, seat_count, status, fbp, fbc, fbclid, client_ip, user_agent, created_at, updated_at)
+       proof_public_id, buyer_type, seat_count, status, fbp, fbc, fbclid, client_ip, user_agent,
+       affiliate_code, affiliate_attribution_status, created_at, updated_at)
     VALUES
       (${paymentUuid}, ${input.courseSlug}, ${input.batch?.batchKey || null}, ${input.batch?.batchLabel || null}, ${input.firstName}, ${input.email}, ${input.phone || null}, ${input.country || null},
        ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor},
@@ -890,7 +850,10 @@ export async function createManualPayment(input: {
        ${input.transferReference || null}, ${input.proofUrl}, ${input.proofPublicId || null}, ${input.buyerType || "student"}, ${input.seatCount || 1}, 'pending_verification',
        ${String(input.fbp || "").trim().slice(0, 190) || null}, ${String(input.fbc || "").trim().slice(0, 190) || null},
        ${String(input.fbclid || "").trim().slice(0, 2000) || null}, ${String(input.clientIp || "").trim().slice(0, 80) || null},
-       ${String(input.userAgent || "").trim().slice(0, 500) || null}, ${now}, ${now})
+       ${String(input.userAgent || "").trim().slice(0, 500) || null},
+       ${String(input.affiliateCode || "").trim().toUpperCase().slice(0, 40) || null},
+       ${String(input.affiliateCode || "").trim() ? "pending" : "rejected"},
+       ${now}, ${now})
   `
 
   return paymentUuid
@@ -937,12 +900,11 @@ export async function recordAffiliateAttribution(input: {
   actorType?: string
   actorId?: string | null
 }) {
-  await ensureAffiliateAlignment()
   const affiliateCode = String(input.affiliateCode || "").trim().toUpperCase().slice(0, 40)
   const timestamp = now()
   const buyerEmail = normalizeEmail(input.buyerEmail)
   const requestMetadata = affiliateRequestMetadata(input.requestHeaders)
-  const rows = await prisma.$queryRaw<Array<{
+  const rows = affiliateCode ? await prisma.$queryRaw<Array<{
     profileId: bigint | null
     affiliateAccountId: bigint | null
     affiliateCode: string | null
@@ -969,9 +931,9 @@ export async function recordAffiliateAttribution(input: {
      AND (r.ends_at IS NULL OR r.ends_at >= NOW())
     WHERE p.affiliate_code COLLATE utf8mb4_unicode_ci = ${affiliateCode} COLLATE utf8mb4_unicode_ci
     LIMIT 1
-  `.catch(() => [])
+  `.catch(() => []) : []
   const profile = rows[0]
-  const buyerAccounts = buyerEmail
+  const buyerAccounts = affiliateCode && buyerEmail
     ? await prisma.$queryRaw<Array<{ id: bigint }>>`SELECT id FROM student_accounts WHERE email = ${buyerEmail} LIMIT 1`.catch(() => [])
     : []
   const buyerAccountId = buyerAccounts[0]?.id || null
@@ -1308,6 +1270,72 @@ export async function reconcileAffiliateCommissions(limitInput = 250) {
     else failed += 1
   }
   return { transferred, created, failed, checked: candidates.length }
+}
+
+export async function reconcilePendingAffiliateAttributions(limitInput = 100) {
+  const limit = Math.max(1, Math.min(500, toInt(limitInput, 100)))
+  const candidates = await prisma.$queryRaw<Array<{
+    sourceUuid: string
+    courseSlug: string
+    affiliateCode: string
+    buyerEmail: string
+    buyerCountry: string | null
+    buyerCurrency: string
+    orderAmountMinor: number | bigint
+  }>>`
+    SELECT source_uuid AS sourceUuid, course_slug AS courseSlug, affiliate_code AS affiliateCode,
+           buyer_email AS buyerEmail, buyer_country AS buyerCountry, buyer_currency AS buyerCurrency,
+           order_amount_minor AS orderAmountMinor
+    FROM (
+      SELECT o.order_uuid AS source_uuid, o.course_slug, o.affiliate_code, o.email AS buyer_email,
+             o.country AS buyer_country, o.currency AS buyer_currency, o.final_amount_minor AS order_amount_minor,
+             o.created_at
+      FROM course_orders o
+      WHERE o.affiliate_attribution_status = 'pending'
+        AND o.affiliate_code IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM tochukwu_affiliate_attributions a
+          WHERE a.order_uuid COLLATE utf8mb4_unicode_ci = o.order_uuid COLLATE utf8mb4_unicode_ci
+        )
+      UNION ALL
+      SELECT m.payment_uuid AS source_uuid, m.course_slug, m.affiliate_code, m.email AS buyer_email,
+             m.country AS buyer_country, m.currency AS buyer_currency, m.final_amount_minor AS order_amount_minor,
+             m.created_at
+      FROM course_manual_payments m
+      WHERE m.affiliate_attribution_status = 'pending'
+        AND m.affiliate_code IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM tochukwu_affiliate_attributions a
+          WHERE a.order_uuid COLLATE utf8mb4_unicode_ci = m.payment_uuid COLLATE utf8mb4_unicode_ci
+        )
+    ) pending
+    ORDER BY created_at ASC
+    LIMIT ${limit}
+  `
+  let reconciled = 0
+  let failed = 0
+  for (const candidate of candidates) {
+    try {
+      await recordAffiliateAttribution({
+        sourceUuid: candidate.sourceUuid,
+        courseSlug: candidate.courseSlug,
+        affiliateCode: candidate.affiliateCode,
+        buyerEmail: candidate.buyerEmail,
+        buyerCountry: candidate.buyerCountry || undefined,
+        buyerCurrency: candidate.buyerCurrency,
+        orderAmountMinor: Number(candidate.orderAmountMinor || 0),
+        actorType: "reconciliation"
+      })
+      reconciled += 1
+    } catch (error) {
+      failed += 1
+      console.error("[affiliate] pending attribution reconciliation failed", {
+        sourceUuid: candidate.sourceUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+  return { checked: candidates.length, reconciled, failed }
 }
 
 function randomPasswordHash() {
@@ -1733,7 +1761,6 @@ export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | 
       familyAccountId = Number(credited.familyId || familyAccountId || 0) || null
     }
 
-    await addColumnIfMissing("course_orders", "family_account_id", "BIGINT NULL")
     await prisma.$executeRaw`
       INSERT INTO course_orders
         (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
@@ -1837,7 +1864,8 @@ export async function initializePaystack(input: {
         reference: input.reference,
         callback_url: input.callbackUrl || `${siteBaseUrl()}/api/payments/paystack/return`,
         metadata: input.metadata
-      })
+      }),
+      signal: AbortSignal.timeout(10_000)
     })
   } catch (error) {
     await reportPaymentProviderIssue({

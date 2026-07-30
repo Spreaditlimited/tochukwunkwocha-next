@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { matureAffiliateCommissions } from "@/lib/affiliate-alignment"
-import { reconcileAffiliateCommissions } from "@/lib/payments/course-checkout"
+import {
+  reconcileAffiliateCommissions,
+  reconcilePendingAffiliateAttributions
+} from "@/lib/payments/course-checkout"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +18,13 @@ export async function GET(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
   }
+  const attributions = await reconcilePendingAffiliateAttributions()
   const reconciliation = await reconcileAffiliateCommissions()
   const maturedCount = await matureAffiliateCommissions()
-  return NextResponse.json({ ok: reconciliation.failed === 0, reconciliation, maturedCount })
+  return NextResponse.json({
+    ok: attributions.failed === 0 && reconciliation.failed === 0,
+    attributions,
+    reconciliation,
+    maturedCount
+  })
 }

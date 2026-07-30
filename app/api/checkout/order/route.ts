@@ -14,8 +14,10 @@ import {
   updateCourseOrderProvider
 } from "@/lib/payments/course-checkout"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
+import { ServerTiming } from "@/lib/server-timing"
 
 export async function POST(request: Request) {
+  const timing = new ServerTiming()
   try {
     const origin = new URL(request.url).origin
     const body = await request.json()
@@ -37,8 +39,13 @@ export async function POST(request: Request) {
       request
     })
     if (!recaptcha.ok) {
-      return NextResponse.json({ ok: false, error: "We could not verify this checkout. Please try again." }, { status: 400 })
+      timing.mark("recaptcha")
+      return NextResponse.json(
+        { ok: false, error: "We could not verify this checkout. Please try again." },
+        { status: 400, headers: timing.headers() }
+      )
     }
+    timing.mark("recaptcha")
 
     const result = await checkoutContext({
       courseSlug,
@@ -50,6 +57,7 @@ export async function POST(request: Request) {
       seatCount: body.seatCount,
       batchKey: body.batchKey
     })
+    timing.mark("pricing")
     const orderUuid = await createCourseOrder({
       courseSlug,
       firstName,
@@ -65,9 +73,35 @@ export async function POST(request: Request) {
       fbc: String(body.fbc || ""),
       fbclid: String(body.fbclid || ""),
       clientIp: clientIpFromRequest(request),
-      userAgent: request.headers.get("user-agent") || ""
+      userAgent: request.headers.get("user-agent") || "",
+      affiliateCode: body.affiliateCode
     })
+    timing.mark("order")
     const metadata = { order_uuid: orderUuid, course_slug: returnSlug, checkout_course_slug: courseSlug, first_name: firstName }
+    const affiliateTask = recordAffiliateAttribution({
+      sourceUuid: orderUuid,
+      courseSlug,
+      affiliateCode: body.affiliateCode,
+      buyerEmail: email,
+      buyerCountry: country,
+      buyerCurrency: result.pricing.currency,
+      orderAmountMinor: result.pricing.finalAmountMinor,
+      requestHeaders: request.headers
+    }).catch((error) => {
+      console.error("[checkout] affiliate attribution deferred for reconciliation", {
+        orderUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    })
+    const whatsappTask = upsertWhatsAppContact({
+      email,
+      fullName: firstName,
+      phone,
+      courseSlug,
+      source: "course_checkout",
+      optedIn: body.whatsappOptIn === true
+    })
     const payment =
       provider === "stripe"
         ? await initializeStripe({
@@ -90,26 +124,12 @@ export async function POST(request: Request) {
             callbackUrl: `${origin}/api/payments/paystack/return`,
             metadata
           })
+    timing.mark("provider")
 
     await updateCourseOrderProvider(orderUuid, payment.providerReference, payment.providerOrderId)
-    await recordAffiliateAttribution({
-      sourceUuid: orderUuid,
-      courseSlug,
-      affiliateCode: body.affiliateCode,
-      buyerEmail: email,
-      buyerCountry: country,
-      buyerCurrency: result.pricing.currency,
-      orderAmountMinor: result.pricing.finalAmountMinor,
-      requestHeaders: request.headers
-    })
-    await upsertWhatsAppContact({
-      email,
-      fullName: firstName,
-      phone,
-      courseSlug,
-      source: "course_checkout",
-      optedIn: body.whatsappOptIn === true
-    })
+    timing.mark("provider_save")
+    await Promise.all([affiliateTask, whatsappTask])
+    timing.mark("attribution")
 
     return NextResponse.json({
       ok: true,
@@ -117,8 +137,12 @@ export async function POST(request: Request) {
       provider,
       checkoutUrl: payment.checkoutUrl,
       pricing: result.pricing
-    })
+    }, { headers: timing.headers() })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not create checkout order" }, { status: 500 })
+    timing.mark("failed")
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Could not create checkout order" },
+      { status: 500, headers: timing.headers() }
+    )
   }
 }

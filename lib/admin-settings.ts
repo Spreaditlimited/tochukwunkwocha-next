@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client"
+
 import { prisma } from "@/lib/prisma"
 
 export type AdminSettingDefinition = {
@@ -166,6 +168,8 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
 ]
 
 const KNOWN_KEYS = new Set(ADMIN_SETTING_DEFINITIONS.map((item) => item.key))
+const SETTING_CACHE_TTL_MS = 30_000
+const settingCache = new Map<string, { value: string; expiresAt: number }>()
 
 function clean(value: unknown, max = 5000) {
   return String(value || "").trim().slice(0, max)
@@ -256,6 +260,7 @@ export async function upsertAdminSettings(entries: Array<{ key: string; value: s
         `
       }
       delete process.env[key]
+      settingCache.delete(key)
       continue
     }
 
@@ -271,6 +276,7 @@ export async function upsertAdminSettings(entries: Array<{ key: string; value: s
       `
     }
     process.env[key] = value
+    settingCache.delete(key)
   }
 }
 
@@ -288,19 +294,50 @@ export async function applyAdminSettingsToProcessEnv() {
 }
 
 export async function getAdminSettingValue(key: string) {
-  const safeKey = clean(key, 120)
-  if (!safeKey || !KNOWN_KEYS.has(safeKey)) return ""
-  try {
-    await ensureAdminSettingsTables()
-    const rows = await prisma.$queryRaw<Array<{ settingValue: string | null }>>`
-      SELECT setting_value AS settingValue
-      FROM tochukwu_admin_settings
-      WHERE setting_key = ${safeKey}
-      LIMIT 1
-    `
-    const overrideValue = clean(rows[0]?.settingValue)
-    return overrideValue || clean(process.env[safeKey])
-  } catch {
-    return clean(process.env[safeKey])
+  const values = await getAdminSettingValues([key])
+  return values[clean(key, 120)] || ""
+}
+
+export async function getAdminSettingValues(keys: string[]) {
+  const safeKeys = Array.from(new Set(
+    keys
+      .map((key) => clean(key, 120))
+      .filter((key) => key && KNOWN_KEYS.has(key))
+  ))
+  const values: Record<string, string> = {}
+  const missing: string[] = []
+  const currentTime = Date.now()
+
+  for (const key of safeKeys) {
+    const cached = settingCache.get(key)
+    if (cached && cached.expiresAt > currentTime) {
+      values[key] = cached.value
+    } else {
+      missing.push(key)
+    }
   }
+
+  if (missing.length) {
+    try {
+      const rows = await prisma.$queryRaw<Array<{ settingKey: string; settingValue: string | null }>>(Prisma.sql`
+        SELECT setting_key AS settingKey, setting_value AS settingValue
+        FROM tochukwu_admin_settings
+        WHERE setting_key IN (${Prisma.join(missing)})
+      `)
+      const overrides = new Map(rows.map((row) => [row.settingKey, clean(row.settingValue)]))
+      for (const key of missing) {
+        const value = overrides.get(key) || clean(process.env[key])
+        values[key] = value
+        settingCache.set(key, { value, expiresAt: currentTime + SETTING_CACHE_TTL_MS })
+      }
+    } catch {
+      for (const key of missing) {
+        const value = clean(process.env[key])
+        values[key] = value
+        settingCache.set(key, { value, expiresAt: currentTime + SETTING_CACHE_TTL_MS })
+      }
+    }
+  }
+
+  return values
 }
