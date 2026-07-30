@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Download, Loader2 } from "lucide-react"
 
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 function cookieValue(name: string) {
@@ -65,6 +66,7 @@ export function ResourceLeadForm({
           {status === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Unlock Resource
         </button>
+        <RecaptchaDisclosure />
       </form>
       {message ? (
         <p className={status === "error" ? "mt-3 text-sm font-bold text-destructive" : "mt-3 text-sm font-bold text-primary"}>

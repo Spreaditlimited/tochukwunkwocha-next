@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { SeatCountStepper } from "@/components/SeatCountStepper"
 import { readAffiliateReferralCode, storeAffiliateReferralCode } from "@/components/AffiliateReferralCapture"
 import { TrademarkText } from "@/components/TrademarkText"
@@ -980,6 +981,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                   <LockKeyhole className="h-4 w-4" />
                   Secure, encrypted transaction.
                 </div>
+                <RecaptchaDisclosure className="mt-3" />
               </div>
             </form>
           </div>

@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react"
 import { Loader2, Mail } from "lucide-react"
 
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 function cookieValue(name: string) {
@@ -99,6 +100,7 @@ export function ResourceSubscribeForm() {
           Subscribe
         </button>
       </div>
+      <RecaptchaDisclosure />
       {message ? (
         <p className={status === "error" ? "mt-3 text-sm font-bold text-destructive" : "mt-3 text-sm font-bold text-primary"}>
           {message}

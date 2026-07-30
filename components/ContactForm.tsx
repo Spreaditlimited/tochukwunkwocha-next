@@ -5,6 +5,7 @@ import Link from "next/link"
 import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 const purposeOptions = [
@@ -109,6 +110,7 @@ export function ContactForm() {
           </Link>{" "}
           and consent to being contacted regarding your enquiry.
         </p>
+        <RecaptchaDisclosure className="mt-3 text-left" />
       </div>
     </form>
   )

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react"
 import { Download, Mail, X } from "lucide-react"
 import { usePathname } from "next/navigation"
 
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 type LeadMagnetConfig = {
@@ -465,6 +466,7 @@ export function LeadCapturePopup() {
               >
                 <Mail className="mr-2 h-4 w-4" /> {loading ? "Processing..." : buttonText}
               </button>
+              <RecaptchaDisclosure className="text-slate-400 [&_a]:hover:text-white" />
             </form>
           )}
         </div>

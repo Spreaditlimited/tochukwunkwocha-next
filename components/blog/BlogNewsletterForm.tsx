@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react"
 import { Loader2 } from "lucide-react"
 
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 function cookieValue(name: string) {
@@ -92,6 +93,7 @@ export function BlogNewsletterForm() {
           Subscribe
         </button>
       </div>
+      <RecaptchaDisclosure className="text-left text-slate-400 [&_a]:hover:text-white" />
       {message ? (
         <p className={status === "error" ? "text-sm font-semibold text-rose-300" : "text-sm font-semibold text-emerald-300"}>
           {message}

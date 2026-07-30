@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { CheckCircle2, Globe2, Loader2, Search, ShieldCheck, Sparkles } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 
 type Suggestion = { domainName?: string; available: boolean }
@@ -252,7 +253,7 @@ export function DomainRegistrationService({
               </div>
             </div>
             </div>
-            <div className="border-t border-border bg-muted/20 px-6 py-5 sm:flex sm:items-center sm:justify-between sm:px-8"><p className="mb-3 text-xs text-muted-foreground sm:mb-0">You will continue to the secure payment provider.</p><button disabled={!quote || Boolean(busy)} className="btn-primary w-full justify-center sm:w-auto">{busy === "checkout" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparing payment...</> : "Proceed to Payment"}</button></div>
+            <div className="border-t border-border bg-muted/20 px-6 py-5 sm:flex sm:items-center sm:justify-between sm:px-8"><div><p className="mb-3 text-xs text-muted-foreground sm:mb-0">You will continue to the secure payment provider.</p><RecaptchaDisclosure className="mt-2 text-left sm:max-w-md" /></div><button disabled={!quote || Boolean(busy)} className="btn-primary w-full justify-center sm:w-auto">{busy === "checkout" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparing payment...</> : "Proceed to Payment"}</button></div>
             {!account ? <p className="mt-4 text-sm font-bold text-amber-600">Sign in to your student dashboard before continuing.</p> : null}
             {error ? <p className="mt-4 text-sm font-bold text-destructive">{error}</p> : null}
           </form>
@@ -300,6 +301,7 @@ export function DomainRegistrationService({
           <div className="mt-5 flex items-center justify-between"><strong>TOTAL</strong><span className="text-2xl font-black">{quote ? money(quote.currency, quote.totalAmountMinor) : "-"}</span></div>
           {quote ? <p className="mt-3 text-xs text-blue-100/60">Payment via {quote.provider === "stripe" ? "Stripe" : "Paystack"}{quote.exchangeRateNgnPerUnit ? ` · Converted at ₦${quote.exchangeRateNgnPerUnit.toLocaleString("en-NG")} per ${quote.currency}${quote.fxBufferPercent ? ` plus ${quote.fxBufferPercent}% FX buffer` : ""}` : ""}.</p> : null}
           <button disabled={!quote || Boolean(busy)} className="btn-primary mt-8 w-full justify-center py-4">{busy === "checkout" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing payment...</> : "Continue to Payment"}</button>
+          <RecaptchaDisclosure className="mt-3 text-blue-100/60 [&_a]:hover:text-white" />
           {!account ? <p className="mt-4 text-sm font-bold text-amber-300">Sign in to your student dashboard before continuing.</p> : null}
           {error ? <p className="mt-4 text-sm font-bold text-red-300">{error}</p> : null}
         </aside>

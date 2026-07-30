@@ -15,6 +15,7 @@ import {
   User
 } from "lucide-react"
 
+import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { getRecaptchaToken } from "@/lib/browser-recaptcha"
 import { formatShopMoney } from "@/lib/shop-format"
 
@@ -358,6 +359,7 @@ export function ShopCheckoutForm({
               <LockKeyhole className="h-4 w-4" />
               Secure, encrypted transaction.
             </div>
+            <RecaptchaDisclosure className="mt-3" />
           </div>
         </form>
       </div>
