@@ -3,6 +3,9 @@ import { randomUUID } from "crypto"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { prisma } from "@/lib/prisma"
+import { addColumnIfMissing } from "@/lib/schema-guards"
+
+let affiliateCommissionSeatSchemaPromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -136,6 +139,8 @@ export async function ensureAffiliateAdminTables() {
       commission_uuid VARCHAR(64) NOT NULL,
       attribution_id BIGINT NOT NULL,
       order_uuid VARCHAR(64) NOT NULL,
+      seat_number INT NOT NULL DEFAULT 1,
+      seat_count INT NOT NULL DEFAULT 1,
       course_slug VARCHAR(120) NOT NULL,
       affiliate_profile_id BIGINT NOT NULL,
       affiliate_code VARCHAR(40) NOT NULL,
@@ -158,10 +163,38 @@ export async function ensureAffiliateAdminTables() {
       updated_at DATETIME NOT NULL,
       PRIMARY KEY (id),
       UNIQUE KEY uniq_tochukwu_aff_commission_uuid (commission_uuid),
-      UNIQUE KEY uniq_tochukwu_aff_commission_order (order_uuid),
+      UNIQUE KEY uniq_tochukwu_aff_commission_order_seat (order_uuid, seat_number),
       KEY idx_tochukwu_aff_commission_profile (affiliate_profile_id, status, payable_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  if (!affiliateCommissionSeatSchemaPromise) {
+    affiliateCommissionSeatSchemaPromise = (async () => {
+      await addColumnIfMissing("tochukwu_affiliate_commissions", "seat_number", "INT NOT NULL DEFAULT 1 AFTER order_uuid")
+      await addColumnIfMissing("tochukwu_affiliate_commissions", "seat_count", "INT NOT NULL DEFAULT 1 AFTER seat_number")
+      const commissionIndexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
+        SELECT DISTINCT INDEX_NAME AS indexName
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tochukwu_affiliate_commissions'
+          AND INDEX_NAME IN ('uniq_tochukwu_aff_commission_order', 'uniq_tochukwu_aff_commission_order_seat')
+      `
+      const indexNames = new Set(commissionIndexes.map((row) => row.indexName))
+      if (indexNames.has("uniq_tochukwu_aff_commission_order")) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE tochukwu_affiliate_commissions DROP INDEX uniq_tochukwu_aff_commission_order"
+        )
+      }
+      if (!indexNames.has("uniq_tochukwu_aff_commission_order_seat")) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE tochukwu_affiliate_commissions ADD UNIQUE INDEX uniq_tochukwu_aff_commission_order_seat (order_uuid, seat_number)"
+        )
+      }
+    })().catch((error) => {
+      affiliateCommissionSeatSchemaPromise = null
+      throw error
+    })
+  }
+  await affiliateCommissionSeatSchemaPromise
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS tochukwu_affiliate_payout_accounts (
       id BIGINT NOT NULL AUTO_INCREMENT,
@@ -250,6 +283,37 @@ export async function ensureAffiliateAdminTables() {
       KEY idx_tochukwu_aff_audit_target (target_type, target_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+}
+
+export type AffiliateAdminOption = {
+  code: string
+  fullName: string
+  email: string
+}
+
+export async function listEligibleAffiliateOptions(): Promise<AffiliateAdminOption[]> {
+  await ensureAffiliateAdminTables()
+  const rows = await prisma.$queryRaw<Array<{
+    code: string | null
+    fullName: string | null
+    email: string | null
+  }>>`
+    SELECT p.affiliate_code AS code, a.full_name AS fullName, a.email
+    FROM tochukwu_affiliate_profiles p
+    JOIN student_accounts a ON a.id = p.account_id
+    LEFT JOIN school_students ss ON ss.account_id = p.account_id AND ss.status = 'active'
+    WHERE p.status = 'active'
+      AND p.eligibility_status = 'eligible'
+      AND ss.id IS NULL
+    ORDER BY a.full_name ASC, a.email ASC
+  `
+  return rows
+    .map((row) => ({
+      code: clean(row.code, 40).toUpperCase(),
+      fullName: clean(row.fullName, 180) || "Affiliate",
+      email: clean(row.email, 220).toLowerCase()
+    }))
+    .filter((row) => row.code)
 }
 
 export async function listAffiliateAdminData(sort = "latest_desc") {

@@ -361,6 +361,7 @@ export default async function StudentAffiliatePage() {
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Date</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Buyer</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Seat</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Amount</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Commission</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</th>
@@ -374,6 +375,9 @@ export default async function StudentAffiliatePage() {
                           <TrademarkText text={courseName(referral.courseSlug)} />
                         </td>
                         <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{referral.buyerEmailMasked}</td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {referral.seatNumber} of {referral.seatCount}
+                        </td>
                         <td className="px-6 py-4 text-muted-foreground">{formatMinorCurrency(referral.currency, referral.orderAmountMinor)}</td>
                         <td className="px-6 py-4 font-heading font-bold text-emerald-600 dark:text-emerald-400">
                           {formatMinorCurrency(referral.currency, referral.commissionAmountMinor)}

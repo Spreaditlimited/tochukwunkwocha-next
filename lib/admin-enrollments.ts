@@ -8,6 +8,7 @@ import {
   createManualPayment,
   findOrCreateStudentAccount,
   normalizeEmail,
+  recordAffiliateAttribution,
   siteBaseUrl,
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
@@ -921,6 +922,7 @@ export async function addExternalStudentPayment(input: {
   transferReference?: string
   adminNote?: string
   couponCode?: string
+  affiliateCode?: string
   buyerType?: string
   seatCount?: number
   groupLearners?: unknown
@@ -981,6 +983,23 @@ export async function addExternalStudentPayment(input: {
   })
   let review: Awaited<ReturnType<typeof reviewManualPayment>>
   try {
+    const affiliateCode = clean(input.affiliateCode, 40).toUpperCase()
+    if (affiliateCode) {
+      const attribution = await recordAffiliateAttribution({
+        sourceUuid: paymentUuid,
+        courseSlug,
+        affiliateCode,
+        buyerEmail: email,
+        buyerCountry: input.country || "Nigeria",
+        buyerCurrency: context.pricing.currency,
+        orderAmountMinor: context.pricing.finalAmountMinor,
+        actorType: "admin",
+        actorId: input.reviewedBy
+      })
+      if (!attribution.ok) {
+        throw new Error(`The affiliate could not be attached: ${attribution.reason || "affiliate validation failed"}.`)
+      }
+    }
     if (groupLearners.length) {
       const saved = await savePendingFamilyChildren({
         sourceType: "manual_payment",
@@ -1023,7 +1042,8 @@ export async function addExternalStudentPayment(input: {
     seatsCredited,
     learnersAssigned,
     seatsAvailable: buyerType === "family" ? Math.max(0, context.seatCount - learnersAssigned) : 0,
-    activationEmailSent: review.activationEmailSent
+    activationEmailSent: review.activationEmailSent,
+    affiliateCommission: review.affiliateCommission
   }
 }
 
@@ -1057,6 +1077,18 @@ async function removeFailedExternalStudentPayment(paymentUuid: string) {
       DELETE FROM family_children
       WHERE source_type = 'manual_payment' AND source_uuid = ${paymentUuid}
     `
+    const affiliateTables = await tx.$queryRaw<Array<{ found: bigint | number }>>`
+      SELECT COUNT(*) AS found
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'tochukwu_affiliate_attributions'
+    `
+    if (Number(affiliateTables[0]?.found || 0) > 0) {
+      await tx.$executeRaw`
+        DELETE FROM tochukwu_affiliate_attributions
+        WHERE order_uuid = ${paymentUuid}
+      `
+    }
     const deleted = await tx.$executeRaw`
       DELETE FROM course_manual_payments
       WHERE id = ${payment.id} AND status = 'pending_verification'

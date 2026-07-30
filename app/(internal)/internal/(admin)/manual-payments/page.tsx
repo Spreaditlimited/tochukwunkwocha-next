@@ -31,6 +31,7 @@ import {
   listWhatsAppCampaigns,
   listWhatsAppMarketingContacts
 } from "@/lib/admin-enrollments"
+import { listEligibleAffiliateOptions } from "@/lib/admin-affiliates"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 import {
@@ -103,7 +104,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
   const summaryCourseSlug = param(params, "summaryCourse", courseSlug || "all")
   const summaryBatchKey = summaryCourseSlug === "all" ? "all" : param(params, "summaryBatch", batchKey || "all")
 
-  const [courses, allBatches, summaryBatches, payments, globalSummary, dashboardSummary, waitlist, whatsAppContacts, whatsAppCampaigns, onboardingFailures] = await Promise.all([
+  const [courses, allBatches, summaryBatches, payments, globalSummary, dashboardSummary, waitlist, whatsAppContacts, whatsAppCampaigns, onboardingFailures, affiliateOptions] = await Promise.all([
     listEnrollmentCourses(),
     listEnrollmentBatches(courseSlug === "all" ? undefined : courseSlug),
     summaryCourseSlug === "all" ? Promise.resolve([]) : listEnrollmentBatches(summaryCourseSlug),
@@ -113,7 +114,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     listHolidayWaitlistContacts(160),
     listWhatsAppMarketingContacts({ courseSlug: waCourse, opted: "in", search: waSearch, limit: 160 }),
     listWhatsAppCampaigns(12),
-    listLatestOnboardingEmailFailures({ courseSlug, batchKey, limit: 20 }).catch(() => [])
+    listLatestOnboardingEmailFailures({ courseSlug, batchKey, limit: 20 }).catch(() => []),
+    listEligibleAffiliateOptions()
   ])
   
   const selectedCourse = courses.find((course) => course.slug === courseSlug)
@@ -272,7 +274,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </div>
       </DashboardStatsVisibility>
 
-      <AddExternalStudentForm courses={courses} batches={allBatches} />
+      <AddExternalStudentForm courses={courses} batches={allBatches} affiliateOptions={affiliateOptions} />
 
       {/* Activation Email Resend */}
       <details className="group order-2 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

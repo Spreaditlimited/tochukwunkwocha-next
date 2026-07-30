@@ -1,5 +1,3 @@
-import crypto from "crypto"
-
 import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { sendManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
@@ -7,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { sendEnrollmentConfirmedWhatsApp } from "@/lib/transactional-whatsapp"
 import {
   assertBatchCapacity,
+  createAffiliateCommissionForOrder,
   findOrCreateStudentAccount,
   normalizeEmail,
   recordCouponRedemption,
@@ -150,97 +149,6 @@ async function returnApprovedPaymentToPending(paymentUuid: string, reason: strin
   `.catch(() => 0)
 }
 
-async function createAffiliateCommissionForOrder(orderUuid: string) {
-  if (String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") return
-
-  try {
-    const existing = await prisma.$queryRaw<{ id: bigint }[]>`
-      SELECT id
-      FROM tochukwu_affiliate_commissions
-      WHERE order_uuid = ${orderUuid}
-      LIMIT 1
-    `
-    if (existing.length) return
-
-    const rows = await prisma.$queryRaw<
-      Array<{
-        attributionId: bigint
-        courseSlug: string | null
-        affiliateProfileId: bigint | null
-        affiliateCode: string | null
-        buyerEmail: string | null
-        buyerCurrency: string | null
-        orderAmountMinor: number | bigint | null
-        attributionStatus: string | null
-        riskScore: number | bigint | null
-        riskFlagsJson: string | null
-        profileStatus: string | null
-        eligibilityStatus: string | null
-        commissionType: string | null
-        commissionValue: number | bigint | null
-        commissionCurrency: string | null
-        holdDays: number | bigint | null
-      }>
-    >`
-      SELECT a.id AS attributionId,
-             a.course_slug AS courseSlug,
-             a.affiliate_profile_id AS affiliateProfileId,
-             a.affiliate_code AS affiliateCode,
-             a.buyer_email AS buyerEmail,
-             a.buyer_currency AS buyerCurrency,
-             a.order_amount_minor AS orderAmountMinor,
-             a.attribution_status AS attributionStatus,
-             a.risk_score AS riskScore,
-             a.risk_flags_json AS riskFlagsJson,
-             p.status AS profileStatus,
-             p.eligibility_status AS eligibilityStatus,
-             r.commission_type AS commissionType,
-             r.commission_value AS commissionValue,
-             r.commission_currency AS commissionCurrency,
-             r.hold_days AS holdDays
-      FROM tochukwu_affiliate_attributions a
-      JOIN tochukwu_affiliate_profiles p ON p.id = a.affiliate_profile_id
-      JOIN tochukwu_affiliate_course_rules r ON r.course_slug = a.course_slug
-      WHERE a.order_uuid = ${orderUuid}
-        AND a.attribution_status = 'accepted'
-        AND p.status = 'active'
-        AND p.eligibility_status = 'eligible'
-        AND r.is_affiliate_eligible = 1
-        AND (r.starts_at IS NULL OR r.starts_at <= NOW())
-        AND (r.ends_at IS NULL OR r.ends_at >= NOW())
-      LIMIT 1
-    `
-    const row = rows[0]
-    if (!row?.affiliateProfileId) return
-
-    const orderAmountMinor = Math.max(0, toNumber(row.orderAmountMinor))
-    const commissionType = clean(row.commissionType, 20).toLowerCase() || "percentage"
-    const commissionValue = Math.max(0, toNumber(row.commissionValue))
-    const commissionAmountMinor =
-      commissionType === "fixed" ? commissionValue : Math.floor((orderAmountMinor * Math.min(commissionValue, 10000)) / 10000)
-    if (commissionAmountMinor <= 0) return
-
-    const holdDays = Math.max(0, Math.min(120, toNumber(row.holdDays, Number(process.env.AFFILIATE_DEFAULT_HOLD_DAYS || 30))))
-    const payableAt = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000)
-    const now = new Date()
-    await prisma.$executeRaw`
-      INSERT INTO tochukwu_affiliate_commissions
-        (commission_uuid, attribution_id, order_uuid, course_slug, affiliate_profile_id, affiliate_code,
-         buyer_email, currency, order_amount_minor, commission_type, commission_rate_or_value,
-         commission_amount_minor, status, risk_score, risk_flags_json, payable_at, created_at, updated_at)
-      VALUES
-        (${`acm_${crypto.randomUUID().replace(/-/g, "")}`}, ${row.attributionId}, ${orderUuid}, ${clean(row.courseSlug, 120)},
-         ${row.affiliateProfileId}, ${clean(row.affiliateCode, 40)}, ${normalizeEmail(row.buyerEmail)},
-         ${clean(row.commissionCurrency || row.buyerCurrency || "NGN", 10).toUpperCase()}, ${orderAmountMinor},
-         ${commissionType}, ${commissionValue}, ${commissionAmountMinor}, 'pending',
-         ${toNumber(row.riskScore)}, ${row.riskFlagsJson || "[]"}, ${payableAt}, ${now}, ${now})
-      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
-    `
-  } catch (_error) {
-    return
-  }
-}
-
 export async function reviewManualPayment(input: {
   paymentUuid: string
   action: "approve" | "reject"
@@ -382,7 +290,13 @@ export async function reviewManualPayment(input: {
     discountMinor: toNumber(payment.discount_minor)
   }).catch(() => null)
 
-  await createAffiliateCommissionForOrder(paymentUuid)
+  const affiliateCommission = await createAffiliateCommissionForOrder(paymentUuid)
+  if (!affiliateCommission.ok) {
+    await appendManualPaymentReviewNote(
+      paymentUuid,
+      `[AFFILIATE_COMMISSION_RETRY_REQUIRED] ${affiliateCommission.error || "Affiliate credit will be retried by reconciliation."}`
+    )
+  }
   await sendManualPaymentMetaPurchase({
     paymentUuid,
     eventSourceUrl: `${siteBaseUrl()}/checkout/${clean(payment.course_slug, 120) || "prompt-to-profit"}`
@@ -395,6 +309,7 @@ export async function reviewManualPayment(input: {
     accountCreated: !existingAccount,
     resetToken,
     activationEmailSent,
-    familyProvisioned
+    familyProvisioned,
+    affiliateCommission
   }
 }

@@ -348,6 +348,8 @@ export interface StudentAffiliateSummary {
   referrals: {
     commissionUuid: string
     orderUuid: string
+    seatNumber: number
+    seatCount: number
     courseSlug: string
     buyerEmail: string
     buyerEmailMasked: string
@@ -1332,6 +1334,8 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
     SELECT
       commission_uuid AS commissionUuid,
       COALESCE(order_uuid, '') AS orderUuid,
+      CAST(COALESCE(seat_number, 1) AS SIGNED) AS seatNumber,
+      CAST(COALESCE(seat_count, 1) AS SIGNED) AS seatCount,
       COALESCE(course_slug, '') AS courseSlug,
       COALESCE(buyer_email, '') AS buyerEmail,
       COALESCE(buyer_email, '') AS buyerEmailMasked,
@@ -1456,6 +1460,8 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
     referrals: referrals.map((row) => ({
       ...row,
       buyerEmailMasked: maskEmailAddress(row.buyerEmailMasked || row.buyerEmail),
+      seatNumber: Number(row.seatNumber || 1),
+      seatCount: Number(row.seatCount || 1),
       orderAmountMinor: Number(row.orderAmountMinor || 0),
       commissionAmountMinor: Number(row.commissionAmountMinor || 0)
     })),

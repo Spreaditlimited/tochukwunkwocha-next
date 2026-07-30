@@ -1,11 +1,12 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, Loader2, UserPlus } from "lucide-react"
+import { AlertCircle, Loader2, UserPlus } from "lucide-react"
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { showInternalToast } from "@/components/internal/InternalActionToaster"
+import type { AffiliateAdminOption } from "@/lib/admin-affiliates"
 import type { EnrollmentBatchOption, EnrollmentCourseOption } from "@/lib/admin-enrollments"
-import { cn } from "@/lib/utils"
 import {
   addExternalStudentPaymentAction,
   type ExternalStudentPaymentActionState
@@ -28,10 +29,12 @@ function batchCanReceiveEnrollment(batch: EnrollmentBatchOption) {
 
 export function AddExternalStudentForm({
   courses,
-  batches
+  batches,
+  affiliateOptions
 }: {
   courses: EnrollmentCourseOption[]
   batches: EnrollmentBatchOption[]
+  affiliateOptions: AffiliateAdminOption[]
 }) {
   const [state, formAction, pending] = useActionState(
     addExternalStudentPaymentAction,
@@ -59,11 +62,18 @@ export function AddExternalStudentForm({
   }, [courseSlug])
 
   useEffect(() => {
-    if (state.status !== "success") return
-    formRef.current?.reset()
-    setCourseSlug("")
-    setBatchKey("")
-  }, [state.status, state.submittedAt])
+    if (state.status === "idle") return
+    showInternalToast({
+      type: state.status,
+      title: state.title,
+      message: state.message
+    })
+    if (state.status === "success") {
+      formRef.current?.reset()
+      setCourseSlug("")
+      setBatchKey("")
+    }
+  }, [state.message, state.status, state.submittedAt, state.title])
 
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -82,17 +92,12 @@ export function AddExternalStudentForm({
       </div>
 
       <form ref={formRef} action={formAction} className="p-6 sm:p-8">
-        {state.status !== "idle" ? (
+        {state.status === "error" ? (
           <div
-            role={state.status === "error" ? "alert" : "status"}
-            className={cn(
-              "mb-6 flex items-start gap-3 rounded-xl border p-4",
-              state.status === "error"
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-            )}
+            role="alert"
+            className="mb-6 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive"
           >
-            {state.status === "error" ? <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />}
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="font-heading text-sm font-black">{state.title}</p>
               <p className="mt-1 text-sm font-medium leading-relaxed">{state.message}</p>
@@ -163,6 +168,21 @@ export function AddExternalStudentForm({
           <label className="block">
             <span className={labelClass}>Coupon Code</span>
             <input name="couponCode" placeholder="Optional" className={`${inputClass} uppercase`} />
+          </label>
+          <label className="block">
+            <span className={labelClass}>Affiliate</span>
+            <PremiumPicker
+              name="affiliateCode"
+              defaultValue=""
+              options={affiliateOptions.map((affiliate) => ({
+                value: affiliate.code,
+                label: `${affiliate.fullName} · ${affiliate.email} · ${affiliate.code}`
+              }))}
+              placeholder="No affiliate"
+            />
+            <p className="mt-2 text-xs font-medium text-muted-foreground">
+              Optional. Group sales credit one commission for every purchased seat.
+            </p>
           </label>
           <label className="block">
             <span className={labelClass}>Bank Reference</span>

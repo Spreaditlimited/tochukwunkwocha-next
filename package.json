@@ -20,6 +20,7 @@
     "smoke:certificate-proof": "node --env-file=.env scripts/smoke-certificate-proof.mjs",
     "smoke:business-financials": "node scripts/smoke-business-financials.mjs",
     "smoke:admin-group-enrollment": "node scripts/smoke-admin-group-enrollment.mjs",
+    "smoke:affiliate-commissions": "node scripts/smoke-affiliate-commissions.mjs",
     "smoke:installment-reconciliation": "node scripts/smoke-installment-reconciliation.mjs"
   },
   "dependencies": {

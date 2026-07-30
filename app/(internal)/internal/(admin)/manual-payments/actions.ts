@@ -106,6 +106,7 @@ export async function addExternalStudentPaymentAction(
       transferReference: String(formData.get("transferReference") || ""),
       adminNote: String(formData.get("adminNote") || ""),
       couponCode: String(formData.get("couponCode") || ""),
+      affiliateCode: String(formData.get("affiliateCode") || ""),
       buyerType: String(formData.get("buyerType") || "student"),
       seatCount: Number(formData.get("seatCount") || 1),
       groupLearners,
@@ -117,26 +118,19 @@ export async function addExternalStudentPaymentAction(
     const emailMessage = result.activationEmailSent
       ? ""
       : " Access is active, but the activation email was not sent. Use the activation-email resend tool."
-    await setInternalToast({
-      type: result.activationEmailSent ? "success" : "info",
-      title: result.buyerType === "family" ? "Group access provisioned" : "External payment added",
-      message: `${accessMessage}${emailMessage}`
-    })
+    const affiliateMessage = result.affiliateCommission && !result.affiliateCommission.ok
+      ? " Affiliate credit is queued for automatic reconciliation."
+      : ""
     revalidatePath("/internal/manual-payments")
     revalidatePath("/dashboard")
     return {
       status: "success",
       title: result.buyerType === "family" ? "Group access provisioned" : "External payment added",
-      message: `${accessMessage}${emailMessage}`,
+      message: `${accessMessage}${emailMessage}${affiliateMessage}`,
       submittedAt: Date.now()
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not provision this student."
-    await setInternalToast({
-      type: "error",
-      title: "Could not provision access",
-      message
-    })
     revalidatePath("/internal/manual-payments")
     revalidatePath("/dashboard")
     return {

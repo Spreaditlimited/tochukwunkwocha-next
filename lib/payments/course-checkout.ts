@@ -1,6 +1,7 @@
 import crypto, { randomUUID } from "crypto"
 
 import { getAdminSettingValue } from "@/lib/admin-settings"
+import { buildAffiliateSeatCommissions } from "@/lib/affiliate-commission-calculator"
 import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
@@ -933,6 +934,8 @@ export async function recordAffiliateAttribution(input: {
   buyerCurrency: string
   orderAmountMinor: number
   requestHeaders?: Headers
+  actorType?: string
+  actorId?: string | null
 }) {
   await ensureAffiliateAlignment()
   const affiliateCode = String(input.affiliateCode || "").trim().toUpperCase().slice(0, 40)
@@ -1048,6 +1051,8 @@ export async function recordAffiliateAttribution(input: {
   ])
   await recordAffiliateAudit({
     eventType: status === "accepted" ? "attribution_accepted" : "attribution_rejected",
+    actorType: input.actorType,
+    actorId: input.actorId,
     targetType: "order",
     targetId: input.sourceUuid,
     metadata: {
@@ -1067,18 +1072,12 @@ export async function recordAffiliateAttribution(input: {
 
 export async function createAffiliateCommissionForOrder(orderUuid: string) {
   const uuid = String(orderUuid || "").trim()
-  if (!uuid || String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") return
+  if (!uuid || String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") {
+    return { ok: true as const, created: 0, expected: 0 }
+  }
 
   try {
     await ensureAffiliateAlignment()
-    const existing = await prisma.$queryRaw<Array<{ id: bigint }>>`
-      SELECT id
-      FROM tochukwu_affiliate_commissions
-      WHERE order_uuid = ${uuid}
-      LIMIT 1
-    `
-    if (existing.length) return
-
     const rows = await prisma.$queryRaw<
       Array<{
         attributionId: bigint
@@ -1094,6 +1093,7 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
         commissionValue: number | bigint | null
         commissionCurrency: string | null
         holdDays: number | bigint | null
+        attributionCreatedAt: Date | string | null
       }>
     >`
       SELECT a.id AS attributionId,
@@ -1108,7 +1108,8 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
              r.commission_type AS commissionType,
              r.commission_value AS commissionValue,
              r.commission_currency AS commissionCurrency,
-             r.hold_days AS holdDays
+             r.hold_days AS holdDays,
+             a.created_at AS attributionCreatedAt
       FROM tochukwu_affiliate_attributions a
       JOIN tochukwu_affiliate_profiles p ON p.id = a.affiliate_profile_id
       LEFT JOIN school_students affiliate_school_student
@@ -1128,48 +1129,185 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
       LIMIT 1
     `
     const row = rows[0]
-    if (!row?.affiliateProfileId) return
+    if (!row?.affiliateProfileId) return { ok: true as const, created: 0, expected: 0 }
 
     const orderAmountMinor = Math.max(0, toInt(row.orderAmountMinor))
     const commissionType = String(row.commissionType || "percentage").trim().toLowerCase().slice(0, 20) || "percentage"
     const commissionValue = Math.max(0, toInt(row.commissionValue))
-    const commissionAmountMinor =
-      commissionType === "fixed" ? commissionValue : Math.floor((orderAmountMinor * Math.min(commissionValue, 10000)) / 10000)
-    if (commissionAmountMinor <= 0) return
+    const sourceRows = await prisma.$queryRaw<Array<{ seatCount: number | bigint | null }>>`
+      SELECT COALESCE(
+        (SELECT seat_count FROM course_orders WHERE order_uuid = ${uuid} LIMIT 1),
+        (SELECT seat_count FROM course_manual_payments WHERE payment_uuid = ${uuid} LIMIT 1),
+        1
+      ) AS seatCount
+    `
+    const seatCount = Math.max(1, Math.min(10000, toInt(sourceRows[0]?.seatCount, 1)))
+    const existing = await prisma.$queryRaw<Array<{ seatNumber: number | bigint }>>`
+      SELECT seat_number AS seatNumber
+      FROM tochukwu_affiliate_commissions
+      WHERE order_uuid = ${uuid}
+    `
+    const existingSeats = new Set(existing.map((item) => toInt(item.seatNumber, 1)))
 
     const holdDays = Math.max(0, Math.min(120, toInt(row.holdDays, Number(process.env.AFFILIATE_DEFAULT_HOLD_DAYS || 30))))
     const timestamp = now()
-    const payableAt = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000)
-    await prisma.$executeRaw`
-      INSERT INTO tochukwu_affiliate_commissions
-        (commission_uuid, attribution_id, order_uuid, course_slug, affiliate_profile_id, affiliate_code,
-         buyer_email, currency, order_amount_minor, commission_type, commission_rate_or_value,
-         commission_amount_minor, status, risk_score, risk_flags_json, payable_at, created_at, updated_at)
-      VALUES
-        (${`acm_${randomUUID().replace(/-/g, "")}`}, ${row.attributionId}, ${uuid}, ${String(row.courseSlug || "").trim().slice(0, 120)},
-         ${row.affiliateProfileId}, ${String(row.affiliateCode || "").trim().slice(0, 40)}, ${normalizeEmail(row.buyerEmail)},
-         ${String(row.commissionCurrency || row.buyerCurrency || "NGN").trim().toUpperCase().slice(0, 10)}, ${orderAmountMinor},
-         ${commissionType}, ${commissionValue}, ${commissionAmountMinor}, 'pending',
-         ${toInt(row.riskScore)}, ${row.riskFlagsJson || "[]"}, ${payableAt}, ${timestamp}, ${timestamp})
-      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
-    `
+    const attributionCreatedAt = row.attributionCreatedAt ? new Date(row.attributionCreatedAt) : timestamp
+    const payableAt = new Date(attributionCreatedAt.getTime() + holdDays * 24 * 60 * 60 * 1000)
+    const seatCommissions = buildAffiliateSeatCommissions({
+      orderAmountMinor,
+      seatCount,
+      commissionType,
+      commissionValue
+    })
+    let created = 0
+    let totalCommissionAmountMinor = 0
+    for (const { seatNumber, seatAmountMinor, commissionAmountMinor } of seatCommissions) {
+      totalCommissionAmountMinor += commissionAmountMinor
+      await prisma.$executeRaw`
+        INSERT INTO tochukwu_affiliate_commissions
+          (commission_uuid, attribution_id, order_uuid, seat_number, seat_count, course_slug, affiliate_profile_id, affiliate_code,
+           buyer_email, currency, order_amount_minor, commission_type, commission_rate_or_value,
+           commission_amount_minor, status, risk_score, risk_flags_json, payable_at, created_at, updated_at)
+        VALUES
+          (${`acm_${randomUUID().replace(/-/g, "")}`}, ${row.attributionId}, ${uuid}, ${seatNumber}, ${seatCount},
+           ${String(row.courseSlug || "").trim().slice(0, 120)}, ${row.affiliateProfileId},
+           ${String(row.affiliateCode || "").trim().slice(0, 40)}, ${normalizeEmail(row.buyerEmail)},
+           ${String(row.commissionCurrency || row.buyerCurrency || "NGN").trim().toUpperCase().slice(0, 10)}, ${seatAmountMinor},
+           ${commissionType}, ${commissionValue}, ${commissionAmountMinor}, 'pending',
+           ${toInt(row.riskScore)}, ${row.riskFlagsJson || "[]"}, ${payableAt}, ${timestamp}, ${timestamp})
+        ON DUPLICATE KEY UPDATE
+          seat_count = VALUES(seat_count),
+          order_amount_minor = VALUES(order_amount_minor),
+          commission_type = VALUES(commission_type),
+          commission_rate_or_value = VALUES(commission_rate_or_value),
+          commission_amount_minor = VALUES(commission_amount_minor),
+          updated_at = VALUES(updated_at)
+      `
+      if (!existingSeats.has(seatNumber)) created += 1
+    }
     await recordAffiliateAudit({
-      eventType: "commission_created",
+      eventType: created ? "commission_created" : "commission_reconciled",
       targetType: "order",
       targetId: uuid,
       metadata: {
         courseSlug: row.courseSlug,
         affiliateProfileId: String(row.affiliateProfileId),
         affiliateCode: row.affiliateCode,
-        commissionAmountMinor,
+        seatCount,
+        commissionsCreated: created,
+        totalCommissionAmountMinor,
         currency: String(row.commissionCurrency || row.buyerCurrency || "NGN").toUpperCase(),
         holdDays,
         payableAt: payableAt.toISOString()
       }
     })
-  } catch (_error) {
-    return
+    return { ok: true as const, created, expected: seatCount }
+  } catch (error) {
+    console.error("Affiliate commission creation failed", {
+      orderUuid: uuid,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    await recordAffiliateAudit({
+      eventType: "commission_creation_failed",
+      targetType: "order",
+      targetId: uuid,
+      metadata: { error: error instanceof Error ? error.message : String(error) }
+    }).catch(() => null)
+    return { ok: false as const, created: 0, expected: 0, error: error instanceof Error ? error.message : String(error) }
   }
+}
+
+export async function transferInstallmentAffiliateAttribution(input: {
+  planUuid: string
+  orderUuid: string
+}) {
+  const planUuid = String(input.planUuid || "").trim().slice(0, 64)
+  const orderUuid = String(input.orderUuid || "").trim().slice(0, 64)
+  if (!planUuid || !orderUuid) return false
+  await ensureAffiliateAlignment()
+  const timestamp = now()
+  const transferred = await prisma.$executeRaw`
+    INSERT INTO tochukwu_affiliate_attributions
+      (attribution_uuid, order_uuid, course_slug, affiliate_profile_id, affiliate_code, buyer_email, buyer_account_id,
+       buyer_country, buyer_currency, order_amount_minor, ip_hash, user_agent_hash, click_referrer,
+       attribution_status, rejection_reason, risk_score, risk_flags_json, created_at, updated_at)
+    SELECT ${`aat_${randomUUID().replace(/-/g, "")}`}, ${orderUuid}, course_slug, affiliate_profile_id, affiliate_code,
+       buyer_email, buyer_account_id, buyer_country, buyer_currency, order_amount_minor, ip_hash, user_agent_hash,
+       click_referrer, attribution_status, rejection_reason, risk_score, risk_flags_json, created_at, ${timestamp}
+    FROM tochukwu_affiliate_attributions
+    WHERE order_uuid = ${planUuid}
+    LIMIT 1
+    ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+  `
+  if (!Number(transferred || 0)) return false
+  await prisma.$executeRaw`
+    UPDATE course_orders o
+    JOIN tochukwu_affiliate_attributions a ON a.order_uuid = ${orderUuid}
+    SET o.affiliate_code = CASE WHEN a.attribution_status = 'accepted' THEN a.affiliate_code ELSE NULL END,
+        o.affiliate_profile_id = CASE WHEN a.attribution_status = 'accepted' THEN a.affiliate_profile_id ELSE NULL END,
+        o.affiliate_attribution_status = a.attribution_status,
+        o.updated_at = ${timestamp}
+    WHERE o.order_uuid = ${orderUuid}
+    LIMIT 1
+  `
+  await recordAffiliateAudit({
+    eventType: "installment_attribution_transferred",
+    targetType: "order",
+    targetId: orderUuid,
+    metadata: { planUuid }
+  })
+  return true
+}
+
+export async function reconcileAffiliateCommissions(limitInput = 250) {
+  await ensureAffiliateAlignment()
+  const limit = Math.max(1, Math.min(1000, toInt(limitInput, 250)))
+  const installmentRows = await prisma.$queryRaw<Array<{ planUuid: string; orderUuid: string }>>`
+    SELECT a.order_uuid AS planUuid, p.enrolled_order_uuid AS orderUuid
+    FROM tochukwu_affiliate_attributions a
+    JOIN student_installment_plans p
+      ON p.plan_uuid COLLATE utf8mb4_unicode_ci = a.order_uuid COLLATE utf8mb4_unicode_ci
+    WHERE a.attribution_status = 'accepted'
+      AND p.status = 'enrolled'
+      AND p.enrolled_order_uuid IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM tochukwu_affiliate_attributions target
+        WHERE target.order_uuid COLLATE utf8mb4_unicode_ci = p.enrolled_order_uuid COLLATE utf8mb4_unicode_ci
+      )
+    ORDER BY a.id ASC
+    LIMIT ${limit}
+  `
+  let transferred = 0
+  for (const row of installmentRows) {
+    if (await transferInstallmentAffiliateAttribution(row)) transferred += 1
+  }
+  const candidates = await prisma.$queryRaw<Array<{ orderUuid: string }>>`
+    SELECT a.order_uuid AS orderUuid
+    FROM tochukwu_affiliate_attributions a
+    WHERE a.attribution_status = 'accepted'
+      AND (
+        EXISTS (
+          SELECT 1 FROM course_orders o
+          WHERE o.order_uuid COLLATE utf8mb4_unicode_ci = a.order_uuid COLLATE utf8mb4_unicode_ci
+            AND o.status = 'paid'
+        )
+        OR EXISTS (
+          SELECT 1 FROM course_manual_payments m
+          WHERE m.payment_uuid COLLATE utf8mb4_unicode_ci = a.order_uuid COLLATE utf8mb4_unicode_ci
+            AND m.status = 'approved'
+        )
+      )
+    ORDER BY a.id ASC
+    LIMIT ${limit}
+  `
+  let created = 0
+  let failed = 0
+  for (const candidate of candidates) {
+    const result = await createAffiliateCommissionForOrder(candidate.orderUuid)
+    if (result.ok) created += result.created
+    else failed += 1
+  }
+  return { transferred, created, failed, checked: candidates.length }
 }
 
 function randomPasswordHash() {
@@ -1626,6 +1764,28 @@ export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | 
           family_account_id = COALESCE(${familyAccountId}, family_account_id), updated_at = ${timestamp}
       WHERE id = ${planId} AND enrolled_order_uuid = ${orderUuid}
     `
+    try {
+      const transferred = await transferInstallmentAffiliateAttribution({
+        planUuid: plan.plan_uuid,
+        orderUuid
+      })
+      if (transferred) await createAffiliateCommissionForOrder(orderUuid)
+    } catch (error) {
+      console.error("Installment affiliate attribution transfer failed", {
+        planUuid: plan.plan_uuid,
+        orderUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      await recordAffiliateAudit({
+        eventType: "installment_attribution_transfer_failed",
+        targetType: "order",
+        targetId: orderUuid,
+        metadata: {
+          planUuid: plan.plan_uuid,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      }).catch(() => null)
+    }
     return { enrolled: true, orderUuid }
   } catch (error) {
     // Preserve the deterministic order UUID for an idempotent retry.

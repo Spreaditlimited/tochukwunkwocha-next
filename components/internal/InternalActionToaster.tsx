@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Info, Loader2, X, XCircle } from "lucide-react"
 import { usePathname, useSearchParams } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -63,15 +63,23 @@ export function InternalActionToaster() {
   const searchParams = useSearchParams()
   const [toast, setToast] = useState<Toast | null>(null)
   const idRef = useRef(1)
+  const pollTimerRef = useRef<number | null>(null)
 
-  function show(input: Omit<Toast, "id">) {
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current === null) return
+    window.clearInterval(pollTimerRef.current)
+    pollTimerRef.current = null
+  }, [])
+
+  const show = useCallback((input: Omit<Toast, "id">) => {
+    if (input.type !== "loading") stopPolling()
     setToast({ ...input, id: idRef.current++ })
-  }
+  }, [stopPolling])
 
   useEffect(() => {
     const fromCookie = readCookieToast()
     if (fromCookie) show(fromCookie)
-  }, [pathname, searchParams])
+  }, [pathname, searchParams, show])
 
   useEffect(() => {
     function onToast(event: Event) {
@@ -82,7 +90,7 @@ export function InternalActionToaster() {
 
     window.addEventListener(EVENT_NAME, onToast)
     return () => window.removeEventListener(EVENT_NAME, onToast)
-  }, [])
+  }, [show])
 
   useEffect(() => {
     if (!toast || toast.type === "loading") return
@@ -106,6 +114,7 @@ export function InternalActionToaster() {
       const submitter = event.submitter instanceof HTMLElement ? event.submitter : null
       const label = labelFromSubmitter(submitter)
       const maxAttempts = submitter?.getAttribute("data-toast-long") === "true" ? 1200 : 24
+      stopPolling()
       show({
         type: "loading",
         title: loadingTitle(label),
@@ -117,18 +126,24 @@ export function InternalActionToaster() {
         attempts += 1
         if (checkForServerToast()) {
           window.clearInterval(timer)
+          if (pollTimerRef.current === timer) pollTimerRef.current = null
           return
         }
         if (attempts >= maxAttempts) {
           window.clearInterval(timer)
+          if (pollTimerRef.current === timer) pollTimerRef.current = null
           setToast((current) => (current?.type === "loading" ? null : current))
         }
       }, 250)
+      pollTimerRef.current = timer
     }
 
     document.addEventListener("submit", onSubmit, true)
-    return () => document.removeEventListener("submit", onSubmit, true)
-  }, [])
+    return () => {
+      document.removeEventListener("submit", onSubmit, true)
+      stopPolling()
+    }
+  }, [show, stopPolling])
 
   if (!toast) return null
 
