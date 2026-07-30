@@ -69,7 +69,8 @@ export async function syncEnrollmentToBrevo(input: {
       },
       listIds: [listId],
       updateEnabled: true
-    })
+    }),
+    signal: AbortSignal.timeout(8_000)
   })
 
   if (!response.ok) {

@@ -109,7 +109,10 @@ export async function sendEmail(input: EmailInput) {
       host: smtpHost,
       port: smtpPort,
       secure,
-      auth: { user: smtpUser, pass: smtpPass }
+      auth: { user: smtpUser, pass: smtpPass },
+      connectionTimeout: 8_000,
+      greetingTimeout: 8_000,
+      socketTimeout: 12_000
     })
     try {
       const result = await transporter.sendMail({

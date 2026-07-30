@@ -48,6 +48,7 @@ import {
 import { AddExternalStudentForm } from "./AddExternalStudentForm"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>

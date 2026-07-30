@@ -249,59 +249,60 @@ export async function reviewManualPayment(input: {
 
   const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
   const resetToken = reset?.token || null
-  let activationEmailSent = false
-  if (resetToken) {
-    try {
-      await sendStudentAccountReadyEmail({
+  const activationEmailTask = resetToken
+    ? sendStudentAccountReadyEmail({
         email,
         fullName: account.fullName || clean(payment.first_name, 180) || "Student",
         courseSlug: clean(payment.course_slug, 120),
         resetToken
       })
-      activationEmailSent = true
-    } catch (error) {
-      await appendManualPaymentReviewNote(
-        paymentUuid,
-        `[ACTIVATION_EMAIL_FAILED] ${error instanceof Error ? error.message : "The activation email could not be sent."}`
-      )
-    }
-  }
-  await syncEnrollmentToBrevo({
-    fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-    email,
-    phone: account.phoneE164 || clean(payment.phone, 80),
-    courseSlug: clean(payment.course_slug, 120),
-    batchKey: clean(payment.batch_key, 64),
-    batchLabel: clean(payment.batch_label, 120),
-    source: "manual_payment_approved"
-  }).catch(() => null)
-  await sendEnrollmentConfirmedWhatsApp({
-    phone: account.phoneE164 || clean(payment.phone, 80),
-    fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-    courseSlug: clean(payment.course_slug, 120),
-    dashboardPath: clean(payment.buyer_type, 40).toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
-  }).catch(() => null)
-
-  await recordCouponRedemption({
-    couponId: payment.coupon_id ? Number(payment.coupon_id) : null,
-    orderUuid: paymentUuid,
-    email,
-    currency: clean(payment.currency, 10) || "NGN",
-    discountMinor: toNumber(payment.discount_minor)
-  }).catch(() => null)
-
-  const affiliateCommission = await createAffiliateCommissionForOrder(paymentUuid)
+        .then(() => true)
+        .catch(async (error) => {
+          await appendManualPaymentReviewNote(
+            paymentUuid,
+            `[ACTIVATION_EMAIL_FAILED] ${error instanceof Error ? error.message : "The activation email could not be sent."}`
+          )
+          return false
+        })
+    : Promise.resolve(false)
+  const postEnrollmentResults = await Promise.all([
+    activationEmailTask,
+    syncEnrollmentToBrevo({
+      fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+      email,
+      phone: account.phoneE164 || clean(payment.phone, 80),
+      courseSlug: clean(payment.course_slug, 120),
+      batchKey: clean(payment.batch_key, 64),
+      batchLabel: clean(payment.batch_label, 120),
+      source: "manual_payment_approved"
+    }).catch(() => null),
+    sendEnrollmentConfirmedWhatsApp({
+      phone: account.phoneE164 || clean(payment.phone, 80),
+      fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+      courseSlug: clean(payment.course_slug, 120),
+      dashboardPath: clean(payment.buyer_type, 40).toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
+    }).catch(() => null),
+    recordCouponRedemption({
+      couponId: payment.coupon_id ? Number(payment.coupon_id) : null,
+      orderUuid: paymentUuid,
+      email,
+      currency: clean(payment.currency, 10) || "NGN",
+      discountMinor: toNumber(payment.discount_minor)
+    }).catch(() => null),
+    createAffiliateCommissionForOrder(paymentUuid),
+    sendManualPaymentMetaPurchase({
+      paymentUuid,
+      eventSourceUrl: `${siteBaseUrl()}/checkout/${clean(payment.course_slug, 120) || "prompt-to-profit"}`
+    }).catch(() => null)
+  ])
+  const activationEmailSent = postEnrollmentResults[0]
+  const affiliateCommission = postEnrollmentResults[4]
   if (!affiliateCommission.ok) {
     await appendManualPaymentReviewNote(
       paymentUuid,
       `[AFFILIATE_COMMISSION_RETRY_REQUIRED] ${affiliateCommission.error || "Affiliate credit will be retried by reconciliation."}`
     )
   }
-  await sendManualPaymentMetaPurchase({
-    paymentUuid,
-    eventSourceUrl: `${siteBaseUrl()}/checkout/${clean(payment.course_slug, 120) || "prompt-to-profit"}`
-  }).catch(() => null)
-
   return {
     ok: true as const,
     paymentUuid,

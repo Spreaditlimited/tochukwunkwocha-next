@@ -60,7 +60,8 @@ async function sendTransactionalWhatsApp(payload: TransactionalWhatsAppPayload) 
       ...payload,
       phone,
       parameters: payload.parameters.map((item) => clean(item, 500))
-    })
+    }),
+    signal: AbortSignal.timeout(8_000)
   })
 
   if (!response.ok) {

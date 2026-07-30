@@ -162,7 +162,7 @@ export async function sendManualPaymentMetaPurchase(input: {
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(body),
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000)
+      signal: AbortSignal.timeout(8_000)
     })
     json = await response.json().catch(() => null)
     if (!response.ok || json?.error) {
