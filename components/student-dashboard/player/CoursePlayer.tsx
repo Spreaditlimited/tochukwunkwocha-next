@@ -407,20 +407,22 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   }, [activeLesson])
 
   useEffect(() => {
-    if (!activeLessonId) return
+    if (!activeLessonId || !playbackUrl) return
     if (heartbeatRef.current) clearInterval(heartbeatRef.current)
     heartbeatRef.current = setInterval(() => {
+      if (document.visibilityState !== "visible") return
       fetch("/api/student/learning/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessonId: activeLessonId, watchSeconds: 15 })
+        body: JSON.stringify({ lessonId: activeLessonId, watchSeconds: 60 }),
+        keepalive: true
       }).catch(() => null)
-    }, 15000)
+    }, 60000)
 
     return () => {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current)
     }
-  }, [activeLessonId])
+  }, [activeLessonId, playbackUrl])
 
   useEffect(() => {
     let cancelled = false

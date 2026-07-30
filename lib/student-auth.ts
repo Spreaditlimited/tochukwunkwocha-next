@@ -17,6 +17,7 @@ const MAX_AUTH_ATTEMPTS = 5
 const MAX_LOGIN_ATTEMPTS_PER_IP = 25
 const MAX_RESET_REQUESTS_PER_IP = 10
 const AUTH_LOCK_MINUTES = 15
+const SESSION_LAST_SEEN_WRITE_INTERVAL_MS = 10 * 60 * 1000
 
 export interface StudentSessionAccount {
   id: bigint
@@ -751,12 +752,14 @@ export async function getStudentSession() {
     where: { tokenHash: shaToken(token) },
     select: {
       expiresAt: true,
+      lastSeenAt: true,
       account: {
         select: {
           id: true,
           accountUuid: true,
           fullName: true,
           email: true,
+          profilePictureUrl: true,
           domainsAutoRenewEnabled: true,
           certificateNameConfirmedAt: true,
           certificateNameUpdatedAt: true
@@ -771,14 +774,15 @@ export async function getStudentSession() {
     return null
   }
 
-  await prisma.studentSession
-    .update({
-      where: { tokenHash: shaToken(token) },
-      data: { lastSeenAt: new Date() }
-    })
-    .catch(() => null)
-
-  const profilePicture = await getStudentProfilePicture(session.account.id)
+  const now = Date.now()
+  if (!session.lastSeenAt || now - session.lastSeenAt.getTime() >= SESSION_LAST_SEEN_WRITE_INTERVAL_MS) {
+    await prisma.studentSession
+      .update({
+        where: { tokenHash: shaToken(token) },
+        data: { lastSeenAt: new Date(now) }
+      })
+      .catch(() => null)
+  }
 
   return {
     token,
@@ -787,7 +791,7 @@ export async function getStudentSession() {
       accountUuid: session.account.accountUuid,
       fullName: session.account.fullName,
       email: session.account.email,
-      profilePictureUrl: profilePicture.url,
+      profilePictureUrl: String(session.account.profilePictureUrl || "").trim(),
       domainsAutoRenewEnabled: session.account.domainsAutoRenewEnabled,
       certificateNameConfirmedAt: session.account.certificateNameConfirmedAt,
       certificateNameUpdatedAt: session.account.certificateNameUpdatedAt

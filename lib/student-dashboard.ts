@@ -376,8 +376,8 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
   const normalized = String(email || "").trim().toLowerCase()
   if (!normalized) return []
 
-  const cardRows = await prisma.$queryRaw<StudentCourseAccessRow[]>(
-    Prisma.sql`
+  const [cardRows, manualRows, familyRows] = await Promise.all([
+    prisma.$queryRaw<StudentCourseAccessRow[]>(Prisma.sql`
       SELECT
         'card_checkout' AS source,
         COALESCE(o.order_uuid, CONCAT('order_', o.id)) AS uuid,
@@ -393,12 +393,10 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
       LEFT JOIN course_batches b
         ON b.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
        AND b.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
-      WHERE LOWER(o.email) = ${normalized}
+      WHERE o.email COLLATE utf8mb4_unicode_ci = ${normalized}
         AND COALESCE(o.buyer_type, 'student') <> 'family'
-    `
-  )
-  const manualRows = await prisma.$queryRaw<StudentCourseAccessRow[]>(
-    Prisma.sql`
+    `),
+    prisma.$queryRaw<StudentCourseAccessRow[]>(Prisma.sql`
       SELECT
         'manual_payment' AS source,
         m.payment_uuid AS uuid,
@@ -414,13 +412,11 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
       LEFT JOIN course_batches b
         ON b.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
        AND b.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
-      WHERE LOWER(m.email) = ${normalized}
+      WHERE m.email COLLATE utf8mb4_unicode_ci = ${normalized}
         AND COALESCE(m.buyer_type, 'student') <> 'family'
-    `
-  )
-  const familyRows = accountId
-    ? await prisma.$queryRaw<StudentCourseAccessRow[]>(
-        Prisma.sql`
+    `),
+    accountId
+      ? prisma.$queryRaw<StudentCourseAccessRow[]>(Prisma.sql`
           SELECT
             'family_child' AS source,
             COALESCE(e.source_uuid, CONCAT('family_child_', e.id)) AS uuid,
@@ -442,9 +438,9 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
             AND c.status = 'active'
             AND f.status = 'active'
             AND e.status = 'active'
-        `
-      ).catch(() => [])
-    : []
+        `).catch(() => [])
+      : Promise.resolve([])
+  ])
 
   return [...cardRows, ...manualRows, ...familyRows]
     .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())
@@ -563,7 +559,7 @@ function addSeconds(value: Date | null, seconds: number) {
   return new Date(value.getTime() + Math.max(0, Math.round(seconds)) * 1000)
 }
 
-async function firstRecordedLessonAvailableAt(input: {
+async function queryFirstRecordedLessonAvailableAt(input: {
   courseSlug: string
   batchKey?: string | null
   batchStartAt?: Date | null
@@ -632,6 +628,36 @@ async function firstRecordedLessonAvailableAt(input: {
   }
 
   return null
+}
+
+const globalCourseAvailabilityCache = globalThis as unknown as {
+  tochukwuCourseAvailabilityCache?: Map<string, { value: Date | null; expiresAt: number }>
+}
+const courseAvailabilityCache =
+  globalCourseAvailabilityCache.tochukwuCourseAvailabilityCache ??
+  new Map<string, { value: Date | null; expiresAt: number }>()
+globalCourseAvailabilityCache.tochukwuCourseAvailabilityCache = courseAvailabilityCache
+
+async function firstRecordedLessonAvailableAt(input: {
+  courseSlug: string
+  batchKey?: string | null
+  batchStartAt?: Date | null
+}) {
+  const cacheKey = [
+    cleanText(input.courseSlug, 120).toLowerCase(),
+    cleanText(input.batchKey, 64).toLowerCase(),
+    input.batchStartAt?.toISOString() || ""
+  ].join("::")
+  const cached = courseAvailabilityCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.value
+
+  const value = await queryFirstRecordedLessonAvailableAt(input)
+  courseAvailabilityCache.set(cacheKey, { value, expiresAt: Date.now() + 60_000 })
+  if (courseAvailabilityCache.size > 500) {
+    const oldestKey = courseAvailabilityCache.keys().next().value
+    if (typeof oldestKey === "string") courseAvailabilityCache.delete(oldestKey)
+  }
+  return value
 }
 
 export async function listStudentCourses(email: string, accountId?: bigint | number | null): Promise<StudentCourseItem[]> {

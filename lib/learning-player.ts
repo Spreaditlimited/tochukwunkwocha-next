@@ -5,7 +5,6 @@ import { sendEmail } from "@/lib/email"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { plainTextToRichNotes } from "@/lib/rich-notes"
-import { listStudentCourses } from "@/lib/student-dashboard"
 import { watWallDateTimeMs } from "@/lib/utils"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
@@ -188,22 +187,40 @@ function parseDateMs(value: unknown) {
 }
 
 async function getLearnerBatchContext(accountId: bigint, email: string, courseSlug: string) {
-  const courses = await listStudentCourses(email, accountId).catch(() => [])
-  const activeCourse = courses.find((course) => course.courseSlug === courseSlug && course.isActive && normalizeBatchKey(course.batchKey))
-  const familyRows = await prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
-    SELECT e.batch_key AS batchKey
-    FROM family_children c
-    JOIN family_accounts f ON f.id = c.family_id
-    JOIN family_child_enrollments e ON e.child_id = c.id
-    WHERE c.account_id = ${accountId}
-      AND c.status = 'active'
-      AND f.status = 'active'
-      AND e.status = 'active'
-      AND e.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
-    ORDER BY e.id DESC
+  const normalizedEmail = clean(email, 190).toLowerCase()
+  const learnerRows = await prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
+    SELECT access_rows.batchKey
+    FROM (
+      SELECT o.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, o.created_at AS grantedAt
+      FROM course_orders o
+      WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND o.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
+        AND COALESCE(o.buyer_type, 'student') <> 'family'
+        AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
+      UNION ALL
+      SELECT m.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, m.created_at AS grantedAt
+      FROM course_manual_payments m
+      WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND m.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
+        AND COALESCE(m.buyer_type, 'student') <> 'family'
+        AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
+      UNION ALL
+      SELECT e.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(e.paid_at, e.updated_at, e.created_at) AS grantedAt
+      FROM family_children c
+      JOIN family_accounts f ON f.id = c.family_id
+      JOIN family_child_enrollments e ON e.child_id = c.id
+      WHERE c.account_id = ${accountId}
+        AND c.status = 'active'
+        AND f.status = 'active'
+        AND e.status = 'active'
+        AND e.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
+    ) access_rows
+    WHERE access_rows.batchKey IS NOT NULL
+      AND TRIM(access_rows.batchKey) <> ''
+    ORDER BY access_rows.grantedAt DESC
     LIMIT 1
   `).catch(() => [])
-  const learnerBatchKey = normalizeBatchKey(activeCourse?.batchKey || familyRows[0]?.batchKey)
+  const learnerBatchKey = normalizeBatchKey(learnerRows[0]?.batchKey)
   const [activeBatchRows, learnerBatchRows, anchorRows] = await Promise.all([
     prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
       SELECT batch_key AS batchKey
@@ -313,8 +330,11 @@ async function studentCanAccessReleasedModule(input: {
   return moduleIsReleasedForContext(input, context, scheduleMap)
 }
 
+let learningProgressTablePromise: Promise<void> | null = null
+
 export async function ensureLearningProgressTable() {
-  await prisma.$executeRaw`
+  if (learningProgressTablePromise) return learningProgressTablePromise
+  learningProgressTablePromise = prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS tochukwu_learning_lesson_progress (
       id BIGINT NOT NULL AUTO_INCREMENT,
       account_id BIGINT NOT NULL,
@@ -332,37 +352,58 @@ export async function ensureLearningProgressTable() {
       KEY idx_tochukwu_learning_progress_lesson (lesson_id),
       KEY idx_tochukwu_learning_progress_module (module_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `
+  `.then(() => undefined).catch((error) => {
+    learningProgressTablePromise = null
+    throw error
+  })
+  return learningProgressTablePromise
 }
 
 export async function studentHasCourseAccess(accountId: bigint, email: string, courseSlug: string) {
-  const courses = await listStudentCourses(email, accountId)
-  if (courses.some((course) => course.courseSlug === courseSlug && course.isActive)) return true
+  const normalizedEmail = clean(email, 190).toLowerCase()
+  const normalizedCourseSlug = clean(courseSlug, 120).toLowerCase()
+  if (!normalizedEmail || !normalizedCourseSlug) return false
 
-  const overrides = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
-    SELECT id
-    FROM tochukwu_learning_access_overrides
-    WHERE LOWER(email) COLLATE utf8mb4_general_ci = ${email.toLowerCase()}
-      AND course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
-      AND status = 'active'
-      AND (expires_at IS NULL OR expires_at > NOW())
+  const rows = await prisma.$queryRaw<{ allowed: number | bigint }[]>(Prisma.sql`
+    SELECT 1 AS allowed
+    WHERE EXISTS (
+      SELECT 1
+      FROM course_orders o
+      WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND o.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+        AND COALESCE(o.buyer_type, 'student') <> 'family'
+        AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM course_manual_payments m
+      WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND m.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+        AND COALESCE(m.buyer_type, 'student') <> 'family'
+        AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM tochukwu_learning_access_overrides a
+      WHERE a.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND a.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+        AND a.status = 'active'
+        AND (a.expires_at IS NULL OR a.expires_at > NOW())
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM family_children c
+      JOIN family_accounts f ON f.id = c.family_id
+      JOIN family_child_enrollments e ON e.child_id = c.id
+      WHERE c.account_id = ${accountId}
+        AND c.status = 'active'
+        AND f.status = 'active'
+        AND e.status = 'active'
+        AND e.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+    )
     LIMIT 1
   `).catch(() => [])
-  if (overrides.length) return true
-
-  const familyRows = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
-    SELECT e.id
-    FROM family_children c
-    JOIN family_accounts f ON f.id = c.family_id
-    JOIN family_child_enrollments e ON e.child_id = c.id
-    WHERE c.account_id = ${accountId}
-      AND c.status = 'active'
-      AND f.status = 'active'
-      AND e.status = 'active'
-      AND e.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
-    LIMIT 1
-  `).catch(() => [])
-  return familyRows.length > 0
+  return rows.length > 0
 }
 
 export async function getLearningCourseForStudent(input: {
@@ -372,8 +413,6 @@ export async function getLearningCourseForStudent(input: {
 }): Promise<{ ok: true; course: LearningCoursePayload } | { ok: false; error: string }> {
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
   if (!courseSlug) return { ok: false, error: "course is required" }
-  await ensureLearningProgressTable()
-
   const allowed = await studentHasCourseAccess(input.accountId, input.email, courseSlug)
   if (!allowed) return { ok: false, error: "You do not currently have access to this course." }
 
@@ -582,7 +621,6 @@ export async function saveStudentLessonProgress(input: {
   markComplete?: boolean
   watchSeconds?: number
 }) {
-  await ensureLearningProgressTable()
   const rows = await prisma.$queryRaw<{ moduleId: bigint; courseSlug: string; dripEnabled: number | bigint | null; dripAt: Date | null; dripBatchKey: string | null; dripOffsetSeconds: number | bigint | null }[]>(Prisma.sql`
     SELECT l.module_id AS moduleId, cm.course_slug AS courseSlug, cm.drip_enabled AS dripEnabled, cm.drip_at AS dripAt,
       cm.drip_batch_key AS dripBatchKey, cm.drip_offset_seconds AS dripOffsetSeconds
@@ -669,7 +707,11 @@ export async function getStudentLessonTranscript(accountId: bigint, email: strin
   return { ok: true as const, lessonTitle: clean(row.lessonTitle, 220), transcriptText: transcript }
 }
 
+let learningSupportTablesPromise: Promise<void> | null = null
+
 export async function ensureLearningSupportTables() {
+  if (learningSupportTablesPromise) return learningSupportTablesPromise
+  learningSupportTablesPromise = (async () => {
   await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS tochukwu_learning_course_features (
       id BIGINT NOT NULL AUTO_INCREMENT,
@@ -822,11 +864,15 @@ export async function ensureLearningSupportTables() {
       KEY idx_tochukwu_transcript_audit_event (event_type, status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `
+  })().catch((error) => {
+    learningSupportTablesPromise = null
+    throw error
+  })
+  return learningSupportTablesPromise
 }
 
 export async function getLearningSupportForStudent(accountId: bigint, email: string, courseSlugInput: string): Promise<LearningSupportPayload> {
   const courseSlug = clean(courseSlugInput, 120).toLowerCase()
-  await ensureLearningSupportTables()
   const allowed = await studentHasCourseAccess(accountId, email, courseSlug)
   if (!allowed) throw new Error("You do not currently have access to this course.")
   const [featuresRows, assignments, threads] = await Promise.all([
@@ -997,7 +1043,6 @@ export async function createLearningAssignment(input: {
   screenshotUrls?: string[]
 }) {
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
-  await ensureLearningSupportTables()
   const allowed = await studentHasCourseAccess(input.accountId, input.email, courseSlug)
   if (!allowed) throw new Error("You do not currently have access to this course.")
   const features = await getLearningSupportForStudent(input.accountId, input.email, courseSlug)
@@ -1059,7 +1104,6 @@ export async function createLearningThread(input: {
   body: string
 }) {
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
-  await ensureLearningSupportTables()
   const allowed = await studentHasCourseAccess(input.accountId, input.email, courseSlug)
   if (!allowed) throw new Error("You do not currently have access to this course.")
   const features = await getLearningSupportForStudent(input.accountId, input.email, courseSlug)
@@ -1133,7 +1177,6 @@ export async function createLearningReply(input: {
   body: string
 }) {
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
-  await ensureLearningSupportTables()
   const allowed = await studentHasCourseAccess(input.accountId, input.email, courseSlug)
   if (!allowed) throw new Error("You do not currently have access to this course.")
   const body = clean(input.body, 20000)
@@ -1293,7 +1336,6 @@ export async function deleteLearningReply(input: { accountId: bigint; email: str
 
 export async function requestTranscriptAccess(input: { accountId: bigint; email: string; courseSlug: string; lessonId?: number | null; reason?: string }) {
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
-  await ensureLearningSupportTables()
   const allowed = await studentHasCourseAccess(input.accountId, input.email, courseSlug)
   if (!allowed) throw new Error("You do not currently have access to this course.")
   const now = new Date()

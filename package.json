@@ -21,7 +21,8 @@
     "smoke:business-financials": "node scripts/smoke-business-financials.mjs",
     "smoke:admin-group-enrollment": "node scripts/smoke-admin-group-enrollment.mjs",
     "smoke:affiliate-commissions": "node scripts/smoke-affiliate-commissions.mjs",
-    "smoke:installment-reconciliation": "node scripts/smoke-installment-reconciliation.mjs"
+    "smoke:installment-reconciliation": "node scripts/smoke-installment-reconciliation.mjs",
+    "smoke:student-scale-readiness": "node scripts/smoke-student-scale-readiness.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

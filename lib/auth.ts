@@ -22,6 +22,7 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
 const MAX_LOGIN_ATTEMPTS = 5
 const MAX_LOGIN_ATTEMPTS_PER_IP = 25
 const LOGIN_LOCK_MINUTES = 15
+const ADMIN_LAST_SEEN_WRITE_INTERVAL_MS = 10 * 60 * 1000
 let adminSecurityTablesPromise: Promise<void> | null = null
 
 function normalizeEmail(value: FormDataEntryValue | string | null | undefined) {
@@ -261,10 +262,12 @@ export async function getAdminSession() {
       email: string
       isOwner: number | bigint | boolean
       allowedPages: string | null
+      lastSeenAt: Date
       expiresAt: Date
     }>>`
       SELECT a.admin_uuid AS adminUuid, a.full_name AS fullName, a.email,
-        a.is_owner AS isOwner, a.allowed_pages AS allowedPages, s.expires_at AS expiresAt
+        a.is_owner AS isOwner, a.allowed_pages AS allowedPages,
+        s.last_seen_at AS lastSeenAt, s.expires_at AS expiresAt
       FROM tochukwu_admin_sessions s
       JOIN tochukwu_admin_accounts a ON a.admin_uuid = s.admin_uuid AND a.is_active = 1
       WHERE s.token_hash = ${sha256(token)}
@@ -275,7 +278,14 @@ export async function getAdminSession() {
       await prisma.$executeRaw`DELETE FROM tochukwu_admin_sessions WHERE token_hash = ${sha256(token)}`.catch(() => null)
       return null
     }
-    await prisma.$executeRaw`UPDATE tochukwu_admin_sessions SET last_seen_at = ${new Date()} WHERE token_hash = ${sha256(token)}`.catch(() => null)
+    const now = Date.now()
+    if (!row.lastSeenAt || now - row.lastSeenAt.getTime() >= ADMIN_LAST_SEEN_WRITE_INTERVAL_MS) {
+      await prisma.$executeRaw`
+        UPDATE tochukwu_admin_sessions
+        SET last_seen_at = ${new Date(now)}
+        WHERE token_hash = ${sha256(token)}
+      `.catch(() => null)
+    }
     return {
       adminUuid: row.adminUuid,
       fullName: row.fullName,
