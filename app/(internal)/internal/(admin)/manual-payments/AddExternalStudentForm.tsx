@@ -176,13 +176,13 @@ export function AddExternalStudentForm({
             <span className={labelClass}>Proof Public ID</span>
             <input name="proofPublicId" placeholder="Optional Cloudinary ID" className={inputClass} />
           </label>
-          <label className="block xl:col-span-3">
+          <label className="block md:col-span-2 xl:col-span-4">
             <span className={labelClass}>Admin Note</span>
             <textarea name="adminNote" rows={2} placeholder="Optional internal notes" className="w-full rounded-lg border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground shadow-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
           </label>
-          <div className="flex items-end justify-end">
+          <div className="flex justify-stretch border-t border-border pt-5 md:col-span-2 md:justify-end xl:col-span-4">
             <button
-              className="btn-primary w-full shadow-sm xl:w-auto"
+              className="btn-primary w-full justify-center shadow-sm md:w-auto"
               type="submit"
               disabled={pending || !courseSlug || (!immediateAccess && (!batchKey || batchRequiredButUnavailable))}
               aria-busy={pending}
