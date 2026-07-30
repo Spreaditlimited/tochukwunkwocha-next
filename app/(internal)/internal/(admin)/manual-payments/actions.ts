@@ -73,7 +73,17 @@ export async function reviewManualPaymentAction(formData: FormData) {
   revalidatePath("/internal/manual-payments")
 }
 
-export async function addExternalStudentPaymentAction(formData: FormData) {
+export type ExternalStudentPaymentActionState = {
+  status: "idle" | "success" | "error"
+  title: string
+  message: string
+  submittedAt: number
+}
+
+export async function addExternalStudentPaymentAction(
+  _previousState: ExternalStudentPaymentActionState,
+  formData: FormData
+): Promise<ExternalStudentPaymentActionState> {
   const admin = await requireAdmin("/internal/manual-payments")
   try {
     let groupLearners: unknown[] = []
@@ -84,6 +94,7 @@ export async function addExternalStudentPaymentAction(formData: FormData) {
       throw new Error("The learner assignment details could not be read. Please review them and try again.")
     }
     const result = await addExternalStudentPayment({
+      sourceType: String(formData.get("sourceType") || ""),
       courseSlug: String(formData.get("courseSlug") || ""),
       batchKey: String(formData.get("batchKey") || ""),
       firstName: String(formData.get("firstName") || ""),
@@ -111,6 +122,14 @@ export async function addExternalStudentPaymentAction(formData: FormData) {
       title: result.buyerType === "family" ? "Group access provisioned" : "External payment added",
       message: `${accessMessage}${emailMessage}`
     })
+    revalidatePath("/internal/manual-payments")
+    revalidatePath("/dashboard")
+    return {
+      status: "success",
+      title: result.buyerType === "family" ? "Group access provisioned" : "External payment added",
+      message: `${accessMessage}${emailMessage}`,
+      submittedAt: Date.now()
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not provision this student."
     await setInternalToast({
@@ -118,9 +137,15 @@ export async function addExternalStudentPaymentAction(formData: FormData) {
       title: "Could not provision access",
       message
     })
+    revalidatePath("/internal/manual-payments")
+    revalidatePath("/dashboard")
+    return {
+      status: "error",
+      title: "Could not provision access",
+      message,
+      submittedAt: Date.now()
+    }
   }
-  revalidatePath("/internal/manual-payments")
-  revalidatePath("/dashboard")
 }
 
 export async function updateManualPaymentEmailAction(formData: FormData) {

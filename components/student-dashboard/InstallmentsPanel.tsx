@@ -86,7 +86,7 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
     event.preventDefault()
     setBusyKey("new")
     try {
-      const plan = await postJson<{ planUuid: string; pricing: { currency: string; finalAmountMinor: number } }>("/api/checkout/installment-plan", {
+      const plan = await postJson<{ planUuid: string; reusedExistingPlan?: boolean; pricing: { currency: string; finalAmountMinor: number } }>("/api/checkout/installment-plan", {
         courseSlug,
         returnSlug: courseSlug,
         firstName: account.fullName,
@@ -109,7 +109,13 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
         currency: plan.pricing.currency,
         amountMinor
       })
-      showStudentToast({ type: "success", title: "Installment started", message: "Redirecting to secure payment." })
+      showStudentToast({
+        type: "success",
+        title: plan.reusedExistingPlan ? "Existing plan found" : "Installment started",
+        message: plan.reusedExistingPlan
+          ? "Your payment will be added to your existing installment plan."
+          : "Redirecting to secure payment."
+      })
       window.location.href = payment.checkoutUrl
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not start installment."

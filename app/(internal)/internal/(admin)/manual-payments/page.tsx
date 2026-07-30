@@ -12,7 +12,6 @@ import {
   Send, 
   ShieldAlert, 
   Trash2, 
-  UserPlus, 
   Users, 
   XCircle 
 } from "lucide-react"
@@ -35,7 +34,6 @@ import {
 import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 import {
-  addExternalStudentPaymentAction,
   completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
   reconcilePaystackPaymentsAction,
@@ -46,7 +44,7 @@ import {
   sendWhatsAppCampaignAction,
   updateManualPaymentEmailAction
 } from "./actions"
-import { ExternalGroupAssignmentFields } from "./ExternalGroupAssignmentFields"
+import { AddExternalStudentForm } from "./AddExternalStudentForm"
 
 export const dynamic = "force-dynamic"
 
@@ -138,14 +136,6 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       key: `summary-${batch.courseSlug}-${batch.batchKey}`,
       value: batch.batchKey,
       label: batch.batchLabel
-    }))
-  ]
-  const externalBatchOptions = [
-    { value: "", label: "Default batch / Immediate access" },
-    ...allBatches.map((batch) => ({
-      key: `external-${batch.courseSlug}-${batch.batchKey}`,
-      value: batch.batchKey,
-      label: `${batch.courseSlug} / ${batch.batchLabel}`
     }))
   ]
   const ledgerBatchOptions = [
@@ -282,77 +272,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       </div>
       </DashboardStatsVisibility>
 
-      {/* Add External Student Module */}
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <UserPlus className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-heading text-xl font-black text-foreground">Add External Student</h2>
-              <p className="mt-1 text-sm font-medium text-muted-foreground">
-                Provision access for verified offline payments. The system generates an approved payment and automatically grants dashboard access.
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <form action={addExternalStudentPaymentAction} className="p-6 sm:p-8">
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme</span>
-              <PremiumPicker name="courseSlug" defaultValue={courseSlug === "all" ? "prompt-to-profit" : courseSlug} options={courseOptions} />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch Allocation</span>
-              <PremiumPicker name="batchKey" options={externalBatchOptions} />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</span>
-              <input name="firstName" placeholder="Learner's full name" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email Address</span>
-              <input name="email" type="email" placeholder="student@example.com" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Phone Number</span>
-              <input name="phone" placeholder="+234..." className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Country</span>
-              <input name="country" defaultValue="Nigeria" placeholder="Nigeria" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <ExternalGroupAssignmentFields />
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Coupon Code</span>
-              <input name="couponCode" placeholder="Optional" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium uppercase outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bank Reference</span>
-              <input name="transferReference" placeholder="e.g. TXN-123456" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Proof URL</span>
-              <input name="proofUrl" placeholder="Optional" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Proof Public ID</span>
-              <input name="proofPublicId" placeholder="Optional Cloudinary ID" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <label className="block xl:col-span-3">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Admin Note</span>
-              <textarea name="adminNote" rows={2} placeholder="Optional internal notes" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
-            </label>
-            <div className="flex items-end justify-end">
-              <button className="btn-primary w-full shadow-sm xl:w-auto" type="submit" data-toast="Provisioning access">
-                <UserPlus className="mr-2 h-4 w-4" /> Provision Access
-              </button>
-            </div>
-          </div>
-        </form>
-      </section>
+      <AddExternalStudentForm courses={courses} batches={allBatches} />
 
       {/* Activation Email Resend */}
       <details className="group order-2 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

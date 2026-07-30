@@ -86,6 +86,7 @@ export async function listStudentInstallmentPlans(accountId: bigint): Promise<St
     LEFT JOIN student_installment_payments ip
       ON ip.plan_id = pl.id
     WHERE pl.account_id = ${accountId}
+      AND pl.status <> 'merged'
     GROUP BY pl.id, pl.plan_uuid, pl.course_slug, lc.course_title, pl.batch_key, pl.batch_label, pl.country, pl.provider,
       pl.currency, pl.base_amount_minor, pl.discount_minor, pl.coupon_code, pl.buyer_type, pl.seat_count,
       pl.target_amount_minor, pl.total_paid_minor, pl.status, pl.enrolled_order_uuid

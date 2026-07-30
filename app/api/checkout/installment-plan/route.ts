@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "No open batch is available for this course." }, { status: 409 })
     }
 
-    const planUuid = await createInstallmentPlan({
+    const plan = await createInstallmentPlan({
       accountId: account.id,
       courseSlug,
       country,
@@ -56,16 +56,18 @@ export async function POST(request: Request) {
       buyerType: context.buyerType,
       seatCount: context.seatCount
     })
-    await recordAffiliateAttribution({
-      sourceUuid: planUuid,
-      courseSlug,
-      affiliateCode: body.affiliateCode,
-      buyerEmail: email,
-      buyerCountry: country,
-      buyerCurrency: context.pricing.currency,
-      orderAmountMinor: context.pricing.finalAmountMinor,
-      requestHeaders: request.headers
-    })
+    if (plan.created) {
+      await recordAffiliateAttribution({
+        sourceUuid: plan.planUuid,
+        courseSlug,
+        affiliateCode: body.affiliateCode,
+        buyerEmail: email,
+        buyerCountry: country,
+        buyerCurrency: context.pricing.currency,
+        orderAmountMinor: context.pricing.finalAmountMinor,
+        requestHeaders: request.headers
+      })
+    }
     await upsertWhatsAppContact({
       email,
       fullName: firstName,
@@ -74,28 +76,33 @@ export async function POST(request: Request) {
       source: "installment_enrollment",
       optedIn: body.whatsappOptIn === true
     })
-    await syncEnrollmentToBrevo({
-      fullName: firstName,
-      email,
-      phone,
-      courseSlug,
-      batchKey: context.batch.batchKey,
-      batchLabel: context.batch.batchLabel,
-      listId: context.batch.brevoListId,
-      source: "installment_started"
-    }).catch(() => null)
-    await sendInstallmentStartedEmail({
-      email,
-      fullName: firstName,
-      courseSlug
-    }).catch(() => null)
+    if (plan.created) {
+      await syncEnrollmentToBrevo({
+        fullName: firstName,
+        email,
+        phone,
+        courseSlug,
+        batchKey: context.batch.batchKey,
+        batchLabel: context.batch.batchLabel,
+        listId: context.batch.brevoListId,
+        source: "installment_started"
+      }).catch(() => null)
+      await sendInstallmentStartedEmail({
+        email,
+        fullName: firstName,
+        courseSlug
+      }).catch(() => null)
+    }
 
     return NextResponse.json({
       ok: true,
-      planUuid,
+      planUuid: plan.planUuid,
+      reusedExistingPlan: !plan.created,
       pricing: {
         ...context.pricing,
-        label: formatMinorAmount(context.pricing.finalAmountMinor, context.pricing.currency),
+        currency: plan.currency,
+        finalAmountMinor: plan.targetAmountMinor,
+        label: formatMinorAmount(plan.targetAmountMinor, plan.currency),
         baseLabel: formatMinorAmount(context.pricing.baseAmountMinor, context.pricing.currency),
         courseAmountLabel: formatMinorAmount(Number(context.pricing.courseAmountMinor || 0), context.pricing.currency),
         vatLabel: formatMinorAmount(Number(context.pricing.vatAmountMinor || 0), context.pricing.currency),

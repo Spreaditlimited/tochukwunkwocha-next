@@ -4,6 +4,7 @@ import {
   createInstallmentPayment,
   initializePaystack,
   initializeStripe,
+  quoteInstallmentPayment,
   siteBaseUrl
 } from "@/lib/payments/course-checkout"
 
@@ -21,13 +22,14 @@ export async function POST(request: Request) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: "Valid email is required." }, { status: 400 })
     if (!Number.isFinite(amountMinor) || amountMinor < 100) return NextResponse.json({ ok: false, error: "Enter a valid installment amount." }, { status: 400 })
 
+    const quote = await quoteInstallmentPayment({ planUuid, email, amountMinor, provider, currency })
     const reference = `IWP_${planUuid.replace(/[^a-zA-Z0-9]/g, "").slice(-12)}_${Date.now().toString().slice(-8)}`
     const payment =
       provider === "stripe"
         ? await initializeStripe({
             email,
-            amountMinor,
-            currency,
+            amountMinor: quote.amountMinor,
+            currency: quote.currency,
             courseName: "Course installment",
             orderUuid: reference,
             courseSlug: "installment",
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
           })
         : await initializePaystack({
             email,
-            amountMinor,
+            amountMinor: quote.amountMinor,
             reference,
             callbackUrl: `${origin}/api/payments/installments/paystack/return`,
             metadata: { payment_scope: "installment", installment_plan_uuid: planUuid }
@@ -49,11 +51,11 @@ export async function POST(request: Request) {
 
     const saved = await createInstallmentPayment({
       planUuid,
-      amountMinor,
+      amountMinor: quote.amountMinor,
       provider,
       providerReference: payment.providerReference || reference,
       providerOrderId: payment.providerOrderId,
-      currency
+      currency: quote.currency
     })
 
     return NextResponse.json({

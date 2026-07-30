@@ -252,7 +252,7 @@ async function findLearningCourse(courseSlug: string) {
   }
 }
 
-async function courseUsesImmediateAccess(courseSlug: string) {
+export async function courseUsesImmediateAccess(courseSlug: string) {
   if (IMMEDIATE_ACCESS_COURSE_SLUGS.has(courseSlug)) return true
   const learningCourse = await findLearningCourse(courseSlug)
   return String(learningCourse?.enrollment_mode || "").trim().toLowerCase() === "immediate"
@@ -1211,19 +1211,180 @@ export async function createInstallmentPlan(input: {
   buyerType?: "student" | "family"
   seatCount?: number
 }) {
-  const planUuid = `ip_${randomUUID().replace(/-/g, "")}`
-  const timestamp = now()
-  await prisma.$executeRaw`
-    INSERT INTO student_installment_plans
-      (plan_uuid, account_id, course_slug, batch_key, batch_label, country, provider, currency, target_amount_minor, base_amount_minor,
-       discount_minor, coupon_code, coupon_id, buyer_type, seat_count, total_paid_minor, status, created_at, updated_at)
-    VALUES
-      (${planUuid}, ${input.accountId}, ${input.courseSlug}, ${input.batch.batchKey}, ${input.batch.batchLabel}, ${input.country || null}, ${input.provider},
-       ${input.pricing.currency}, ${input.pricing.finalAmountMinor}, ${input.pricing.baseAmountMinor}, ${input.pricing.discountMinor},
-       ${input.pricing.couponCode || null}, ${input.pricing.couponId || null}, ${input.buyerType || "student"}, ${input.seatCount || 1},
-       0, 'open', ${timestamp}, ${timestamp})
-  `
-  return planUuid
+  const accountId = BigInt(input.accountId)
+  const courseSlug = normalizeCourse(input.courseSlug)
+  const batchKey = normalizeBatchKey(input.batch.batchKey)
+  const buyerType = input.buyerType === "family" ? "family" : "student"
+  const seatCount = buyerType === "family" ? Math.max(2, Math.round(Number(input.seatCount || 2))) : 1
+  const currency = String(input.pricing.currency || "NGN").trim().toUpperCase()
+  const targetAmountMinor = Math.max(0, Math.round(Number(input.pricing.finalAmountMinor || 0)))
+  const baseAmountMinor = Math.max(0, Math.round(Number(input.pricing.baseAmountMinor || targetAmountMinor)))
+  const discountMinor = Math.max(0, Math.round(Number(input.pricing.discountMinor || 0)))
+  const couponId = input.pricing.couponId ? Number(input.pricing.couponId) : null
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Locking the account serialises plan creation for this learner. Two browser
+    // requests cannot both pass the matching-plan check and create duplicates.
+    const account = await tx.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id
+      FROM student_accounts
+      WHERE id = ${accountId}
+      LIMIT 1
+      FOR UPDATE
+    `
+    if (!account.length) throw new Error("Student account not found.")
+
+    const existing = await tx.$queryRaw<Array<{
+      id: bigint
+      plan_uuid: string
+      currency: string
+      target_amount_minor: number | bigint
+    }>>`
+      SELECT id, plan_uuid, currency, target_amount_minor
+      FROM student_installment_plans
+      WHERE account_id = ${accountId}
+        AND course_slug = ${courseSlug}
+        AND COALESCE(batch_key, '') = ${batchKey}
+        AND currency = ${currency}
+        AND COALESCE(buyer_type, 'student') = ${buyerType}
+        AND COALESCE(seat_count, 1) = ${seatCount}
+        AND status = 'open'
+      ORDER BY total_paid_minor DESC, created_at ASC, id ASC
+      LIMIT 1
+    `
+    if (existing[0]) {
+      return {
+        planId: existing[0].id,
+        planUuid: existing[0].plan_uuid,
+        currency: existing[0].currency,
+        targetAmountMinor: Number(existing[0].target_amount_minor),
+        created: false
+      }
+    }
+
+    const planUuid = `ip_${randomUUID().replace(/-/g, "")}`
+    const timestamp = now()
+    await tx.$executeRaw`
+      INSERT INTO student_installment_plans
+        (plan_uuid, account_id, course_slug, batch_key, batch_label, country, provider, currency, target_amount_minor, base_amount_minor,
+         discount_minor, coupon_code, coupon_id, buyer_type, seat_count, total_paid_minor, status, created_at, updated_at)
+      VALUES
+        (${planUuid}, ${accountId}, ${courseSlug}, ${batchKey}, ${input.batch.batchLabel}, ${input.country || null}, ${input.provider},
+         ${currency}, ${targetAmountMinor}, ${baseAmountMinor}, ${discountMinor},
+         ${input.pricing.couponCode || null}, ${couponId}, ${buyerType}, ${seatCount},
+         0, 'open', ${timestamp}, ${timestamp})
+    `
+    const inserted = await tx.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id FROM student_installment_plans WHERE plan_uuid = ${planUuid} LIMIT 1
+    `
+    if (!inserted[0]) throw new Error("Could not create installment plan.")
+    return { planId: inserted[0].id, planUuid, currency, targetAmountMinor, created: true }
+  })
+
+  if (result.created) {
+    return {
+      planUuid: result.planUuid,
+      currency: result.currency,
+      targetAmountMinor: result.targetAmountMinor,
+      created: true
+    }
+  }
+  const reconciled = await reconcileMatchingOpenInstallmentPlans(result.planId)
+  return {
+    planUuid: reconciled.planUuid,
+    currency: result.currency,
+    targetAmountMinor: result.targetAmountMinor,
+    created: false
+  }
+}
+
+type InstallmentPlanMatchRow = {
+  id: bigint
+  plan_uuid: string
+  account_id: bigint
+  course_slug: string
+  batch_key: string | null
+  currency: string
+  target_amount_minor: number | bigint
+  base_amount_minor: number | bigint
+  discount_minor: number | bigint
+  coupon_id: number | bigint | null
+  buyer_type: string | null
+  seat_count: number | bigint | null
+}
+
+/**
+ * Consolidates duplicate open plans with identical commercial terms.
+ * Payment rows are retained and moved to the canonical plan so the audit trail
+ * remains intact. The oldest plan with the most money paid wins.
+ */
+export async function reconcileMatchingOpenInstallmentPlans(planIdInput: number | bigint) {
+  const planId = BigInt(planIdInput)
+  return prisma.$transaction(async (tx) => {
+    const references = await tx.$queryRaw<InstallmentPlanMatchRow[]>`
+      SELECT id, plan_uuid, account_id, course_slug, batch_key, currency, target_amount_minor,
+             base_amount_minor, discount_minor, coupon_id, buyer_type, seat_count
+      FROM student_installment_plans
+      WHERE id = ${planId}
+      LIMIT 1
+    `
+    const reference = references[0]
+    if (!reference) throw new Error("Installment plan not found.")
+
+    await tx.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id FROM student_accounts WHERE id = ${reference.account_id} LIMIT 1 FOR UPDATE
+    `
+    const matches = await tx.$queryRaw<Array<InstallmentPlanMatchRow & { total_paid_minor: number | bigint; created_at: Date }>>`
+      SELECT id, plan_uuid, account_id, course_slug, batch_key, currency, target_amount_minor,
+             base_amount_minor, discount_minor, coupon_id, buyer_type, seat_count, total_paid_minor, created_at
+      FROM student_installment_plans
+      WHERE account_id = ${reference.account_id}
+        AND course_slug = ${reference.course_slug}
+        AND COALESCE(batch_key, '') = ${reference.batch_key || ""}
+        AND currency = ${reference.currency}
+        AND target_amount_minor = ${Number(reference.target_amount_minor)}
+        AND base_amount_minor = ${Number(reference.base_amount_minor)}
+        AND discount_minor = ${Number(reference.discount_minor)}
+        AND COALESCE(coupon_id, 0) = ${reference.coupon_id ? Number(reference.coupon_id) : 0}
+        AND COALESCE(buyer_type, 'student') = ${reference.buyer_type || "student"}
+        AND COALESCE(seat_count, 1) = ${Number(reference.seat_count || 1)}
+        AND status = 'open'
+      ORDER BY total_paid_minor DESC, created_at ASC, id ASC
+      FOR UPDATE
+    `
+    if (!matches.length) return { planId: reference.id, planUuid: reference.plan_uuid, mergedPlanIds: [] as number[] }
+
+    const canonical = matches[0]
+    const duplicateIds = matches.slice(1).map((row) => row.id)
+    const timestamp = now()
+    for (const duplicateId of duplicateIds) {
+      await tx.$executeRaw`
+        UPDATE student_installment_payments
+        SET plan_id = ${canonical.id}, updated_at = ${timestamp}
+        WHERE plan_id = ${duplicateId}
+      `
+      await tx.$executeRaw`
+        UPDATE student_installment_plans
+        SET total_paid_minor = 0, status = 'merged', enrolled_order_uuid = NULL, updated_at = ${timestamp}
+        WHERE id = ${duplicateId}
+      `
+    }
+    await tx.$executeRaw`
+      UPDATE student_installment_plans
+      SET total_paid_minor = (
+            SELECT COALESCE(SUM(amount_minor), 0)
+            FROM student_installment_payments
+            WHERE plan_id = ${canonical.id} AND status = 'paid'
+          ),
+          updated_at = ${timestamp}
+      WHERE id = ${canonical.id}
+    `
+    return {
+      planId: canonical.id,
+      planUuid: canonical.plan_uuid,
+      mergedPlanIds: duplicateIds.map(Number)
+    }
+  })
 }
 
 export async function createInstallmentPayment(input: {
@@ -1257,37 +1418,86 @@ export async function createInstallmentPayment(input: {
   return { paymentUuid, amountMinor }
 }
 
-export async function markInstallmentPaymentPaid(reference: string, providerOrderId?: string | null) {
-  const rows = await prisma.$queryRaw<Array<{ id: bigint; plan_id: bigint; amount_minor: number | bigint; status: string | null }>>`
-    SELECT id, plan_id, amount_minor, status
-    FROM student_installment_payments
-    WHERE provider_reference = ${reference}
-    ORDER BY id DESC
+export async function quoteInstallmentPayment(input: {
+  planUuid: string
+  email: string
+  amountMinor: number
+  provider: CheckoutProvider
+  currency: string
+}) {
+  const email = normalizeEmail(input.email)
+  const currency = String(input.currency || "").trim().toUpperCase()
+  const plans = await prisma.$queryRaw<Array<{
+    target_amount_minor: number | bigint
+    total_paid_minor: number | bigint
+    status: string | null
+    provider: string | null
+    currency: string | null
+    account_email: string
+  }>>`
+    SELECT pl.target_amount_minor, pl.total_paid_minor, pl.status, pl.provider, pl.currency,
+           a.email AS account_email
+    FROM student_installment_plans pl
+    JOIN student_accounts a ON a.id = pl.account_id
+    WHERE pl.plan_uuid = ${input.planUuid}
     LIMIT 1
   `
-  const payment = rows[0]
-  if (!payment) throw new Error("Installment payment not found.")
-  if (String(payment.status || "").toLowerCase() !== "paid") {
+  const plan = plans[0]
+  if (!plan) throw new Error("Installment plan not found.")
+  if (!email || normalizeEmail(plan.account_email) !== email) throw new Error("This installment plan does not belong to this account.")
+  if (String(plan.status || "").toLowerCase() !== "open") throw new Error("Installment plan is not open.")
+  if (String(plan.provider || "").toLowerCase() !== input.provider) throw new Error("Use the payment provider selected for this installment plan.")
+  if (String(plan.currency || "").toUpperCase() !== currency) throw new Error("Installment payment currency does not match the plan.")
+  const remainingMinor = Math.max(0, Number(plan.target_amount_minor || 0) - Number(plan.total_paid_minor || 0))
+  if (remainingMinor <= 0) throw new Error("This installment plan has already been fully paid.")
+  const amountMinor = Math.min(Math.max(100, Math.round(input.amountMinor)), remainingMinor)
+  return { amountMinor, remainingMinor, currency }
+}
+
+export async function markInstallmentPaymentPaid(reference: string, providerOrderId?: string | null) {
+  const payment = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: bigint; plan_id: bigint; status: string | null }>>`
+      SELECT id, plan_id, status
+      FROM student_installment_payments
+      WHERE provider_reference = ${reference}
+      ORDER BY id DESC
+      LIMIT 1
+      FOR UPDATE
+    `
+    const row = rows[0]
+    if (!row) throw new Error("Installment payment not found.")
     const timestamp = now()
-    await prisma.$executeRaw`
-      UPDATE student_installment_payments
-      SET status = 'paid', provider_order_id = COALESCE(${providerOrderId || null}, provider_order_id), paid_at = ${timestamp}, updated_at = ${timestamp}
-      WHERE id = ${payment.id}
-    `
-    await prisma.$executeRaw`
+    if (String(row.status || "").toLowerCase() !== "paid") {
+      await tx.$executeRaw`
+        UPDATE student_installment_payments
+        SET status = 'paid', provider_order_id = COALESCE(${providerOrderId || null}, provider_order_id),
+            paid_at = COALESCE(paid_at, ${timestamp}), updated_at = ${timestamp}
+        WHERE id = ${row.id}
+      `
+    }
+    // Recalculate from the immutable payment ledger instead of incrementing a
+    // counter, making duplicate provider callbacks safe.
+    await tx.$executeRaw`
       UPDATE student_installment_plans
-      SET total_paid_minor = total_paid_minor + ${Number(payment.amount_minor || 0)}, updated_at = ${timestamp}
-      WHERE id = ${payment.plan_id}
+      SET total_paid_minor = (
+            SELECT COALESCE(SUM(amount_minor), 0)
+            FROM student_installment_payments
+            WHERE plan_id = ${row.plan_id} AND status = 'paid'
+          ),
+          updated_at = ${timestamp}
+      WHERE id = ${row.plan_id}
     `
-  }
-  await autoEnrollInstallmentPlanIfEligible(Number(payment.plan_id)).catch(() => null)
-  return payment.plan_id
+    return row
+  })
+  const reconciled = await reconcileMatchingOpenInstallmentPlans(payment.plan_id)
+  await autoEnrollInstallmentPlanIfEligible(reconciled.planId)
+  return reconciled.planId
 }
 
 export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | bigint) {
   const planId = Number(planIdInput || 0)
   if (!Number.isFinite(planId) || planId <= 0) return null
-  const rows = await prisma.$queryRaw<Array<{
+  type EligibleInstallmentPlan = {
     id: bigint
     plan_uuid: string
     account_id: bigint
@@ -1311,73 +1521,121 @@ export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | 
     full_name: string | null
     email: string | null
     phone_e164: string | null
-  }>>`
-    SELECT pl.id, pl.plan_uuid, pl.account_id, pl.course_slug, pl.batch_key, pl.batch_label, pl.country, pl.provider,
-           pl.currency, pl.target_amount_minor, pl.total_paid_minor, pl.base_amount_minor, pl.discount_minor,
-           pl.coupon_code, pl.coupon_id, pl.buyer_type, pl.seat_count, pl.family_account_id, pl.status,
-           pl.enrolled_order_uuid, a.full_name, a.email, a.phone_e164
-    FROM student_installment_plans pl
-    JOIN student_accounts a ON a.id = pl.account_id
-    WHERE pl.id = ${planId}
-    LIMIT 1
-  `
-  const plan = rows[0]
-  if (!plan) return null
-  if (String(plan.status || "").toLowerCase() === "enrolled") return { enrolled: true, orderUuid: plan.enrolled_order_uuid || null }
-  const targetAmountMinor = Number(plan.target_amount_minor || 0)
-  const totalPaidMinor = Number(plan.total_paid_minor || 0)
-  if (targetAmountMinor <= 0 || totalPaidMinor < targetAmountMinor) return { enrolled: false }
+    updated_at: Date | string | null
+  }
 
-  const orderUuid = randomUUID()
+  const claim = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<EligibleInstallmentPlan[]>`
+      SELECT pl.id, pl.plan_uuid, pl.account_id, pl.course_slug, pl.batch_key, pl.batch_label, pl.country, pl.provider,
+             pl.currency, pl.target_amount_minor, pl.total_paid_minor, pl.base_amount_minor, pl.discount_minor,
+             pl.coupon_code, pl.coupon_id, pl.buyer_type, pl.seat_count, pl.family_account_id, pl.status,
+             pl.enrolled_order_uuid, pl.updated_at, a.full_name, a.email, a.phone_e164
+      FROM student_installment_plans pl
+      JOIN student_accounts a ON a.id = pl.account_id
+      WHERE pl.id = ${planId}
+      LIMIT 1
+      FOR UPDATE
+    `
+    const plan = rows[0]
+    if (!plan) return { kind: "missing" as const }
+    const status = String(plan.status || "").toLowerCase()
+    if (status === "enrolled") {
+      return { kind: "enrolled" as const, orderUuid: plan.enrolled_order_uuid || null }
+    }
+    const targetAmountMinor = Number(plan.target_amount_minor || 0)
+    const totalPaidMinor = Number(plan.total_paid_minor || 0)
+    if (targetAmountMinor <= 0 || totalPaidMinor < targetAmountMinor) {
+      return { kind: "ineligible" as const }
+    }
+    if (status === "enrolling") {
+      const updatedAt = plan.updated_at ? new Date(plan.updated_at).getTime() : Date.now()
+      if (Date.now() - updatedAt < 10 * 60 * 1000) {
+        return { kind: "processing" as const, orderUuid: plan.enrolled_order_uuid || null }
+      }
+    }
+
+    const orderUuid = plan.enrolled_order_uuid || randomUUID()
+    await tx.$executeRaw`
+      UPDATE student_installment_plans
+      SET status = 'enrolling', enrolled_order_uuid = ${orderUuid}, updated_at = ${now()}
+      WHERE id = ${plan.id}
+    `
+    return { kind: "claimed" as const, plan: { ...plan, enrolled_order_uuid: orderUuid }, orderUuid }
+  })
+
+  if (claim.kind === "missing") return null
+  if (claim.kind === "enrolled") return { enrolled: true, orderUuid: claim.orderUuid }
+  if (claim.kind === "ineligible") return { enrolled: false }
+  if (claim.kind === "processing") return { enrolled: false, processing: true, orderUuid: claim.orderUuid }
+
+  const plan = claim.plan
+  const targetAmountMinor = Number(plan.target_amount_minor || 0)
+  const orderUuid = claim.orderUuid
   const timestamp = now()
   const buyerType = String(plan.buyer_type || "student").toLowerCase() === "family" ? "family" : "student"
   const seatCount = buyerType === "family" ? Math.max(2, Number(plan.seat_count || 2)) : 1
   let familyAccountId = Number(plan.family_account_id || 0) || null
 
-  if (buyerType === "family") {
-    const { provisionFamilyOrder } = await import("@/lib/family-enrollment")
-    const credited = await provisionFamilyOrder({
-      sourceType: "course_order",
-      sourceUuid: orderUuid,
-      parentAccountId: plan.account_id,
-      parentName: String(plan.full_name || "Parent"),
-      parentEmail: String(plan.email || ""),
-      parentPhone: String(plan.phone_e164 || ""),
-      courseSlug: String(plan.course_slug || ""),
-      batchKey: String(plan.batch_key || ""),
-      batchLabel: String(plan.batch_label || ""),
-      quantity: seatCount
-    })
-    if (!credited.ok) throw new Error(credited.error || "Could not credit group seats.")
-    familyAccountId = Number(credited.familyId || familyAccountId || 0) || null
-  }
+  try {
+    if (buyerType === "family") {
+      const { provisionFamilyOrder } = await import("@/lib/family-enrollment")
+      const credited = await provisionFamilyOrder({
+        sourceType: "course_order",
+        sourceUuid: orderUuid,
+        parentAccountId: plan.account_id,
+        parentName: String(plan.full_name || "Parent"),
+        parentEmail: String(plan.email || ""),
+        parentPhone: String(plan.phone_e164 || ""),
+        courseSlug: String(plan.course_slug || ""),
+        batchKey: String(plan.batch_key || ""),
+        batchLabel: String(plan.batch_label || ""),
+        quantity: seatCount
+      })
+      if (!credited.ok) throw new Error(credited.error || "Could not credit group seats.")
+      familyAccountId = Number(credited.familyId || familyAccountId || 0) || null
+    }
 
-  await addColumnIfMissing("course_orders", "family_account_id", "BIGINT NULL")
-  await prisma.$executeRaw`
-    INSERT INTO course_orders
-      (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
-       discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, family_account_id,
-       status, batch_key, batch_label, paid_at, created_at, updated_at)
-    VALUES
-      (${orderUuid}, ${plan.course_slug}, ${plan.full_name || "Student"}, ${plan.email}, ${plan.phone_e164 || null},
-       ${plan.country || null}, ${plan.currency || "NGN"}, ${targetAmountMinor}, ${Number(plan.base_amount_minor || targetAmountMinor)},
-       ${Number(plan.discount_minor || 0)}, ${targetAmountMinor}, ${plan.coupon_code || null}, ${plan.coupon_id ? Number(plan.coupon_id) : null},
-       'wallet', ${buyerType}, ${seatCount}, ${familyAccountId}, 'paid', ${plan.batch_key || null}, ${plan.batch_label || null},
-       ${timestamp}, ${timestamp}, ${timestamp})
-  `
-  await recordCouponRedemption({
-    couponId: plan.coupon_id ? Number(plan.coupon_id) : null,
-    orderUuid,
-    email: String(plan.email || ""),
-    currency: String(plan.currency || "NGN"),
-    discountMinor: Number(plan.discount_minor || 0)
-  })
-  await prisma.$executeRaw`
-    UPDATE student_installment_plans
-    SET status = 'enrolled', enrolled_order_uuid = ${orderUuid}, family_account_id = COALESCE(${familyAccountId}, family_account_id), updated_at = ${timestamp}
-    WHERE id = ${planId}
-  `
-  return { enrolled: true, orderUuid }
+    await addColumnIfMissing("course_orders", "family_account_id", "BIGINT NULL")
+    await prisma.$executeRaw`
+      INSERT INTO course_orders
+        (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
+         discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, family_account_id,
+         status, batch_key, batch_label, paid_at, created_at, updated_at)
+      VALUES
+        (${orderUuid}, ${plan.course_slug}, ${plan.full_name || "Student"}, ${plan.email}, ${plan.phone_e164 || null},
+         ${plan.country || null}, ${plan.currency || "NGN"}, ${targetAmountMinor}, ${Number(plan.base_amount_minor || targetAmountMinor)},
+         ${Number(plan.discount_minor || 0)}, ${targetAmountMinor}, ${plan.coupon_code || null}, ${plan.coupon_id ? Number(plan.coupon_id) : null},
+         'wallet', ${buyerType}, ${seatCount}, ${familyAccountId}, 'paid', ${plan.batch_key || null}, ${plan.batch_label || null},
+         ${timestamp}, ${timestamp}, ${timestamp})
+      ON DUPLICATE KEY UPDATE
+        family_account_id = COALESCE(VALUES(family_account_id), family_account_id),
+        status = 'paid',
+        paid_at = COALESCE(paid_at, VALUES(paid_at)),
+        updated_at = VALUES(updated_at)
+    `
+    await recordCouponRedemption({
+      couponId: plan.coupon_id ? Number(plan.coupon_id) : null,
+      orderUuid,
+      email: String(plan.email || ""),
+      currency: String(plan.currency || "NGN"),
+      discountMinor: Number(plan.discount_minor || 0)
+    })
+    await prisma.$executeRaw`
+      UPDATE student_installment_plans
+      SET status = 'enrolled', enrolled_order_uuid = ${orderUuid},
+          family_account_id = COALESCE(${familyAccountId}, family_account_id), updated_at = ${timestamp}
+      WHERE id = ${planId} AND enrolled_order_uuid = ${orderUuid}
+    `
+    return { enrolled: true, orderUuid }
+  } catch (error) {
+    // Preserve the deterministic order UUID for an idempotent retry.
+    await prisma.$executeRaw`
+      UPDATE student_installment_plans
+      SET status = 'open', updated_at = ${now()}
+      WHERE id = ${planId} AND status = 'enrolling' AND enrolled_order_uuid = ${orderUuid}
+    `.catch(() => null)
+    throw error
+  }
 }
 
 export function courseReferencePrefix(courseSlug: string) {

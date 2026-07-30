@@ -4,6 +4,7 @@ import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/
 import { prisma } from "@/lib/prisma"
 import {
   checkoutContext,
+  courseUsesImmediateAccess,
   createManualPayment,
   findOrCreateStudentAccount,
   normalizeEmail,
@@ -908,6 +909,7 @@ async function sendActivationEmailToStudent(input: {
 }
 
 export async function addExternalStudentPayment(input: {
+  sourceType?: string
   courseSlug: string
   batchKey?: string
   firstName: string
@@ -924,14 +926,20 @@ export async function addExternalStudentPayment(input: {
   groupLearners?: unknown
   reviewedBy: string
 }) {
+  const sourceType = clean(input.sourceType, 40).toLowerCase()
   const courseSlug = normalizeCourse(input.courseSlug)
+  const batchKey = clean(input.batchKey, 80)
   const email = normalizeEmail(input.email)
   const firstName = clean(input.firstName, 180)
   const phone = normalizePhone(input.phone)
   const buyerType = clean(input.buyerType, 40).toLowerCase() === "family" ? "family" : "student"
   const seatCount = buyerType === "family" ? Math.max(2, toInt(input.seatCount, 2)) : 1
   const groupLearners = buyerType === "family" ? normalizeFamilyChildren(input.groupLearners) : []
-  if (!courseSlug || !firstName || !email || !phone) throw new Error("Course, name, valid email, and phone are required.")
+  if (sourceType !== "manual") throw new Error("Select a valid enrollment source.")
+  if (!courseSlug || !firstName || !email || !phone) throw new Error("Programme, name, valid email, and phone are required.")
+  const immediateAccess = await courseUsesImmediateAccess(courseSlug)
+  if (!immediateAccess && !batchKey) throw new Error("Select a batch for this programme.")
+  if (immediateAccess && batchKey) throw new Error("Immediate-access programmes do not use a batch.")
   if (buyerType === "family" && !familyEnrollmentEnabledForCourse(courseSlug)) {
     throw new Error("Group enrollment is not available for this course.")
   }
@@ -953,8 +961,9 @@ export async function addExternalStudentPayment(input: {
     couponCode: clean(input.couponCode, 80),
     buyerType,
     seatCount,
-    batchKey: input.batchKey,
-    manualTransfer: true
+    batchKey: immediateAccess ? undefined : batchKey,
+    manualTransfer: true,
+    requireActiveBatch: true
   })
   const paymentUuid = await createManualPayment({
     courseSlug,
@@ -970,6 +979,7 @@ export async function addExternalStudentPayment(input: {
     buyerType,
     seatCount: context.seatCount
   })
+  let review: Awaited<ReturnType<typeof reviewManualPayment>>
   try {
     if (groupLearners.length) {
       const saved = await savePendingFamilyChildren({
@@ -984,30 +994,17 @@ export async function addExternalStudentPayment(input: {
         throw new Error("Not all learner assignments could be prepared.")
       }
     }
-  } catch (error) {
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        DELETE e FROM family_child_enrollments e
-        JOIN family_children c ON c.id = e.child_id
-        WHERE c.source_type = 'manual_payment' AND c.source_uuid = ${paymentUuid}
-      `
-      await tx.$executeRaw`
-        DELETE FROM family_children
-        WHERE source_type = 'manual_payment' AND source_uuid = ${paymentUuid}
-      `
-      await tx.$executeRaw`
-        DELETE FROM course_manual_payments
-        WHERE payment_uuid = ${paymentUuid} AND status = 'pending_verification'
-      `
+    review = await reviewManualPayment({
+      paymentUuid,
+      action: "approve",
+      reviewedBy: input.reviewedBy,
+      reviewNote: `[ADMIN_ADD_STUDENT] Added by admin as external bank payment.${input.adminNote ? ` Note: ${clean(input.adminNote, 500)}` : ""}`
     })
-    throw error
+  } catch (error) {
+    const removed = await removeFailedExternalStudentPayment(paymentUuid).catch(() => false)
+    const detail = error instanceof Error ? error.message : "The enrollment could not be provisioned."
+    throw new Error(removed ? `${detail} No enrollment record was created.` : `${detail} The incomplete payment record was retained for review.`)
   }
-  const review = await reviewManualPayment({
-    paymentUuid,
-    action: "approve",
-    reviewedBy: input.reviewedBy,
-    reviewNote: `[ADMIN_ADD_STUDENT] Added by admin as external bank payment.${input.adminNote ? ` Note: ${clean(input.adminNote, 500)}` : ""}`
-  })
   if (buyerType === "family") {
     if (!review.familyProvisioned) {
       throw new Error("The group seat result was not returned.")
@@ -1028,6 +1025,45 @@ export async function addExternalStudentPayment(input: {
     seatsAvailable: buyerType === "family" ? Math.max(0, context.seatCount - learnersAssigned) : 0,
     activationEmailSent: review.activationEmailSent
   }
+}
+
+async function removeFailedExternalStudentPayment(paymentUuid: string) {
+  return prisma.$transaction(async (tx) => {
+    const payments = await tx.$queryRaw<Array<{ id: bigint; status: string | null }>>`
+      SELECT id, status
+      FROM course_manual_payments
+      WHERE payment_uuid = ${paymentUuid}
+      LIMIT 1
+      FOR UPDATE
+    `
+    const payment = payments[0]
+    if (!payment || clean(payment.status, 40).toLowerCase() !== "pending_verification") return false
+
+    const ledger = await tx.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id
+      FROM family_seat_ledger
+      WHERE source_type = 'manual_payment' AND source_uuid = ${paymentUuid}
+      LIMIT 1
+      FOR UPDATE
+    `
+    if (ledger.length) return false
+
+    await tx.$executeRaw`
+      DELETE e FROM family_child_enrollments e
+      JOIN family_children c ON c.id = e.child_id
+      WHERE c.source_type = 'manual_payment' AND c.source_uuid = ${paymentUuid}
+    `
+    await tx.$executeRaw`
+      DELETE FROM family_children
+      WHERE source_type = 'manual_payment' AND source_uuid = ${paymentUuid}
+    `
+    const deleted = await tx.$executeRaw`
+      DELETE FROM course_manual_payments
+      WHERE id = ${payment.id} AND status = 'pending_verification'
+      LIMIT 1
+    `
+    return Number(deleted || 0) === 1
+  })
 }
 
 export async function updateManualPaymentEmail(input: { paymentUuid: string; newEmail: string; actor: string }) {
