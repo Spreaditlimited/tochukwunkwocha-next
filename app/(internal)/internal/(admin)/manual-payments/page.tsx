@@ -62,13 +62,16 @@ function param(params: Record<string, string | string[] | undefined>, key: strin
 function statusTone(status: string | null) {
   const raw = String(status || "").toLowerCase()
   if (raw === "approved" || raw === "paid") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-  if (raw === "rejected") return "border-destructive/20 bg-destructive/10 text-destructive"
+  if (raw === "rejected" || raw === "provider_mismatch" || raw === "provider_failed") return "border-destructive/20 bg-destructive/10 text-destructive"
   return "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
 }
 
 function statusLabel(status: string | null) {
   const raw = String(status || "pending_verification")
   if (raw === "pending_verification") return "Pending"
+  if (raw === "provider_processing") return "Awaiting Paystack"
+  if (raw === "provider_mismatch") return "Payment Mismatch"
+  if (raw === "provider_failed") return "Verification Issue"
   return raw.replace(/_/g, " ")
 }
 
@@ -186,13 +189,6 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-3">
-          <form action={reconcilePaystackPaymentsAction}>
-            <input type="hidden" name="courseSlug" value={courseSlug} />
-            <input type="hidden" name="batchKey" value={batchKey} />
-            <button type="submit" className="btn-primary shadow-sm">
-              <RefreshCw className="mr-2 h-4 w-4" /> Reconcile Paystack
-            </button>
-          </form>
           <Link href="/internal/video-library" className="btn-secondary shadow-sm">
             <MonitorPlay className="mr-2 h-4 w-4" /> Course Manager
           </Link>
@@ -609,11 +605,22 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
       {/* Master Ledger: manual submissions and paid online orders */}
       <section className="order-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
-          <p className="eyebrow text-primary">Master Ledger</p>
-          <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Enrollment & Payment Registry</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Paid online orders and manual payment submissions, consolidated into one operational ledger.
-          </p>
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="eyebrow text-primary">Master Ledger</p>
+              <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Enrollment & Payment Registry</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Online payment states and manual payment submissions, consolidated into one operational ledger.
+              </p>
+            </div>
+            <form action={reconcilePaystackPaymentsAction} className="shrink-0">
+              <input type="hidden" name="courseSlug" value={courseSlug} />
+              <input type="hidden" name="batchKey" value={batchKey} />
+              <button type="submit" className="btn-primary w-full justify-center shadow-sm sm:w-auto">
+                <RefreshCw className="mr-2 h-4 w-4" /> Reconcile Paystack
+              </button>
+            </form>
+          </div>
           
           <ScrollPreservingGetForm className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
             <label className="block">
@@ -628,6 +635,8 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 options={[
                   { value: "all", label: "All States" },
                   { value: "pending_verification", label: "Pending Review" },
+                  { value: "provider_processing", label: "Awaiting Paystack" },
+                  { value: "provider_issue", label: "Paystack Issues" },
                   { value: "recovery_required", label: "Recovery Required" },
                   { value: "approved", label: "Approved" },
                   { value: "rejected", label: "Rejected" }
@@ -705,12 +714,35 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     <p className="mt-1.5 text-xs text-muted-foreground">
                       <span className="font-semibold text-foreground">Ref:</span> {payment.transferReference || "-"}
                     </p>
+                    {payment.source === "online" && payment.providerReceivedAmountMinor !== null ? (
+                      <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+                        <p className="font-semibold text-foreground">
+                          Provider amount: {formatMinorCurrency(payment.providerReceivedCurrency || payment.currency || "NGN", payment.providerReceivedAmountMinor)}
+                        </p>
+                        {payment.providerExpectedAmountMinor !== null && payment.providerReceivedAmountMinor !== payment.providerExpectedAmountMinor ? (
+                          <p className="mt-1 font-bold text-destructive">
+                            Difference: {formatMinorCurrency(payment.currency || "NGN", payment.providerReceivedAmountMinor - payment.providerExpectedAmountMinor)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-6 py-5">
-                    {payment.source === "online" ? (
+                    {payment.source === "online" && payment.status === "approved" ? (
                       <span className="inline-flex items-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                         Provider Verified
                       </span>
+                    ) : payment.source === "online" ? (
+                      <div className={`w-[260px] rounded-xl border p-4 text-xs shadow-sm ${payment.status === "provider_processing" ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
+                        <p className="flex items-center gap-2 font-bold">
+                          {payment.status === "provider_processing" ? <RefreshCw className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                          {payment.status === "provider_processing" ? "Paystack is still processing" : statusLabel(payment.status)}
+                        </p>
+                        {payment.providerStatus ? <p className="mt-2"><span className="font-semibold">Provider status:</span> {payment.providerStatus}</p> : null}
+                        <p className="mt-1"><span className="font-semibold">Last checked:</span> {payment.providerLastCheckedAt ? formatDate(payment.providerLastCheckedAt) : "Not checked yet"}</p>
+                        {payment.status === "provider_processing" ? <p className="mt-1 font-semibold">Automatic retry: within 10 minutes</p> : null}
+                        {payment.providerLastError ? <p className="mt-2 whitespace-normal leading-relaxed">{payment.providerLastError}</p> : null}
+                      </div>
                     ) : payment.proofUrl ? (
                       <a 
                         className="inline-flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary/10 shadow-sm" 

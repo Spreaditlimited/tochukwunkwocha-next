@@ -1984,7 +1984,7 @@ export async function initializeStripe(input: {
   }
 }
 
-export async function verifyPaystackTransaction(reference: string) {
+export async function inspectPaystackTransaction(reference: string) {
   const customerMessage = "We could not verify your card payment. Please contact support if you were charged."
   const secret = String(process.env.PAYSTACK_SECRET_KEY || "").trim()
   if (!secret) {
@@ -2031,16 +2031,22 @@ export async function verifyPaystackTransaction(reference: string) {
     })
     throw new Error(customerMessage)
   }
-  if (String(json.data.status || "").toLowerCase() !== "success") {
-    throw new Error("The payment has not been completed.")
-  }
+  const providerStatus = String(json.data.status || "").trim().toLowerCase()
   return {
     reference: String(json.data.reference || reference),
     providerOrderId: json.data.id ? String(json.data.id) : null,
     amountMinor: Number.isFinite(Number(json.data.amount)) ? Math.round(Number(json.data.amount)) : null,
     currency: json.data.currency ? String(json.data.currency).toUpperCase() : "",
-    metadata: json.data.metadata || {}
+    metadata: json.data.metadata || {},
+    providerStatus,
+    successful: providerStatus === "success"
   }
+}
+
+export async function verifyPaystackTransaction(reference: string) {
+  const transaction = await inspectPaystackTransaction(reference)
+  if (!transaction.successful) throw new Error("The payment has not been completed.")
+  return transaction
 }
 
 export async function retrieveStripeSession(sessionId: string) {

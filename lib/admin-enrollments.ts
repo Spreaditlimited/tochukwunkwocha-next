@@ -19,6 +19,7 @@ import { sendManualPaymentMetaPurchase as dispatchManualPaymentMetaPurchase } fr
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
 import { familyEnrollmentEnabledForCourse } from "@/lib/payments/course-checkout"
+import { ensurePaystackAuditTable } from "@/lib/payments/paystack-audit"
 
 export type EnrollmentPaymentRow = {
   paymentUuid: string
@@ -52,6 +53,14 @@ export type EnrollmentPaymentRow = {
   metaPurchaseLastError: string | null
   metaPurchaseTraceId: string | null
   recoveryOrigin: boolean
+  providerAuditOutcome: string | null
+  providerStatus: string | null
+  providerExpectedAmountMinor: number | null
+  providerReceivedAmountMinor: number | null
+  providerExpectedCurrency: string | null
+  providerReceivedCurrency: string | null
+  providerLastCheckedAt: Date | null
+  providerLastError: string | null
   createdAt: Date | null
 }
 
@@ -426,6 +435,7 @@ export async function listEnrollmentPayments(input: {
   limit?: number
 }) {
   await ensureManualPaymentReviewColumns()
+  await ensurePaystackAuditTable().catch(() => null)
   const courseSlug = normalizeCourse(input.courseSlug) || "all"
   const status = clean(input.status, 40) || "all"
   const batchKey = clean(input.batchKey, 80) || "all"
@@ -467,6 +477,14 @@ export async function listEnrollmentPayments(input: {
       meta_purchase_last_error AS metaPurchaseLastError,
       meta_purchase_trace_id AS metaPurchaseTraceId,
       COALESCE(recovery_origin, 0) AS recoveryOrigin,
+      NULL AS providerAuditOutcome,
+      NULL AS providerStatus,
+      NULL AS providerExpectedAmountMinor,
+      NULL AS providerReceivedAmountMinor,
+      NULL AS providerExpectedCurrency,
+      NULL AS providerReceivedCurrency,
+      NULL AS providerLastCheckedAt,
+      NULL AS providerLastError,
       created_at AS createdAt
     FROM course_manual_payments
     WHERE (
@@ -509,10 +527,23 @@ export async function listEnrollmentPayments(input: {
         provider_reference AS transferReference,
         NULL AS proofUrl,
         NULL AS proofPublicId,
-        'approved' AS status,
+        CASE
+          WHEN status = 'paid' THEN 'approved'
+          WHEN (
+            SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
+            WHERE pe.order_uuid = course_orders.order_uuid
+            ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+          ) = 'mismatch' THEN 'provider_mismatch'
+          WHEN (
+            SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
+            WHERE pe.order_uuid = course_orders.order_uuid
+            ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+          ) = 'failed' THEN 'provider_failed'
+          ELSE 'provider_processing'
+        END AS status,
         'online' AS source,
         UPPER(COALESCE(provider, 'Online')) AS providerLabel,
-        'Automatically verified by payment provider' AS reviewNote,
+        CASE WHEN status = 'paid' THEN 'Automatically verified by payment provider' ELSE 'Awaiting confirmation from Paystack' END AS reviewNote,
         UPPER(COALESCE(provider, 'Online')) AS reviewedBy,
         COALESCE(paid_at, updated_at, created_at) AS reviewedAt,
         0 AS metaPurchaseSent,
@@ -522,11 +553,56 @@ export async function listEnrollmentPayments(input: {
         NULL AS metaPurchaseLastError,
         NULL AS metaPurchaseTraceId,
         0 AS recoveryOrigin,
+        (
+          SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
+          WHERE pe.order_uuid = course_orders.order_uuid
+          ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+        ) AS providerAuditOutcome,
+        (
+          SELECT pe.provider_status FROM tochukwu_paystack_payment_events pe
+          WHERE pe.order_uuid = course_orders.order_uuid
+          ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+        ) AS providerStatus,
+        COALESCE(final_amount_minor, amount_minor, 0) AS providerExpectedAmountMinor,
+        (
+          SELECT pe.received_amount_minor FROM tochukwu_paystack_payment_events pe
+          WHERE pe.order_uuid = course_orders.order_uuid AND pe.received_amount_minor IS NOT NULL
+          ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+        ) AS providerReceivedAmountMinor,
+        UPPER(COALESCE(currency, '')) AS providerExpectedCurrency,
+        (
+          SELECT pe.received_currency FROM tochukwu_paystack_payment_events pe
+          WHERE pe.order_uuid = course_orders.order_uuid AND pe.received_currency IS NOT NULL
+          ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+        ) AS providerReceivedCurrency,
+        (
+          SELECT pe.created_at FROM tochukwu_paystack_payment_events pe
+          WHERE pe.order_uuid = course_orders.order_uuid
+          ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+        ) AS providerLastCheckedAt,
+        (
+          SELECT pe.error_message FROM tochukwu_paystack_payment_events pe
+          WHERE pe.order_uuid = course_orders.order_uuid AND pe.error_message IS NOT NULL
+          ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+        ) AS providerLastError,
         created_at AS createdAt
       FROM course_orders
-      WHERE status = 'paid'
+      WHERE (status = 'paid' OR LOWER(COALESCE(provider, '')) = 'paystack')
         AND (${courseSlug} = 'all' OR course_slug = ${courseSlug})
-        AND (${status} IN ('all', 'approved', 'paid'))
+        AND (
+          ${status} = 'all'
+          OR (${status} IN ('approved', 'paid') AND status = 'paid')
+          OR (${status} = 'provider_processing' AND status <> 'paid' AND COALESCE((
+            SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
+            WHERE pe.order_uuid = course_orders.order_uuid
+            ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+          ), 'processing') NOT IN ('mismatch', 'failed'))
+          OR (${status} = 'provider_issue' AND status <> 'paid' AND (
+            SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
+            WHERE pe.order_uuid = course_orders.order_uuid
+            ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
+          ) IN ('mismatch', 'failed'))
+        )
         AND (${batchKey} = 'all' OR COALESCE(batch_key, '') = ${batchKey})
         AND (
           ${search} = ''
@@ -561,7 +637,9 @@ export async function listEnrollmentPayments(input: {
       metaPurchaseSent: Boolean(Number(row.metaPurchaseSent || 0)),
       metaPurchaseDispatchStatus: clean(row.metaPurchaseDispatchStatus, 24) || (Boolean(Number(row.metaPurchaseSent || 0)) ? "sent" : "pending"),
       metaPurchaseAttemptCount: Math.max(0, toInt(row.metaPurchaseAttemptCount)),
-      recoveryOrigin: Boolean(Number(row.recoveryOrigin || 0))
+      recoveryOrigin: Boolean(Number(row.recoveryOrigin || 0)),
+      providerExpectedAmountMinor: row.providerExpectedAmountMinor === null || row.providerExpectedAmountMinor === undefined ? null : toInt(row.providerExpectedAmountMinor),
+      providerReceivedAmountMinor: row.providerReceivedAmountMinor === null || row.providerReceivedAmountMinor === undefined ? null : toInt(row.providerReceivedAmountMinor)
     }))
 }
 

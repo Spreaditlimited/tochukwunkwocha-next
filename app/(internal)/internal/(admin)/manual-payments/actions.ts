@@ -29,11 +29,14 @@ export async function reconcilePaystackPaymentsAction(formData: FormData) {
       `${result.markedPaid} payment${result.markedPaid === 1 ? "" : "s"} marked paid`,
       `${result.accountsCreated} account${result.accountsCreated === 1 ? "" : "s"} created`,
       `${result.provisioned} enrollment${result.provisioned === 1 ? "" : "s"} provisioned`,
-      `${result.checked} Paystack reference${result.checked === 1 ? "" : "s"} checked`
+      `${result.checked} Paystack reference${result.checked === 1 ? "" : "s"} checked`,
+      `${result.stillProcessing} still processing`,
+      `${result.notPaid} not paid`
     ]
+    if (result.mismatched) details.push(`${result.mismatched} amount or currency mismatch${result.mismatched === 1 ? "" : "es"}`)
     if (result.failed) details.push(`${result.failed} failed`)
     await setInternalToast({
-      type: result.failed ? "error" : "success",
+      type: result.failed || result.mismatched ? "error" : "success",
       title: "Paystack reconciliation complete",
       message: details.join(", ") + "."
     })

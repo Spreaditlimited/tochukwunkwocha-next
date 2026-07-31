@@ -2,10 +2,15 @@ import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
 import { prisma } from "@/lib/prisma"
 import {
   createAffiliateCommissionForOrder,
+  inspectPaystackTransaction,
   markCourseOrderPaid,
-  normalizeCourse,
-  verifyPaystackTransaction
+  normalizeCourse
 } from "@/lib/payments/course-checkout"
+import {
+  isPaystackProcessingStatus,
+  recordPaystackAuditEvent,
+  validateCourseOrderPaystackPayment
+} from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 
 type ReconciliationCandidate = {
@@ -24,7 +29,9 @@ export type PaystackReconciliationResult = {
   markedPaid: number
   accountsCreated: number
   provisioned: number
+  stillProcessing: number
   notPaid: number
+  mismatched: number
   failed: number
 }
 
@@ -81,7 +88,9 @@ export async function reconcileCoursePaystackOrders(input?: {
     markedPaid: 0,
     accountsCreated: 0,
     provisioned: 0,
+    stillProcessing: 0,
     notPaid: 0,
+    mismatched: 0,
     failed: 0
   }
 
@@ -99,12 +108,76 @@ export async function reconcileCoursePaystackOrders(input?: {
 
       if (!wasPaid) {
         try {
-          const transaction = await verifyPaystackTransaction(reference)
+          const transaction = await inspectPaystackTransaction(reference)
           result.checked += 1
           providerOrderId = transaction.providerOrderId
-        } catch (_error) {
+          if (!transaction.successful) {
+            const processing = isPaystackProcessingStatus(transaction.providerStatus)
+            if (processing) result.stillProcessing += 1
+            else result.notPaid += 1
+            await recordPaystackAuditEvent({
+              orderUuid,
+              providerReference: reference,
+              providerEventId: transaction.providerOrderId,
+              source: "reconciliation",
+              eventType: "transaction.verify",
+              outcome: processing ? "processing" : "not_paid",
+              providerStatus: transaction.providerStatus,
+              receivedAmountMinor: transaction.amountMinor,
+              receivedCurrency: transaction.currency
+            })
+            continue
+          }
+          const validation = await validateCourseOrderPaystackPayment({
+            orderUuid,
+            providerReference: reference,
+            receivedAmountMinor: transaction.amountMinor,
+            receivedCurrency: transaction.currency
+          })
+          if (!validation.ok) {
+            result.mismatched += 1
+            await recordPaystackAuditEvent({
+              orderUuid,
+              providerReference: reference,
+              providerEventId: transaction.providerOrderId,
+              source: "reconciliation",
+              eventType: "transaction.verify",
+              outcome: "mismatch",
+              providerStatus: transaction.providerStatus,
+              expectedAmountMinor: validation.expected?.expectedAmountMinor,
+              receivedAmountMinor: transaction.amountMinor,
+              expectedCurrency: validation.expected?.expectedCurrency,
+              receivedCurrency: transaction.currency,
+              errorCode: validation.reason,
+              errorMessage: "Paystack amount or currency did not match the course order."
+            })
+            continue
+          }
+          await recordPaystackAuditEvent({
+            orderUuid,
+            providerReference: reference,
+            providerEventId: transaction.providerOrderId,
+            source: "reconciliation",
+            eventType: "transaction.verify",
+            outcome: "verified",
+            providerStatus: transaction.providerStatus,
+            expectedAmountMinor: validation.expected.expectedAmountMinor,
+            receivedAmountMinor: transaction.amountMinor,
+            expectedCurrency: validation.expected.expectedCurrency,
+            receivedCurrency: transaction.currency
+          })
+        } catch (error) {
           result.checked += 1
-          result.notPaid += 1
+          result.failed += 1
+          await recordPaystackAuditEvent({
+            orderUuid,
+            providerReference: reference,
+            source: "reconciliation",
+            eventType: "transaction.verify",
+            outcome: "failed",
+            errorCode: "verification_request_failed",
+            errorMessage: error instanceof Error ? error.message : String(error)
+          })
           continue
         }
       }
@@ -127,9 +200,27 @@ export async function reconcileCoursePaystackOrders(input?: {
 
       result.provisioned += 1
       if (!candidate.accountId) result.accountsCreated += 1
+      await recordPaystackAuditEvent({
+        orderUuid,
+        providerReference: reference,
+        providerEventId: providerOrderId,
+        source: "reconciliation",
+        eventType: "student.provision",
+        outcome: "provisioned",
+        providerStatus: "success"
+      })
       await sendCourseOrderMetaPurchase({ orderUuid }).catch(() => null)
-    } catch (_error) {
+    } catch (error) {
       result.failed += 1
+      await recordPaystackAuditEvent({
+        orderUuid,
+        providerReference: reference,
+        source: "reconciliation",
+        eventType: "student.provision",
+        outcome: "failed",
+        errorCode: "provision_failed",
+        errorMessage: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
