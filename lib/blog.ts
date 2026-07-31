@@ -184,7 +184,7 @@ export function getBlogImageSrc(image: string | null | undefined) {
   const value = String(image || "").trim()
   if (!value) return null
   if (/^https?:\/\//i.test(value)) return value
-  if (value.startsWith("/assets/")) return `https://tochukwunkwocha.com${value}`
+  if (value.startsWith("/assets/")) return `https://www.tochukwunkwocha.com${value}`
   if (value.startsWith("/")) return value
 
   const cloudinaryBaseUrl = String(

@@ -16,8 +16,25 @@ type BreadcrumbItem = {
   path: string
 }
 
+export const CANONICAL_SITE_URL = "https://www.tochukwunkwocha.com"
+
 export function getSiteUrl() {
-  return String(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_BASE_URL || "https://tochukwunkwocha.com").replace(/\/+$/, "")
+  const configuredUrl = String(
+    process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.SITE_BASE_URL ||
+      CANONICAL_SITE_URL
+  ).replace(/\/+$/, "")
+
+  try {
+    const hostname = new URL(configuredUrl).hostname.toLowerCase()
+    if (hostname === "tochukwunkwocha.com" || hostname === "www.tochukwunkwocha.com") {
+      return CANONICAL_SITE_URL
+    }
+  } catch {
+    return CANONICAL_SITE_URL
+  }
+
+  return configuredUrl
 }
 
 export function absoluteUrl(path: string) {
