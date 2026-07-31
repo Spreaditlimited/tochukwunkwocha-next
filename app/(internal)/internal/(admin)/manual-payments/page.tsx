@@ -715,7 +715,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       <span className="font-semibold text-foreground">Ref:</span> {payment.transferReference || "-"}
                     </p>
                     {payment.source === "online" && payment.providerReceivedAmountMinor !== null ? (
-                      <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+                      <div className="mt-3 inline-flex max-w-full flex-col rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
                         <p className="font-semibold text-foreground">
                           Provider amount: {formatMinorCurrency(payment.providerReceivedCurrency || payment.currency || "NGN", payment.providerReceivedAmountMinor)}
                         </p>
