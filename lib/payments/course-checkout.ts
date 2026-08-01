@@ -297,6 +297,13 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
                  AND fce.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
                  AND fce.status = 'active'
              ), 0)
+             +
+             COALESCE((
+               SELECT SUM(GREATEST(0, fsb.seats_purchased - fsb.seats_consumed))
+               FROM family_seat_balances fsb
+               WHERE fsb.course_slug COLLATE utf8mb4_unicode_ci = cb.course_slug COLLATE utf8mb4_unicode_ci
+                 AND fsb.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
+             ), 0)
            ) AS enrolled_count
     FROM course_batches cb
     WHERE cb.course_slug = ${courseSlug}
@@ -669,23 +676,21 @@ export async function checkoutContext(input: {
   const buyerType = normalizeBuyerType(input.buyerType)
   const seatCount = normalizeSeatCount({ buyerType, seatCount: input.seatCount, courseSlug, minimumFamilySeats: input.minimumFamilySeats })
   const provider = input.provider || providerForCountry(input.country)
-  if (buyerType !== "family" && input.requireExplicitHolidayBatch && courseSlug === HOLIDAY_COURSE_SLUG && !normalizeBatchKey(input.batchKey)) {
+  if (input.requireExplicitHolidayBatch && courseSlug === HOLIDAY_COURSE_SLUG && !normalizeBatchKey(input.batchKey)) {
     throw new Error("Please choose a batch.")
   }
   const batches = await listCheckoutBatches(courseSlug)
   const requestedBatchKey = normalizeBatchKey(input.batchKey)
-  const batch = buyerType === "family"
-    ? null
-    : requestedBatchKey
-      ? batches.find((candidate) => candidate.batchKey === requestedBatchKey) || null
-      : batches[0] || null
-  if (buyerType !== "family" && requestedBatchKey && !batch) {
+  const batch = requestedBatchKey
+    ? batches.find((candidate) => candidate.batchKey === requestedBatchKey) || null
+    : batches[0] || null
+  if (requestedBatchKey && !batch) {
     throw new Error("Selected batch is unavailable. Please choose another batch.")
   }
-  if (input.requireActiveBatch && !(await courseUsesImmediateAccess(courseSlug)) && (buyerType === "family" ? !batches.length : !batch)) {
+  if (input.requireActiveBatch && !(await courseUsesImmediateAccess(courseSlug)) && !batch) {
     throw new Error("No active batch is available for this course.")
   }
-  if (buyerType !== "family") await assertBatchCapacity(batch, seatCount)
+  await assertBatchCapacity(batch, seatCount)
   const result = await pricingWithCoupon({
     courseSlug,
     country: input.country,

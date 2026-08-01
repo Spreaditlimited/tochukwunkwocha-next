@@ -61,7 +61,8 @@ export async function POST(request: Request) {
       couponCode: body.couponCode,
       buyerType: body.buyerType,
       seatCount: body.seatCount,
-      batchKey: body.batchKey
+      batchKey: body.batchKey,
+      requireActiveBatch: true
     })
     if (result.buyerType !== "family") {
       await assertNoActiveIndividualEnrollment({ email, courseSlug })

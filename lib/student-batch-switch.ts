@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client"
 
-import { moveEnrollmentBrevoList, sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
+import {
+  moveEnrollmentBrevoList,
+  reconcileFamilyOwnerBrevoLists,
+  sendBatchSwitchConfirmationEmail
+} from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
 import { watWallDateTimeMs } from "@/lib/utils"
 
@@ -131,6 +135,13 @@ async function countEnrolledSeats(courseSlug: string, batchKey: string) {
         WHERE course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
           AND batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
           AND status = 'active'
+      ), 0)
+      +
+      COALESCE((
+        SELECT SUM(GREATEST(0, seats_purchased - seats_consumed))
+        FROM family_seat_balances
+        WHERE course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
+          AND batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
       ), 0)
     ) AS total
   `)
@@ -452,27 +463,38 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
     `)
   })
 
-  if (item.sourceType !== "family") await moveEnrollmentBrevoList({
-    fullName: item.displayName,
-    email: item.email || account.email,
-    phone: item.phone,
-    courseSlug: item.courseSlug,
-    oldBatchKey: item.batchKey,
-    oldBatchLabel: item.batchLabel,
-    oldListId: item.brevoListId,
-    newBatchKey: target.batchKey,
-    newBatchLabel: target.batchLabel,
-    newListId: target.brevoListId,
-    source: "batch_switch"
-  }).catch((error) => {
+  const brevo = await (item.sourceType === "family"
+    ? reconcileFamilyOwnerBrevoLists({
+        familyId: item.familyId!,
+        fullName: item.displayName,
+        email: item.email || account.email,
+        phone: item.phone,
+        courseSlug: item.courseSlug,
+        previousListIds: [item.brevoListId],
+        source: "group_batch_switch"
+      })
+    : moveEnrollmentBrevoList({
+        fullName: item.displayName,
+        email: item.email || account.email,
+        phone: item.phone,
+        courseSlug: item.courseSlug,
+        oldBatchKey: item.batchKey,
+        oldBatchLabel: item.batchLabel,
+        oldListId: item.brevoListId,
+        newBatchKey: target.batchKey,
+        newBatchLabel: target.batchLabel,
+        newListId: target.brevoListId,
+        source: "batch_switch"
+      })).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+  if (!brevo.ok) {
     console.warn("batch_switch_brevo_move_failed", {
       email: item.email || account.email,
       courseSlug: item.courseSlug,
       oldBatchKey: item.batchKey,
       newBatchKey: target.batchKey,
-      error: error instanceof Error ? error.message : String(error)
+      error: brevo.error || "Brevo reconciliation failed"
     })
-  })
+  }
 
   await sendBatchSwitchConfirmationEmail({
     email: item.email || account.email,
@@ -507,6 +529,7 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
       batchLabel: target.batchLabel,
       batchStartAt: target.batchStartAt,
       batchStartText: displayBatchDate(target.batchStartAt)
-    }
+    },
+    brevo
   }
 }

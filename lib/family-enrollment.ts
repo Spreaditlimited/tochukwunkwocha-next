@@ -7,7 +7,7 @@ import {
   claimIndividualCourseEnrollment,
   ensureEnrollmentClaimTable
 } from "@/lib/enrollment-guard"
-import { sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
+import { reconcileFamilyOwnerBrevoLists, sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
 import { courseUsesImmediateAccess, findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
 import { watWallDateTimeMs } from "@/lib/utils"
@@ -142,6 +142,7 @@ async function familyCourseSeatRows(
   client: Prisma.TransactionClient | typeof prisma,
   familyId: bigint,
   courseSlug: string,
+  batchKey?: string | null,
   lock = false
 ) {
   const query = Prisma.sql`
@@ -149,6 +150,7 @@ async function familyCourseSeatRows(
     FROM family_seat_balances
     WHERE family_id = ${familyId}
       AND course_slug = ${courseSlug}
+      ${batchKey !== undefined ? Prisma.sql`AND batch_key = ${clean(batchKey, 64)}` : Prisma.empty}
     ORDER BY id ASC
     ${lock ? Prisma.sql`FOR UPDATE` : Prisma.empty}
   `
@@ -182,7 +184,8 @@ async function validatedFamilyLearnerBatches(
   client: Prisma.TransactionClient | typeof prisma,
   childrenInput: unknown,
   courseSlugInput: string,
-  lock = false
+  lock = false,
+  checkCapacity = true
 ) {
   const courseSlug = clean(courseSlugInput, 120).toLowerCase()
   const children = normalizeFamilyChildren(childrenInput)
@@ -224,6 +227,7 @@ async function validatedFamilyLearnerBatches(
   }
 
   for (const [batchKey, requested] of requestedByBatch) {
+    if (!checkCapacity) continue
     const batch = batches.get(batchKey)!
     if (batch.seatLimit === null || batch.seatLimit === undefined) continue
     const counts = await client.$queryRaw<Array<{ total: number | bigint | null }>>(Prisma.sql`
@@ -236,6 +240,8 @@ async function validatedFamilyLearnerBatches(
             AND COALESCE(buyer_type, 'student') <> 'family'), 0)
         + COALESCE((SELECT COUNT(*) FROM family_child_enrollments
           WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'active'), 0)
+        + COALESCE((SELECT SUM(GREATEST(0, seats_purchased - seats_consumed)) FROM family_seat_balances
+          WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey}), 0)
       ) AS total
     `)
     const remaining = Math.max(0, Number(batch.seatLimit || 0) - Number(counts[0]?.total || 0))
@@ -385,6 +391,7 @@ export async function moveFamilyLearnerBatch(input: {
       accountEmail: string | null
       parentEmail: string
       parentName: string
+      parentPhone: string | null
       courseSlug: string
       oldBatchKey: string
       oldBatchLabel: string | null
@@ -393,6 +400,7 @@ export async function moveFamilyLearnerBatch(input: {
     }>>(Prisma.sql`
       SELECT f.id AS familyId, c.id AS childId, c.account_id AS accountId, c.full_name AS fullName,
              a.email AS accountEmail, f.parent_email AS parentEmail, f.parent_name AS parentName,
+             f.parent_phone AS parentPhone,
              e.course_slug AS courseSlug, e.batch_key AS oldBatchKey, e.batch_label AS oldBatchLabel,
              old_batch.batch_start_at AS oldBatchStartAt, old_batch.brevo_list_id AS oldBrevoListId
       FROM family_children c
@@ -452,6 +460,8 @@ export async function moveFamilyLearnerBatch(input: {
               AND COALESCE(buyer_type, 'student') <> 'family'), 0)
           + COALESCE((SELECT COUNT(*) FROM family_child_enrollments
             WHERE course_slug = ${learner.courseSlug} AND batch_key = ${targetBatchKey} AND status = 'active'), 0)
+          + COALESCE((SELECT SUM(GREATEST(0, seats_purchased - seats_consumed)) FROM family_seat_balances
+            WHERE course_slug = ${learner.courseSlug} AND batch_key = ${targetBatchKey}), 0)
         ) AS total
       `)
       if (Number(counts[0]?.total || 0) >= Number(target.seatLimit)) {
@@ -488,6 +498,22 @@ export async function moveFamilyLearnerBatch(input: {
   })
 
   const notificationEmail = normalizeEmail(changed.learner.parentEmail)
+  const brevo = await reconcileFamilyOwnerBrevoLists({
+    familyId: changed.learner.familyId,
+    fullName: changed.learner.parentName,
+    email: notificationEmail,
+    phone: changed.learner.parentPhone,
+    courseSlug: changed.learner.courseSlug,
+    previousListIds: [changed.learner.oldBrevoListId],
+    source: "group_learner_batch_switch"
+  }).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+  if (!brevo.ok) {
+    console.warn("group_learner_batch_switch_brevo_failed", {
+      familyId: changed.learner.familyId.toString(),
+      courseSlug: changed.learner.courseSlug,
+      error: brevo.error || "Brevo reconciliation failed"
+    })
+  }
   await sendBatchSwitchConfirmationEmail({
     email: notificationEmail,
     fullName: changed.learner.parentName,
@@ -502,7 +528,8 @@ export async function moveFamilyLearnerBatch(input: {
     childId: Number(childId),
     courseSlug: changed.learner.courseSlug,
     batchKey: changed.target.batchKey,
-    batchLabel: changed.target.batchLabel
+    batchLabel: changed.target.batchLabel,
+    brevo
   }
 }
 
@@ -577,7 +604,7 @@ export async function savePendingFamilyChildren(input: {
       INSERT INTO family_child_enrollments
         (child_id, course_slug, batch_key, batch_label, source_type, source_uuid, status, created_at, updated_at)
       VALUES
-        (${childId}, ${courseSlug}, ${child.batchKey || input.batchKey || null}, ${child.batchLabel || input.batchLabel || null}, ${sourceType}, ${sourceUuid},
+        (${childId}, ${courseSlug}, ${input.batchKey || child.batchKey || null}, ${input.batchLabel || child.batchLabel || null}, ${sourceType}, ${sourceUuid},
          'pending_payment', ${timestamp}, ${timestamp})
     `
     created.push({ ...child, childId })
@@ -673,14 +700,15 @@ export async function consumeFamilySeatsForChildren(input: {
 }) {
   const children = normalizeFamilyChildren(input.children)
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
+  const batchKey = clean(input.batchKey, 64)
   if (!courseSlug || !children.length) throw new Error("Learner enrollment details are required.")
 
   const family = await upsertFamilyAccount(input)
   if (!family?.id) throw new Error("Enrollment account is required.")
 
   await ensureEnrollmentClaimTable()
-  return prisma.$transaction(async (tx) => {
-    const balances = await familyCourseSeatRows(tx, family.id, courseSlug, true)
+  const consumed = await prisma.$transaction(async (tx) => {
+    const balances = await familyCourseSeatRows(tx, family.id, courseSlug, batchKey, true)
     const seatsPurchased = balances.reduce((total, row) => total + Number(row.seatsPurchased || 0), 0)
     const seatsConsumed = balances.reduce((total, row) => total + Number(row.seatsConsumed || 0), 0)
     const available = Math.max(0, seatsPurchased - seatsConsumed)
@@ -688,7 +716,13 @@ export async function consumeFamilySeatsForChildren(input: {
       throw new Error(`Only ${available} purchased seat${available === 1 ? "" : "s"} available for this programme.`)
     }
 
-    const assignedChildren = await validatedFamilyLearnerBatches(tx, children, courseSlug, true)
+    const assignedChildren = await validatedFamilyLearnerBatches(
+      tx,
+      children.map((child) => ({ ...child, batchKey })),
+      courseSlug,
+      true,
+      false
+    )
 
     const timestamp = now()
     const created: Array<{ childId: bigint; fullName: string }> = []
@@ -742,7 +776,7 @@ export async function consumeFamilySeatsForChildren(input: {
       INSERT INTO family_seat_ledger
         (family_id, course_slug, batch_key, entry_type, quantity, source_type, source_uuid, idempotency_key, metadata_json, created_at, updated_at)
       VALUES
-        (${family.id}, ${courseSlug}, '', 'consume', ${created.length}, 'family_dashboard', ${ledgerUuid}, ${ledgerUuid},
+        (${family.id}, ${courseSlug}, ${batchKey}, 'consume', ${created.length}, 'family_dashboard', ${ledgerUuid}, ${ledgerUuid},
          ${JSON.stringify({ children: created.map((child) => child.childId.toString()), assignments: assignedChildren.map((child) => ({ batch_key: child.batchKey })) })}, ${timestamp}, ${timestamp})
     `
 
@@ -754,6 +788,23 @@ export async function consumeFamilySeatsForChildren(input: {
       seatsUsed: seatsConsumed + created.length
     }
   })
+
+  const brevo = await reconcileFamilyOwnerBrevoLists({
+    familyId: family.id,
+    fullName: input.parentName,
+    email: input.parentEmail,
+    phone: input.parentPhone,
+    courseSlug,
+    source: "group_learner_assignment"
+  }).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+  if (!brevo.ok) {
+    console.warn("group_learner_assignment_brevo_failed", {
+      familyId: family.id.toString(),
+      courseSlug,
+      error: brevo.error || "Brevo reconciliation failed"
+    })
+  }
+  return consumed
 }
 
 export async function provisionFamilyOrder(input: {
@@ -803,12 +854,18 @@ export async function provisionFamilyOrder(input: {
   let duplicateLearners = 0
   const timestamp = now()
   const preparedAssignments = children.length
-    ? await prepareFamilyLearnerAssignments(children.map((child) => ({
-        fullName: clean(child.full_name, 180) || "Student",
-        email: normalizeEmail(child.email),
-        batchKey: clean(child.batch_key, 64),
-        batchLabel: clean(child.batch_label, 120)
-      })), clean(input.courseSlug, 120).toLowerCase())
+    ? await validatedFamilyLearnerBatches(
+        prisma,
+        children.map((child) => ({
+          fullName: clean(child.full_name, 180) || "Student",
+          email: normalizeEmail(child.email),
+          batchKey: clean(input.batchKey, 64),
+          batchLabel: clean(input.batchLabel, 120)
+        })),
+        clean(input.courseSlug, 120).toLowerCase(),
+        false,
+        false
+      )
     : []
   for (const [childIndex, child] of children.entries()) {
     const wasActive = clean(child.enrollment_status, 40).toLowerCase() === "active"
@@ -829,7 +886,8 @@ export async function provisionFamilyOrder(input: {
           tx,
           [assignment],
           clean(input.courseSlug, 120).toLowerCase(),
-          true
+          true,
+          false
         )
         const lockedAssignment = lockedAssignments[0]
         if (!lockedAssignment) throw new Error("The learner batch assignment could not be confirmed.")
@@ -883,18 +941,40 @@ export async function provisionFamilyOrder(input: {
 
   if (provisioned > 0) {
     await prisma.$transaction(async (tx) => {
-      const balanceRows = await familyCourseSeatRows(tx, family.id, clean(input.courseSlug, 120).toLowerCase(), true)
+      const balanceRows = await familyCourseSeatRows(
+        tx,
+        family.id,
+        clean(input.courseSlug, 120).toLowerCase(),
+        clean(input.batchKey, 64),
+        true
+      )
       await consumeCourseSeatPool(tx, balanceRows, provisioned, timestamp)
     })
     await prisma.$executeRaw`
       INSERT INTO family_seat_ledger
         (family_id, course_slug, batch_key, entry_type, quantity, source_type, source_uuid, idempotency_key, metadata_json, created_at, updated_at)
       VALUES
-        (${family.id}, ${clean(input.courseSlug, 120).toLowerCase()}, '', 'consume', ${provisioned},
+        (${family.id}, ${clean(input.courseSlug, 120).toLowerCase()}, ${clean(input.batchKey, 64)}, 'consume', ${provisioned},
          ${input.sourceType}, ${input.sourceUuid}, ${`${input.sourceType}:${input.sourceUuid}:consume`},
          ${JSON.stringify({ provisioned_from_pending_children: true, assignments: preparedAssignments.map((child) => ({ batch_key: child.batchKey })) })}, ${timestamp}, ${timestamp})
       ON DUPLICATE KEY UPDATE id = id
     `
+  }
+
+  const brevo = await reconcileFamilyOwnerBrevoLists({
+    familyId: family.id,
+    fullName: input.parentName,
+    email: input.parentEmail,
+    phone: input.parentPhone,
+    courseSlug: clean(input.courseSlug, 120).toLowerCase(),
+    source: "group_enrollment_provisioned"
+  }).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+  if (!brevo.ok) {
+    console.warn("group_enrollment_brevo_failed", {
+      familyId: family.id.toString(),
+      courseSlug: clean(input.courseSlug, 120).toLowerCase(),
+      error: brevo.error || "Brevo reconciliation failed"
+    })
   }
 
   return { ok: true as const, familyId: Number(family.id), credited: credited.credited, provisioned, duplicateLearners }

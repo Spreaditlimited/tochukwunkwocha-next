@@ -252,15 +252,17 @@ export async function reviewManualPayment(input: {
     : Promise.resolve(false)
   const postEnrollmentResults = await Promise.all([
     activationEmailTask,
-    syncEnrollmentToBrevo({
-      fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-      email,
-      phone: account.phoneE164 || clean(payment.phone, 80),
-      courseSlug: clean(payment.course_slug, 120),
-      batchKey: clean(payment.batch_key, 64),
-      batchLabel: clean(payment.batch_label, 120),
-      source: "manual_payment_approved"
-    }).catch(() => null),
+    clean(payment.buyer_type, 40).toLowerCase() === "family"
+      ? Promise.resolve({ ok: true, skipped: true })
+      : syncEnrollmentToBrevo({
+          fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+          email,
+          phone: account.phoneE164 || clean(payment.phone, 80),
+          courseSlug: clean(payment.course_slug, 120),
+          batchKey: clean(payment.batch_key, 64),
+          batchLabel: clean(payment.batch_label, 120),
+          source: "manual_payment_approved"
+        }).catch(() => null),
     sendEnrollmentConfirmedWhatsApp({
       phone: account.phoneE164 || clean(payment.phone, 80),
       fullName: account.fullName || clean(payment.first_name, 180) || "Student",

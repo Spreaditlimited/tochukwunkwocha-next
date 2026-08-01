@@ -218,7 +218,8 @@ export async function POST(request: Request) {
       buyerType: body.buyerType,
       seatCount: body.seatCount,
       batchKey: body.batchKey,
-      manualTransfer: true
+      manualTransfer: true,
+      requireActiveBatch: true
     })
     if (result.buyerType !== "family") {
       await assertNoActiveIndividualEnrollment({ email, courseSlug })

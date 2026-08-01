@@ -93,7 +93,8 @@ export async function POST(request: Request) {
     const courseSlug = normalizeCourse(body.courseSlug || "prompt-to-profit")
     const country = clean(body.country || "NG", 120) || "NG"
     const provider = providerForCountry(country, body.provider)
-    const children = normalizeFamilyChildren(body.children)
+    const batchKey = clean(body.batchKey, 64)
+    const children = normalizeFamilyChildren(body.children).map((child) => ({ ...child, batchKey }))
 
     if (!children.length) {
       return NextResponse.json({ ok: false, error: "Add at least one learner." }, { status: 400 })
@@ -102,7 +103,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
     }
     await assertFamilyLearnersCanEnroll(children, courseSlug)
-    const assignments = await prepareFamilyLearnerAssignments(children, courseSlug)
 
     try {
       const consumed = await consumeFamilySeatsForChildren({
@@ -110,7 +110,8 @@ export async function POST(request: Request) {
         parentName: session.account.fullName,
         parentEmail: session.account.email,
         courseSlug,
-        children: assignments
+        batchKey,
+        children
       })
       return NextResponse.json({
         ok: true,
@@ -127,6 +128,7 @@ export async function POST(request: Request) {
       if (!message.includes("purchased seat")) throw error
     }
 
+    const assignments = await prepareFamilyLearnerAssignments(children, courseSlug)
     const purchase = await groupPurchaseSeatCount(session.account.id, assignments.length)
     const context = await checkoutContext({
       courseSlug,
@@ -136,9 +138,9 @@ export async function POST(request: Request) {
       buyerType: "family",
       seatCount: purchase.seatCount,
       minimumFamilySeats: purchase.minimumSeatCount,
-      batchKey: "",
+      batchKey,
       requireActiveBatch: true,
-      requireExplicitHolidayBatch: false
+      requireExplicitHolidayBatch: true
     })
     const orderUuid = await createCourseOrder({
       courseSlug,
@@ -157,6 +159,8 @@ export async function POST(request: Request) {
       sourceType: "course_order",
       sourceUuid: orderUuid,
       courseSlug,
+      batchKey: context.batch?.batchKey || null,
+      batchLabel: context.batch?.batchLabel || null,
       children: assignments
     })
 

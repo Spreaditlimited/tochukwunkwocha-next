@@ -446,7 +446,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
           if (cancelled) return
           setBatches(result.batches || [])
           setPricing(result.pricing)
-          if (buyerType !== "family" && !batchKey && result.batches?.[0]?.batchKey) {
+          if (!batchKey && result.batches?.[0]?.batchKey) {
             autoSelectedBatchRef.current = result.batches[0].batchKey
             setBatchKey(result.batches[0].batchKey)
           }
@@ -808,7 +808,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               <div className="surface-raised bg-card p-6 sm:p-8">
                 <h2 className="font-heading text-lg font-bold">Enrollment Options</h2>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2">
-                  {batches.length && buyerType !== "family" ? (
+                  {batches.length ? (
                     <label className="block">
                       <span className="label flex min-h-5 items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Batch</span>
                       <PremiumPicker
@@ -840,7 +840,6 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                       onChange={(event) => {
                         const nextBuyerType = event.target.value === "family" ? "family" : "student"
                         setBuyerType(nextBuyerType)
-                        if (nextBuyerType === "family") setBatchKey("")
                       }}
                       options={[
                         { value: "student", label: "Single learner" },
@@ -864,7 +863,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                           {selectedSeatCount} seats selected • Total: {displayPrice || <PriceSpinner />}
                         </p>
                         <p className="mt-2">
-                          Buy multiple seats now under one account. After payment, assign each learner to any eligible batch for this course from your dashboard.
+                          All seats and learners begin in the selected batch. After enrollment, you can move individual learners to another eligible batch from your group dashboard.
                         </p>
                         {pricing?.groupDiscountMinor ? (
                           <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-semibold leading-snug text-primary">

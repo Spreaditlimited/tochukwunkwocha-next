@@ -377,6 +377,8 @@ async function countEnrolledSeats(courseSlug: string, batchKey: string) {
       COALESCE((SELECT COUNT(*) FROM course_manual_payments WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'approved' AND COALESCE(buyer_type, 'student') <> 'family'), 0)
       +
       COALESCE((SELECT COUNT(*) FROM family_child_enrollments WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'active'), 0)
+      +
+      COALESCE((SELECT SUM(GREATEST(0, seats_purchased - seats_consumed)) FROM family_seat_balances WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey}), 0)
     ) AS total
   `.catch(() => [{ total: 0 }])
   return toInt(rows[0]?.total)

@@ -45,7 +45,8 @@ export async function POST(request: Request) {
       buyerType: body.buyerType,
       seatCount: body.seatCount,
       batchKey: body.batchKey,
-      installment: true
+      installment: true,
+      requireActiveBatch: true
     })
     if (!context.batch) {
       return NextResponse.json({ ok: false, error: "No open batch is available for this course." }, { status: 409 })

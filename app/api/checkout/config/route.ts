@@ -19,7 +19,8 @@ export async function POST(request: Request) {
       buyerType: body.buyerType,
       seatCount: body.seatCount,
       batchKey: body.batchKey,
-      installment: body.installment === true
+      installment: body.installment === true,
+      requireActiveBatch: true
     })
     timing.mark("checkout_context")
     return NextResponse.json({

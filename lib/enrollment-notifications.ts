@@ -134,11 +134,11 @@ export async function moveEnrollmentBrevoList(input: {
   const oldListId = Number(input.oldListId || 0) || 0
   const newListId = Number(input.newListId || 0) || 0
 
-  if (oldListId && newListId && oldListId !== newListId) {
-    await removeEnrollmentFromBrevoList({ email: input.email, listId: oldListId })
-  }
+  const removed = oldListId && oldListId !== newListId
+    ? await removeEnrollmentFromBrevoList({ email: input.email, listId: oldListId })
+    : { ok: true, skipped: true }
 
-  return syncEnrollmentToBrevo({
+  const added = await syncEnrollmentToBrevo({
     fullName: input.fullName,
     email: input.email,
     phone: input.phone,
@@ -148,6 +148,108 @@ export async function moveEnrollmentBrevoList(input: {
     source: input.source,
     listId: newListId
   })
+  return {
+    ok: Boolean((removed.ok || removed.skipped) && added.ok),
+    error: removed.ok || removed.skipped ? added.error : removed.error,
+    removed,
+    added
+  }
+}
+
+export async function reconcileFamilyOwnerBrevoLists(input: {
+  familyId: bigint | number
+  fullName?: string | null
+  email: string
+  phone?: string | null
+  courseSlug: string
+  previousListIds?: Array<number | string | null | undefined>
+  source: string
+}) {
+  const email = normalizeEmail(input.email)
+  const courseSlug = clean(input.courseSlug, 120).toLowerCase()
+  let familyId: bigint
+  try {
+    familyId = BigInt(input.familyId)
+  } catch (_error) {
+    return { ok: false, error: "Invalid family enrollment ID", added: [], removed: [] }
+  }
+  if (familyId <= BigInt(0) || !email || !courseSlug) {
+    return { ok: false, error: "Family Brevo reconciliation details are incomplete", added: [], removed: [] }
+  }
+
+  const rows = await prisma.$queryRaw<Array<{
+    batchKey: string
+    batchLabel: string | null
+    brevoListId: string | null
+  }>>`
+    SELECT desired.batch_key AS batchKey, COALESCE(MAX(desired.batch_label), desired.batch_key) AS batchLabel,
+           b.brevo_list_id AS brevoListId
+    FROM (
+      SELECT e.course_slug, e.batch_key, e.batch_label
+      FROM family_child_enrollments e
+      JOIN family_children c ON c.id = e.child_id AND c.family_id = e.family_id AND c.status = 'active'
+      WHERE e.family_id = ${familyId}
+        AND e.course_slug = ${courseSlug}
+        AND e.status = 'active'
+      UNION ALL
+      SELECT balances.course_slug, balances.batch_key, balances.batch_label
+      FROM family_seat_balances balances
+      WHERE balances.family_id = ${familyId}
+        AND balances.course_slug = ${courseSlug}
+        AND balances.seats_purchased > balances.seats_consumed
+    ) desired
+    JOIN course_batches b ON b.course_slug = desired.course_slug AND b.batch_key = desired.batch_key
+    WHERE 1 = 1
+      AND COALESCE(TRIM(b.brevo_list_id), '') <> ''
+    GROUP BY desired.batch_key, b.brevo_list_id
+    ORDER BY desired.batch_key ASC
+  `
+
+  const desiredLists = new Map<number, { batchKeys: string[]; batchLabels: string[] }>()
+  for (const row of rows) {
+    const listId = Number(row.brevoListId || 0) || 0
+    if (!listId) continue
+    const existing = desiredLists.get(listId) || { batchKeys: [], batchLabels: [] }
+    const batchKey = clean(row.batchKey, 64)
+    const batchLabel = clean(row.batchLabel || row.batchKey, 120)
+    if (batchKey && !existing.batchKeys.includes(batchKey)) existing.batchKeys.push(batchKey)
+    if (batchLabel && !existing.batchLabels.includes(batchLabel)) existing.batchLabels.push(batchLabel)
+    desiredLists.set(listId, existing)
+  }
+
+  const added = []
+  for (const [listId, batches] of desiredLists) {
+    const result = await syncEnrollmentToBrevo({
+      fullName: input.fullName,
+      email,
+      phone: input.phone,
+      courseSlug,
+      batchKey: batches.batchKeys.join(", "),
+      batchLabel: batches.batchLabels.join(", "),
+      source: input.source,
+      listId
+    })
+    added.push({ listId, result })
+  }
+
+  const previousListIds = Array.from(new Set(
+    (input.previousListIds || []).map((value) => Number(value || 0) || 0).filter(Boolean)
+  ))
+  const removed = []
+  for (const listId of previousListIds) {
+    if (desiredLists.has(listId)) continue
+    const result = await removeEnrollmentFromBrevoList({ email, listId })
+    removed.push({ listId, result })
+  }
+
+  const failed = [...added, ...removed].find((entry) => entry.result?.ok === false)
+  return {
+    ok: !failed,
+    error: failed?.result?.error,
+    desiredListIds: Array.from(desiredLists.keys()),
+    added,
+    removed
+  }
 }
 
 export async function sendBatchSwitchConfirmationEmail(input: {
