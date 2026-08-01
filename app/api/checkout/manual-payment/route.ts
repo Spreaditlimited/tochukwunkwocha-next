@@ -17,7 +17,12 @@ import {
   processPaymentNotificationOutbox
 } from "@/lib/payment-notification-outbox"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
-import { createStudentPasswordResetToken, createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
+import { createStudentSessionForAccount, createStudentTemporaryPassword, setStudentSessionCookie } from "@/lib/student-auth"
+import {
+  assertNoActiveIndividualEnrollment,
+  enrollmentConflictPayload,
+  isCourseEnrollmentConflict
+} from "@/lib/enrollment-guard"
 
 async function existingPaymentForProof(proofPublicId: string) {
   if (!proofPublicId) return null
@@ -54,13 +59,13 @@ async function openPendingStudentSession(input: {
     email: input.email,
     phone: input.phone
   })
-  const reset = existingAccount ? null : await createStudentPasswordResetToken(input.email, { neverExpires: true }).catch(() => null)
+  const temporary = existingAccount ? null : await createStudentTemporaryPassword(input.email).catch(() => null)
   const session = await createStudentSessionForAccount(account)
   await setStudentSessionCookie(session.token)
   return {
     accountCreated: !existingAccount,
-    resetTokenCreated: Boolean(reset?.token),
-    resetToken: reset?.token || null
+    temporaryPasswordCreated: Boolean(temporary?.password),
+    temporaryPassword: temporary?.password || null
   }
 }
 
@@ -72,7 +77,7 @@ async function queueManualPaymentNotifications(input: {
   courseSlug: string
   dashboardPath: string
   accountCreated: boolean
-  resetToken: string | null
+  temporaryPassword: string | null
 }) {
   let eventUuid = ""
   try {
@@ -83,7 +88,7 @@ async function queueManualPaymentNotifications(input: {
       phone: input.phone,
       courseSlug: input.courseSlug,
       dashboardPath: input.dashboardPath,
-      resetToken: input.resetToken,
+      temporaryPassword: input.temporaryPassword,
       sendEmail: input.accountCreated
     })
   } catch (error) {
@@ -152,7 +157,7 @@ export async function POST(request: Request) {
         courseSlug,
         dashboardPath,
         accountCreated: pendingSession.accountCreated,
-        resetToken: pendingSession.resetToken
+        temporaryPassword: pendingSession.temporaryPassword
       })
       return NextResponse.json({
         ok: true,
@@ -160,7 +165,7 @@ export async function POST(request: Request) {
         alreadySubmitted: true,
         pendingReview: true,
         accountCreated: pendingSession.accountCreated,
-        resetTokenCreated: pendingSession.resetTokenCreated
+        temporaryPasswordCreated: pendingSession.temporaryPasswordCreated
       })
     }
 
@@ -215,6 +220,9 @@ export async function POST(request: Request) {
       batchKey: body.batchKey,
       manualTransfer: true
     })
+    if (result.buyerType !== "family") {
+      await assertNoActiveIndividualEnrollment({ email, courseSlug })
+    }
     const paymentUuid = await createManualPayment({
       courseSlug,
       firstName,
@@ -286,7 +294,7 @@ export async function POST(request: Request) {
       courseSlug,
       dashboardPath,
       accountCreated: pendingSession.accountCreated,
-      resetToken: pendingSession.resetToken
+      temporaryPassword: pendingSession.temporaryPassword
     })
 
     return NextResponse.json({
@@ -296,9 +304,12 @@ export async function POST(request: Request) {
       proofFallback: usedProofFallback,
       pendingReview: true,
       accountCreated: pendingSession.accountCreated,
-      resetTokenCreated: pendingSession.resetTokenCreated
+      temporaryPasswordCreated: pendingSession.temporaryPasswordCreated
     })
   } catch (error) {
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
+    }
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not submit manual payment" }, { status: 500 })
   }
 }

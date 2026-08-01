@@ -15,6 +15,11 @@ import {
 } from "@/lib/payments/course-checkout"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
 import { ServerTiming } from "@/lib/server-timing"
+import {
+  assertNoActiveIndividualEnrollment,
+  enrollmentConflictPayload,
+  isCourseEnrollmentConflict
+} from "@/lib/enrollment-guard"
 
 export async function POST(request: Request) {
   const timing = new ServerTiming()
@@ -57,6 +62,9 @@ export async function POST(request: Request) {
       seatCount: body.seatCount,
       batchKey: body.batchKey
     })
+    if (result.buyerType !== "family") {
+      await assertNoActiveIndividualEnrollment({ email, courseSlug })
+    }
     timing.mark("pricing")
     const orderUuid = await createCourseOrder({
       courseSlug,
@@ -140,6 +148,9 @@ export async function POST(request: Request) {
     }, { headers: timing.headers() })
   } catch (error) {
     timing.mark("failed")
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json(enrollmentConflictPayload(error), { status: 409, headers: timing.headers() })
+    }
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Could not create checkout order" },
       { status: 500, headers: timing.headers() }

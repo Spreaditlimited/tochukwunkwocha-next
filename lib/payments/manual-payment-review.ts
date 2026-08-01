@@ -1,4 +1,11 @@
+import type { Prisma } from "@prisma/client"
+
 import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
+import {
+  claimIndividualCourseEnrollment,
+  ensureEnrollmentClaimTable,
+  releaseIndividualCourseEnrollmentClaim
+} from "@/lib/enrollment-guard"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { sendManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { prisma } from "@/lib/prisma"
@@ -12,7 +19,7 @@ import {
   resolveCheckoutBatch,
   siteBaseUrl
 } from "@/lib/payments/course-checkout"
-import { createStudentPasswordResetToken } from "@/lib/student-auth"
+import { createStudentTemporaryPassword } from "@/lib/student-auth"
 
 type ManualPaymentRow = {
   payment_uuid: string
@@ -52,49 +59,15 @@ async function findManualPayment(paymentUuid: string) {
   return rows[0] || null
 }
 
-async function findExistingApprovedIndividualEnrollment(input: {
-  email: string
-  courseSlug: string
-  excludeManualPaymentUuid: string
-}) {
-  const [manualRows, orderRows] = await Promise.all([
-    prisma.$queryRaw<Array<{ sourceUuid: string; batchKey: string | null }>>`
-      SELECT payment_uuid AS sourceUuid, batch_key AS batchKey
-      FROM course_manual_payments
-      WHERE LOWER(TRIM(email)) = ${input.email}
-        AND LOWER(TRIM(course_slug)) = ${input.courseSlug}
-        AND status = 'approved'
-        AND COALESCE(buyer_type, 'student') <> 'family'
-        AND payment_uuid <> ${input.excludeManualPaymentUuid}
-      ORDER BY id DESC
-      LIMIT 1
-    `,
-    prisma.$queryRaw<Array<{ sourceUuid: string; batchKey: string | null }>>`
-      SELECT order_uuid AS sourceUuid, batch_key AS batchKey
-      FROM course_orders
-      WHERE LOWER(TRIM(email)) = ${input.email}
-        AND LOWER(TRIM(course_slug)) = ${input.courseSlug}
-        AND status = 'paid'
-        AND COALESCE(buyer_type, 'student') <> 'family'
-      ORDER BY id DESC
-      LIMIT 1
-    `
-  ])
-
-  if (manualRows[0]) return { sourceType: "manual payment", ...manualRows[0] }
-  if (orderRows[0]) return { sourceType: "online order", ...orderRows[0] }
-  return null
-}
-
 async function updateManualPaymentReview(input: {
   paymentUuid: string
   status: "approved" | "rejected"
   reviewedBy: string
   reviewNote?: string
-}) {
+}, client: Prisma.TransactionClient | typeof prisma = prisma) {
   const reviewedAt = new Date()
   try {
-    await prisma.$executeRaw`
+    await client.$executeRaw`
       UPDATE course_manual_payments
       SET status = ${input.status},
           reviewed_by = ${input.reviewedBy},
@@ -109,7 +82,7 @@ async function updateManualPaymentReview(input: {
       LIMIT 1
     `
   } catch (_error) {
-    await prisma.$executeRaw`
+    await client.$executeRaw`
       UPDATE course_manual_payments
       SET status = ${input.status},
           updated_at = ${reviewedAt}
@@ -147,6 +120,10 @@ async function returnApprovedPaymentToPending(paymentUuid: string, reason: strin
       AND status = 'approved'
     LIMIT 1
   `.catch(() => 0)
+  await releaseIndividualCourseEnrollmentClaim({
+    sourceType: "manual_payment",
+    sourceUuid: paymentUuid
+  }).catch(() => 0)
 }
 
 export async function reviewManualPayment(input: {
@@ -175,19 +152,6 @@ export async function reviewManualPayment(input: {
       throw new Error("This enrollment has already been approved.")
     }
 
-    if (clean(payment.buyer_type, 40).toLowerCase() !== "family") {
-      const existingEnrollment = await findExistingApprovedIndividualEnrollment({
-        email,
-        courseSlug,
-        excludeManualPaymentUuid: paymentUuid
-      })
-      if (existingEnrollment) {
-        throw new Error(
-          `This email already has an approved enrollment for this course (${existingEnrollment.sourceType} ${existingEnrollment.sourceUuid}). Reject or correct the duplicate registration instead.`
-        )
-      }
-    }
-
     const batchKey = clean(payment.batch_key, 64)
     const seatCount = Math.max(1, toNumber(payment.seat_count, 1))
     if (batchKey) {
@@ -196,12 +160,33 @@ export async function reviewManualPayment(input: {
     }
   }
 
-  await updateManualPaymentReview({
+  const reviewUpdate: {
+    paymentUuid: string
+    status: "approved" | "rejected"
+    reviewedBy: string
+    reviewNote?: string
+  } = {
     paymentUuid,
     status: nextStatus,
     reviewedBy: clean(input.reviewedBy, 120) || "admin",
     reviewNote: clean(input.reviewNote, 500) || undefined
-  })
+  }
+  if (nextStatus === "approved" && clean(payment.buyer_type, 40).toLowerCase() !== "family") {
+    await ensureEnrollmentClaimTable()
+    await prisma.$transaction(async (tx) => {
+      await claimIndividualCourseEnrollment(tx, {
+        email,
+        courseSlug,
+        sourceType: "manual_payment",
+        sourceUuid: paymentUuid,
+        batchKey: payment.batch_key,
+        batchLabel: payment.batch_label
+      })
+      await updateManualPaymentReview(reviewUpdate, tx)
+    })
+  } else {
+    await updateManualPaymentReview(reviewUpdate)
+  }
 
   if (nextStatus !== "approved") {
     return { ok: true as const, paymentUuid, status: nextStatus, accountCreated: false, familyProvisioned: null }
@@ -247,14 +232,14 @@ export async function reviewManualPayment(input: {
     }
   }
 
-  const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
-  const resetToken = reset?.token || null
-  const activationEmailTask = resetToken
+  const needsFirstUsePassword = !existingAccount || (existingAccount.mustResetPassword && !existingAccount.resetRequestedAt)
+  const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
+  const activationEmailTask = temporary?.password
     ? sendStudentAccountReadyEmail({
         email,
         fullName: account.fullName || clean(payment.first_name, 180) || "Student",
         courseSlug: clean(payment.course_slug, 120),
-        resetToken
+        temporaryPassword: temporary.password
       })
         .then(() => true)
         .catch(async (error) => {
@@ -308,7 +293,7 @@ export async function reviewManualPayment(input: {
     paymentUuid,
     status: nextStatus,
     accountCreated: !existingAccount,
-    resetToken,
+    resetToken: null,
     activationEmailSent,
     familyProvisioned,
     affiliateCommission

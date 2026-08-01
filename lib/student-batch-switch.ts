@@ -108,19 +108,29 @@ async function countEnrolledSeats(courseSlug: string, batchKey: string) {
   const rows = await prisma.$queryRaw<Array<{ total: bigint | number | null }>>(Prisma.sql`
     SELECT (
       COALESCE((
-        SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
+        SELECT COUNT(*)
         FROM course_orders
         WHERE course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
           AND batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
           AND status = 'paid'
+          AND COALESCE(buyer_type, 'student') <> 'family'
       ), 0)
       +
       COALESCE((
-        SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
+        SELECT COUNT(*)
         FROM course_manual_payments
         WHERE course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
           AND batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
           AND status = 'approved'
+          AND COALESCE(buyer_type, 'student') <> 'family'
+      ), 0)
+      +
+      COALESCE((
+        SELECT COUNT(*)
+        FROM family_child_enrollments
+        WHERE course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
+          AND batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
+          AND status = 'active'
       ), 0)
     ) AS total
   `)
@@ -184,27 +194,29 @@ async function loadSwitchableEnrollments(account: { id: bigint; email: string; f
     courseSlug: string
     batchKey: string
     batchLabel: string | null
-    seatsPurchased: bigint | number
-    seatsConsumed: bigint | number
+    assignedLearners: bigint | number
     brevoListId: string | null
     batchStartAt: Date | null
     parentName: string | null
     parentEmail: string | null
     parentPhone: string | null
   }>>(Prisma.sql`
-    SELECT f.id AS familyId, s.course_slug AS courseSlug, s.batch_key AS batchKey, s.batch_label AS batchLabel,
-           s.seats_purchased AS seatsPurchased, s.seats_consumed AS seatsConsumed,
+    SELECT f.id AS familyId, e.course_slug AS courseSlug, e.batch_key AS batchKey,
+           COALESCE(MAX(e.batch_label), e.batch_key) AS batchLabel,
+           COUNT(DISTINCT e.child_id) AS assignedLearners,
            b.brevo_list_id AS brevoListId, b.batch_start_at AS batchStartAt,
            f.parent_name AS parentName, f.parent_email AS parentEmail, f.parent_phone AS parentPhone
     FROM family_accounts f
-    JOIN family_seat_balances s ON s.family_id = f.id
+    JOIN family_children c ON c.family_id = f.id AND c.status = 'active'
+    JOIN family_child_enrollments e ON e.family_id = f.id AND e.child_id = c.id AND e.status = 'active'
     LEFT JOIN course_batches b
-      ON b.course_slug COLLATE utf8mb4_unicode_ci = s.course_slug COLLATE utf8mb4_unicode_ci
-     AND b.batch_key COLLATE utf8mb4_unicode_ci = s.batch_key COLLATE utf8mb4_unicode_ci
+      ON b.course_slug COLLATE utf8mb4_unicode_ci = e.course_slug COLLATE utf8mb4_unicode_ci
+     AND b.batch_key COLLATE utf8mb4_unicode_ci = e.batch_key COLLATE utf8mb4_unicode_ci
     WHERE f.parent_account_id = ${account.id}
       AND f.status = 'active'
-      AND COALESCE(TRIM(s.batch_key), '') <> ''
-      AND COALESCE(s.seats_purchased, 0) > 0
+      AND COALESCE(TRIM(e.batch_key), '') <> ''
+    GROUP BY f.id, e.course_slug, e.batch_key, b.brevo_list_id, b.batch_start_at,
+             f.parent_name, f.parent_email, f.parent_phone
   `).catch(() => [])
 
   return [
@@ -247,8 +259,8 @@ async function loadSwitchableEnrollments(account: { id: bigint; email: string; f
       batchLabel: clean(row.batchLabel || row.batchKey, 120),
       batchStartAt: row.batchStartAt,
       brevoListId: clean(row.brevoListId, 64),
-      seatCount: Math.max(1, Number(row.seatsPurchased || 1)),
-      seatsUsed: Math.max(0, Number(row.seatsConsumed || 0)),
+      seatCount: Math.max(1, Number(row.assignedLearners || 1)),
+      seatsUsed: Math.max(0, Number(row.assignedLearners || 0)),
       displayName: clean(row.parentName || account.fullName, 180),
       email: clean(row.parentEmail || account.email, 220).toLowerCase(),
       phone: clean(row.parentPhone, 40)
@@ -327,6 +339,19 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
   const sourceId = clean(input.sourceId, 120)
   const targetBatchKey = normalizeBatchKey(input.targetBatchKey)
   if (!sourceType || !sourceId || !targetBatchKey) throw new Error("Batch switch details are incomplete.")
+  if (sourceType === "family_child") {
+    throw new Error("Group learners cannot switch batches. The group owner must manage an individual learner's batch from the Group Enrollment dashboard.")
+  }
+  const groupLearner = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+    SELECT id
+    FROM family_children
+    WHERE account_id = ${account.id}
+      AND status = 'active'
+    LIMIT 1
+  `).catch(() => [])
+  if (groupLearner.length) {
+    throw new Error("Group learners cannot switch batches. Please contact the group owner.")
+  }
 
   const items = await loadSwitchableEnrollments(account)
   const item = items.find((entry) => entry.sourceType === sourceType && sourceIdFor(entry) === sourceId)
@@ -366,6 +391,13 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
         LIMIT 1
       `)
       if (Number(result || 0) !== 1) throw new Error("Could not update enrollment batch.")
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE tochukwu_course_enrollment_claims
+        SET batch_key = ${target.batchKey}, batch_label = ${target.batchLabel}, updated_at = ${now}
+        WHERE email_key = ${account.email.toLowerCase()}
+          AND course_slug = ${item.courseSlug}
+          AND source_type = 'course_order'
+      `).catch(() => 0)
     } else if (item.sourceType === "manual_payment") {
       const result = await tx.$executeRaw(Prisma.sql`
         UPDATE course_manual_payments
@@ -378,15 +410,15 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
         LIMIT 1
       `)
       if (Number(result || 0) !== 1) throw new Error("Could not update manual enrollment batch.")
-    } else if (item.sourceType === "family") {
       await tx.$executeRaw(Prisma.sql`
-        UPDATE family_seat_balances
+        UPDATE tochukwu_course_enrollment_claims
         SET batch_key = ${target.batchKey}, batch_label = ${target.batchLabel}, updated_at = ${now}
-        WHERE family_id = ${item.familyId}
-          AND course_slug COLLATE utf8mb4_unicode_ci = ${item.courseSlug} COLLATE utf8mb4_unicode_ci
-          AND batch_key COLLATE utf8mb4_unicode_ci = ${item.batchKey} COLLATE utf8mb4_unicode_ci
-      `)
-      await tx.$executeRaw(Prisma.sql`
+        WHERE email_key = ${account.email.toLowerCase()}
+          AND course_slug = ${item.courseSlug}
+          AND source_type = 'manual_payment'
+      `).catch(() => 0)
+    } else if (item.sourceType === "family") {
+      const moved = await tx.$executeRaw(Prisma.sql`
         UPDATE family_child_enrollments e
         JOIN family_children c ON c.id = e.child_id
         SET e.batch_key = ${target.batchKey}, e.batch_label = ${target.batchLabel}, e.updated_at = ${now}
@@ -396,23 +428,16 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
           AND e.batch_key COLLATE utf8mb4_unicode_ci = ${item.batchKey} COLLATE utf8mb4_unicode_ci
           AND e.status IN ('active', 'pending_payment')
       `)
+      if (Number(moved || 0) !== item.seatCount) throw new Error("Could not move every learner in this batch group.")
       await tx.$executeRaw(Prisma.sql`
-        UPDATE course_orders
-        SET batch_key = ${target.batchKey}, batch_label = ${target.batchLabel}, updated_at = ${now}
-        WHERE (family_account_id = ${item.familyId} OR LOWER(email) COLLATE utf8mb4_unicode_ci = ${account.email.toLowerCase()} COLLATE utf8mb4_unicode_ci)
-          AND course_slug COLLATE utf8mb4_unicode_ci = ${item.courseSlug} COLLATE utf8mb4_unicode_ci
-          AND batch_key COLLATE utf8mb4_unicode_ci = ${item.batchKey} COLLATE utf8mb4_unicode_ci
-          AND status = 'paid'
-          AND COALESCE(buyer_type, 'student') = 'family'
-      `).catch(() => 0)
-      await tx.$executeRaw(Prisma.sql`
-        UPDATE course_manual_payments
-        SET batch_key = ${target.batchKey}, batch_label = ${target.batchLabel}, updated_at = ${now}
-        WHERE (family_account_id = ${item.familyId} OR LOWER(email) COLLATE utf8mb4_unicode_ci = ${account.email.toLowerCase()} COLLATE utf8mb4_unicode_ci)
-          AND course_slug COLLATE utf8mb4_unicode_ci = ${item.courseSlug} COLLATE utf8mb4_unicode_ci
-          AND batch_key COLLATE utf8mb4_unicode_ci = ${item.batchKey} COLLATE utf8mb4_unicode_ci
-          AND status = 'approved'
-          AND COALESCE(buyer_type, 'student') = 'family'
+        UPDATE tochukwu_course_enrollment_claims claim
+        JOIN family_child_enrollments enrollment
+          ON claim.source_type = 'family_child'
+         AND claim.source_uuid = CONCAT('family_child_', enrollment.child_id)
+        SET claim.batch_key = ${target.batchKey}, claim.batch_label = ${target.batchLabel}, claim.updated_at = ${now}
+        WHERE enrollment.family_id = ${item.familyId}
+          AND enrollment.course_slug COLLATE utf8mb4_unicode_ci = ${item.courseSlug} COLLATE utf8mb4_unicode_ci
+          AND enrollment.batch_key COLLATE utf8mb4_unicode_ci = ${target.batchKey} COLLATE utf8mb4_unicode_ci
       `).catch(() => 0)
     }
 
@@ -427,7 +452,7 @@ export async function switchEnrollmentBatch(account: { id: bigint; email: string
     `)
   })
 
-  await moveEnrollmentBrevoList({
+  if (item.sourceType !== "family") await moveEnrollmentBrevoList({
     fullName: item.displayName,
     email: item.email || account.email,
     phone: item.phone,

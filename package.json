@@ -22,7 +22,12 @@
     "smoke:admin-group-enrollment": "node scripts/smoke-admin-group-enrollment.mjs",
     "smoke:affiliate-commissions": "node scripts/smoke-affiliate-commissions.mjs",
     "smoke:installment-reconciliation": "node scripts/smoke-installment-reconciliation.mjs",
-    "smoke:student-scale-readiness": "node scripts/smoke-student-scale-readiness.mjs"
+    "smoke:student-scale-readiness": "node scripts/smoke-student-scale-readiness.mjs",
+    "smoke:course-enrollment-guard": "node scripts/smoke-course-enrollment-guard.mjs",
+    "smoke:course-enrollment-guard-db": "node --env-file=.env scripts/smoke-course-enrollment-guard-db.mjs",
+    "smoke:group-seat-batches": "node scripts/smoke-group-seat-batch-assignment.mjs",
+    "smoke:temporary-student-password": "node scripts/smoke-temporary-student-password.mjs",
+    "smoke:paid-account-provisioning": "node scripts/smoke-paid-account-provisioning.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

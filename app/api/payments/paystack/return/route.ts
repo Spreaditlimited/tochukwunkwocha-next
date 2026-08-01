@@ -5,6 +5,7 @@ import { createAffiliateCommissionForOrder, markCourseOrderPaid, siteBaseUrl, ve
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { recordPaystackAuditEvent, validateCourseOrderPaystackPayment } from "@/lib/payments/paystack-audit"
 import { setStudentSessionCookie } from "@/lib/student-auth"
+import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
@@ -59,8 +60,14 @@ export async function GET(request: Request) {
       providerReference: verified.reference,
       providerOrderId: verified.providerOrderId
     })
-    await createAffiliateCommissionForOrder(orderUuid)
     const provisioned = await provisionStudentForPaidOrder(order)
+    if (!provisioned?.account) throw new Error("The paid enrollment account could not be provisioned.")
+    await createAffiliateCommissionForOrder(orderUuid).catch((error) => {
+      console.error("[paystack-return] affiliate commission failed after enrollment provisioning", {
+        orderUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
     await recordPaystackAuditEvent({
       orderUuid,
       providerReference: verified.reference,
@@ -93,6 +100,7 @@ export async function GET(request: Request) {
       errorCode: "return_verification_failed",
       errorMessage: error instanceof Error ? error.message : String(error)
     })
-    return NextResponse.redirect(`${siteBaseUrl()}/checkout/prompt-to-profit?payment=failed&reason=${encodeURIComponent(error instanceof Error ? error.message : "Payment verification failed")}`)
+    const paymentState = isCourseEnrollmentConflict(error) ? "duplicate_review" : "failed"
+    return NextResponse.redirect(`${siteBaseUrl()}/checkout/prompt-to-profit?payment=${paymentState}&reason=${encodeURIComponent(error instanceof Error ? error.message : "Payment verification failed")}`)
   }
 }

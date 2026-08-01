@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server"
 
-import { consumeFamilySeatsForChildren, hasPurchasedFamilySeats, normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
+import {
+  assertFamilyLearnersCanEnroll,
+  consumeFamilySeatsForChildren,
+  hasPurchasedFamilySeats,
+  normalizeFamilyChildren,
+  prepareFamilyLearnerAssignments,
+  savePendingFamilyChildren
+} from "@/lib/family-enrollment"
+import { enrollmentConflictPayload, isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 import {
   checkoutContext,
   courseReferencePrefix,
@@ -93,9 +101,8 @@ export async function POST(request: Request) {
     if (!familyEnrollmentEnabledForCourse(courseSlug)) {
       return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
     }
-
-    const requestedBatchKey = clean(body.batchKey, 64)
-    const requestedBatchLabel = clean(body.batchLabel, 120)
+    await assertFamilyLearnersCanEnroll(children, courseSlug)
+    const assignments = await prepareFamilyLearnerAssignments(children, courseSlug)
 
     try {
       const consumed = await consumeFamilySeatsForChildren({
@@ -103,9 +110,7 @@ export async function POST(request: Request) {
         parentName: session.account.fullName,
         parentEmail: session.account.email,
         courseSlug,
-        batchKey: requestedBatchKey,
-        batchLabel: requestedBatchLabel,
-        children
+        children: assignments
       })
       return NextResponse.json({
         ok: true,
@@ -122,7 +127,7 @@ export async function POST(request: Request) {
       if (!message.includes("purchased seat")) throw error
     }
 
-    const purchase = await groupPurchaseSeatCount(session.account.id, children.length)
+    const purchase = await groupPurchaseSeatCount(session.account.id, assignments.length)
     const context = await checkoutContext({
       courseSlug,
       country,
@@ -131,13 +136,10 @@ export async function POST(request: Request) {
       buyerType: "family",
       seatCount: purchase.seatCount,
       minimumFamilySeats: purchase.minimumSeatCount,
-      batchKey: requestedBatchKey,
+      batchKey: "",
       requireActiveBatch: true,
-      requireExplicitHolidayBatch: true
+      requireExplicitHolidayBatch: false
     })
-    const batchKey = context.batch?.batchKey || requestedBatchKey
-    const batchLabel = context.batch?.batchLabel || requestedBatchLabel
-
     const orderUuid = await createCourseOrder({
       courseSlug,
       firstName: session.account.fullName,
@@ -155,9 +157,7 @@ export async function POST(request: Request) {
       sourceType: "course_order",
       sourceUuid: orderUuid,
       courseSlug,
-      batchKey,
-      batchLabel,
-      children
+      children: assignments
     })
 
     const metadata = {
@@ -200,6 +200,9 @@ export async function POST(request: Request) {
       pricing: context.pricing
     })
   } catch (error) {
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
+    }
     const message = error instanceof Error ? error.message : "Could not create group enrollment."
     return NextResponse.json(
       { ok: false, error: message },

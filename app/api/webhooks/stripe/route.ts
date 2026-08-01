@@ -7,6 +7,7 @@ import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
 import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { fulfillPaidShopOrder, SHOP_PAYMENT_SCOPE } from "@/lib/shop"
+import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
 export const dynamic = "force-dynamic"
 
@@ -70,19 +71,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })
   }
   if (paymentScope === "installment" || metadata.installment_plan_uuid) {
-    await markInstallmentPaymentPaid(String(session.id || ""), session.payment_intent ? String(session.payment_intent) : null)
+    try {
+      await markInstallmentPaymentPaid(String(session.id || ""), session.payment_intent ? String(session.payment_intent) : null)
+    } catch (error) {
+      if (isCourseEnrollmentConflict(error)) {
+        return NextResponse.json({ ok: true, scope: "installment", duplicateReview: true })
+      }
+      throw error
+    }
     return NextResponse.json({ ok: true, scope: "installment" })
   }
 
   const orderUuid = String(session.client_reference_id || metadata.order_uuid || "").trim()
   if (!orderUuid) return NextResponse.json({ ok: true, ignored: true, reason: "missing_order_uuid" })
-  const order = await markCourseOrderPaid({
-    orderUuid,
-    providerReference: String(session.id || ""),
-    providerOrderId: session.payment_intent ? String(session.payment_intent) : String(session.id || "")
+  let order
+  try {
+    order = await markCourseOrderPaid({
+      orderUuid,
+      providerReference: String(session.id || ""),
+      providerOrderId: session.payment_intent ? String(session.payment_intent) : String(session.id || "")
+    })
+  } catch (error) {
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json({ ok: true, scope: "course_checkout", orderUuid, duplicateReview: true })
+    }
+    throw error
+  }
+  const provisioned = await provisionStudentForPaidOrder(order, { createSession: false })
+  if (!provisioned?.account) throw new Error("The paid enrollment account could not be provisioned.")
+  await createAffiliateCommissionForOrder(orderUuid).catch((error) => {
+    console.error("[stripe-webhook] affiliate commission failed after enrollment provisioning", {
+      orderUuid,
+      error: error instanceof Error ? error.message : String(error)
+    })
   })
-  await createAffiliateCommissionForOrder(orderUuid)
-  await provisionStudentForPaidOrder(order)
   await sendCourseOrderMetaPurchase({ orderUuid }).catch(() => null)
   return NextResponse.json({ ok: true, scope: "course_checkout", orderUuid })
 }

@@ -13,7 +13,7 @@ type LearnerRow = {
   fullName: string
   age: string
   classLevel: string
-  email: string
+  batchKey: string
 }
 
 type GroupPricingPreview = {
@@ -34,8 +34,8 @@ const countryOptions = [
   { value: "OTHER", label: "Other" }
 ]
 
-function emptyLearner(): LearnerRow {
-  return { fullName: "", age: "", classLevel: "", email: "" }
+function emptyLearner(batchKey = ""): LearnerRow {
+  return { fullName: "", age: "", classLevel: "", batchKey }
 }
 
 function groupCourseName(slug: string) {
@@ -63,7 +63,6 @@ async function requestJson<T>(url: string, body: Record<string, unknown>, method
 export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[]; courses: LearningCourseOption[] }) {
   const firstOpenSeat = seats.find((seat) => seat.seatsAvailable > 0)
   const [courseSlug, setCourseSlug] = useState(firstOpenSeat?.courseSlug || courses[0]?.courseSlug || "")
-  const [batchKey, setBatchKey] = useState(firstOpenSeat?.batchKey || "")
   const [country, setCountry] = useState("NG")
   const [learners, setLearners] = useState<LearnerRow[]>([emptyLearner()])
   const [isOpen, setIsOpen] = useState(false)
@@ -87,42 +86,26 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
   const selectedCourse = courses.find((course) => course.courseSlug === courseSlug)
 
   const batchOptions = useMemo(() => {
-    const map = new Map<string, { value: string; label: string; batchLabel: string; purchasedOnly: boolean }>()
+    const map = new Map<string, { value: string; label: string; batchLabel: string }>()
     selectedCourse?.batches.filter((batch) => batch.remainingSeats === null || batch.remainingSeats > 0).forEach((batch) => {
       const startLabel = formatDateTimeWAT(batch.batchStartAt)
       map.set(batch.batchKey, {
         value: batch.batchKey,
         label: `${batch.batchLabel}${startLabel ? ` · Starts ${startLabel}` : ""}`,
-        batchLabel: batch.batchLabel,
-        purchasedOnly: false
+        batchLabel: batch.batchLabel
       })
     })
-    seats
-      .filter((seat) => seat.courseSlug === courseSlug && seat.batchKey)
-      .forEach((seat) => {
-        if (!map.has(seat.batchKey || "")) {
-          const matchingBatch = selectedCourse?.batches.find((batch) => batch.batchKey === seat.batchKey)
-          const startLabel = formatDateTimeWAT(matchingBatch?.batchStartAt)
-          map.set(seat.batchKey || "", {
-            value: seat.batchKey || "",
-            label: `${seat.batchLabel || seat.batchKey}${startLabel ? ` · Starts ${startLabel}` : ""}`,
-            batchLabel: seat.batchLabel || seat.batchKey || "",
-            purchasedOnly: true
-          })
-        }
-      })
     const mapped = Array.from(map.values())
     if (!mapped.length && selectedCourse?.enrollmentMode === "immediate") {
-      return [{ value: "", label: "Immediate access", batchLabel: "Immediate access", purchasedOnly: false }]
+      return [{ value: "", label: "Immediate access", batchLabel: "Immediate access" }]
     }
     if (!mapped.length) {
-      return [{ value: "", label: "No open batch available", batchLabel: "", purchasedOnly: false }]
+      return [{ value: "", label: "No open batch available", batchLabel: "" }]
     }
     return mapped
-  }, [courseSlug, seats, selectedCourse])
+  }, [selectedCourse])
 
-  const selectedSeat = seats.find((seat) => seat.courseSlug === courseSlug && (seat.batchKey || "") === batchKey)
-  const selectedBatchLabel = batchOptions.find((option) => option.value === batchKey)?.batchLabel || selectedSeat?.batchLabel || ""
+  const selectedSeat = seats.find((seat) => seat.courseSlug === courseSlug)
   const availableSeats = selectedSeat?.seatsAvailable || 0
   const purchasedSeats = selectedSeat?.seatsPurchased || 0
   const hasPurchasedSeatsForSelection = Boolean(selectedSeat && availableSeats > 0)
@@ -132,14 +115,16 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
   const hasPurchasedGroupSeats = seats.some((seat) => seat.seatsPurchased > 0)
   const purchaseSeatCount = hasPurchasedGroupSeats ? learnerCount : Math.max(2, learnerCount)
   const isImmediateAccess = selectedCourse?.enrollmentMode === "immediate"
-  const purchasableBatchOptions = useMemo(() => batchOptions.filter((option) => !option.purchasedOnly), [batchOptions])
-  const hasOpenBatch = (willUseExistingSeats ? batchOptions : purchasableBatchOptions).some((option) => option.value) || isImmediateAccess
+  const hasOpenBatch = batchOptions.some((option) => option.value) || isImmediateAccess
 
   useEffect(() => {
-    const availableOptions = willUseExistingSeats ? batchOptions : purchasableBatchOptions
-    const first = availableOptions.find((option) => option.value)?.value || ""
-    if (!availableOptions.some((option) => option.value === batchKey)) setBatchKey(first)
-  }, [batchKey, batchOptions, purchasableBatchOptions, willUseExistingSeats])
+    const first = batchOptions.find((option) => option.value)?.value || ""
+    setLearners((current) => current.map((learner) => (
+      isImmediateAccess || batchOptions.some((option) => option.value === learner.batchKey)
+        ? learner
+        : { ...learner, batchKey: first }
+    )))
+  }, [batchOptions, isImmediateAccess])
 
   useEffect(() => {
     if (!isOpen || willUseExistingSeats || !courseSlug || !hasOpenBatch) {
@@ -157,7 +142,6 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
     const timer = window.setTimeout(() => {
       requestJson<{ provider: string; seatCount: number; pricing: GroupPricingPreview }>("/api/student/group-enrollment", {
         courseSlug,
-        batchKey,
         country,
         seatCount: purchaseSeatCount
       }, "PUT")
@@ -178,14 +162,14 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [batchKey, country, courseSlug, hasOpenBatch, isOpen, purchaseSeatCount, willUseExistingSeats])
+  }, [country, courseSlug, hasOpenBatch, isOpen, purchaseSeatCount, willUseExistingSeats])
 
   function updateLearner(index: number, key: keyof LearnerRow, value: string) {
     setLearners((current) => current.map((learner, idx) => (idx === index ? { ...learner, [key]: value } : learner)))
   }
 
   function addLearner() {
-    setLearners((current) => [...current, emptyLearner()].slice(0, 500))
+    setLearners((current) => [...current, emptyLearner(batchOptions.find((option) => option.value)?.value || "")].slice(0, 500))
   }
 
   function removeLearner(index: number) {
@@ -201,7 +185,8 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       fullName: learner.fullName.trim(),
       age: learner.age.trim(),
       classLevel: learner.classLevel.trim(),
-      email: learner.email.trim()
+      batchKey: learner.batchKey,
+      batchLabel: batchOptions.find((option) => option.value === learner.batchKey)?.batchLabel || ""
     }))
     
     if (children.some((child) => !child.fullName)) {
@@ -222,20 +207,24 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       showStudentToast({ type: "error", title: "Batch unavailable", message: errorMessage })
       return
     }
+    if (!isImmediateAccess && children.some((child) => !child.batchKey)) {
+      const errorMessage = "Please choose a batch for every learner."
+      setError(errorMessage)
+      showStudentToast({ type: "error", title: "Batch assignment incomplete", message: errorMessage })
+      return
+    }
 
     setIsSubmitting(true)
     try {
       const result = await requestJson<{ usedExistingSeats?: boolean; checkoutUrl?: string }>("/api/student/group-enrollment", {
         courseSlug,
-        batchKey,
-        batchLabel: selectedBatchLabel,
         country,
         children
       })
       if (result.usedExistingSeats) {
         setMessage("Learner access successfully assigned from your purchased seats.")
         showStudentToast({ type: "success", title: "Learners assigned", message: "Learner access was assigned from your purchased seats." })
-        setLearners([emptyLearner()])
+        setLearners([emptyLearner(batchOptions.find((option) => option.value)?.value || "")])
         window.location.reload()
         return
       }
@@ -288,25 +277,12 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
           
           {/* Program Configuration */}
           <div className="grid gap-6 rounded-xl border border-border bg-background/50 p-5 sm:p-6 md:grid-cols-3">
-            {!willUseExistingSeats ? <label className="block">
+            <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme</span>
               <div className="mt-1">
                 <PremiumPicker value={courseSlug} options={courseOptions} onChange={(event) => setCourseSlug(event.target.value)} />
               </div>
-            </label> : null}
-            {!willUseExistingSeats && !isImmediateAccess ? (
-              <label className="block">
-                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch Allocation</span>
-                <div className="mt-1">
-                  <PremiumPicker
-                    value={batchKey}
-                    options={purchasableBatchOptions}
-                    onChange={(event) => setBatchKey(event.target.value)}
-                    disabled={!hasOpenBatch}
-                  />
-                </div>
-              </label>
-            ) : null}
+            </label>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Billing Region</span>
               <div className="mt-1">
@@ -331,7 +307,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                 {hasPurchasedSeatsForSelection
                   ? `${availableSeats} purchased seat${availableSeats === 1 ? "" : "s"} available`
                   : hasUsedUpPurchasedSeatsForSelection
-                    ? "All purchased seats for this batch have been assigned"
+                    ? "All purchased seats for this course have been assigned"
                     : "No purchased seats yet"}
               </p>
               <p className="mt-1 text-sm font-medium opacity-90">
@@ -341,7 +317,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                     ? "You can continue to checkout to buy additional group seats for these learners."
                   : hasPurchasedSeatsForSelection
                     ? `You are adding ${learnerCount} learner${learnerCount === 1 ? "" : "s"}, which is more than your available seat balance. Continuing will open checkout for the selected learners.`
-                    : "Enter the learner details below. Continuing will open checkout so you can buy the required group seats."}
+                    : "Enter the learner names below. Continuing will open checkout so you can buy the required group seats."}
               </p>
             </div>
           </div>
@@ -357,7 +333,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                       ? "Loading checkout total..."
                       : pricing
                         ? `${pricingSeatCount} seat${pricingSeatCount === 1 ? "" : "s"} · ${pricing.label}`
-                        : pricingError || "Choose an available batch to see the total."}
+                        : pricingError || "Choose an available course to see the total."}
                 </p>
               </div>
               <p className="text-xs font-bold uppercase tracking-widest text-primary">
@@ -376,7 +352,10 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
 
           {/* Learner Roster */}
           <div className="grid gap-6">
-            <h3 className="font-heading text-lg font-bold text-foreground">Learner Details</h3>
+            <div>
+              <h3 className="font-heading text-lg font-bold text-foreground">Learner Names</h3>
+              <p className="mt-1 text-sm text-muted-foreground">No learner email address is required. Age and class or level are optional.</p>
+            </div>
             <div className="grid gap-5">
               {learners.map((learner, index) => (
                 <div key={index} className="group relative rounded-xl border border-border bg-background p-5 transition-colors hover:border-primary/30 hover:shadow-sm sm:p-6">
@@ -385,7 +364,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
                         {index + 1}
                       </span>
-                      Learner Profile
+                      Learner {index + 1}
                     </h4>
                     <button
                       type="button"
@@ -399,9 +378,9 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                     </button>
                   </div>
                   
-                  <div className="mt-5 grid gap-5 md:grid-cols-4">
+                  <div className="mt-5 grid gap-5 md:grid-cols-2">
                     <label className="block md:col-span-2">
-                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</span>
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Learner Name</span>
                       <input 
                         className="w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
                         value={learner.fullName} 
@@ -409,33 +388,34 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                         placeholder="e.g. John Doe" 
                       />
                     </label>
+                    {!isImmediateAccess ? (
+                      <label className="block md:col-span-2">
+                        <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Learner Batch</span>
+                        <PremiumPicker
+                          value={learner.batchKey}
+                          options={batchOptions}
+                          onChange={(event) => updateLearner(index, "batchKey", event.target.value)}
+                          disabled={!hasOpenBatch}
+                        />
+                      </label>
+                    ) : null}
                     <label className="block">
-                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Age</span>
-                      <input 
-                        className="w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
-                        value={learner.age} 
-                        onChange={(event) => updateLearner(index, "age", event.target.value)} 
-                        inputMode="numeric" 
-                        placeholder="e.g. 10" 
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Age (Optional)</span>
+                      <input
+                        className="w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={learner.age}
+                        onChange={(event) => updateLearner(index, "age", event.target.value)}
+                        inputMode="numeric"
+                        placeholder="e.g. 16"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Class / Level</span>
-                      <input 
-                        className="w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
-                        value={learner.classLevel} 
-                        onChange={(event) => updateLearner(index, "classLevel", event.target.value)} 
-                        placeholder="e.g. Primary 5" 
-                      />
-                    </label>
-                    <label className="block md:col-span-4">
-                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email (Optional)</span>
-                      <input 
-                        className="w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary" 
-                        value={learner.email} 
-                        onChange={(event) => updateLearner(index, "email", event.target.value)} 
-                        type="email" 
-                        placeholder="learner@example.com" 
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Class or Level (Optional)</span>
+                      <input
+                        className="w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={learner.classLevel}
+                        onChange={(event) => updateLearner(index, "classLevel", event.target.value)}
+                        placeholder="e.g. SS2 or Undergraduate"
                       />
                     </label>
                   </div>

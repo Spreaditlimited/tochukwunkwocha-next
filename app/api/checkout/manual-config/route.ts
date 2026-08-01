@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { checkoutContext, formatMinorAmount, manualTransferAllowedForCountry } from "@/lib/payments/course-checkout"
+import {
+  assertNoActiveIndividualEnrollment,
+  enrollmentConflictPayload,
+  isCourseEnrollmentConflict
+} from "@/lib/enrollment-guard"
 
 export async function POST(request: Request) {
   try {
@@ -20,6 +25,10 @@ export async function POST(request: Request) {
       batchKey: body.batchKey,
       manualTransfer: true
     })
+    const email = String(body.email || "").trim().toLowerCase()
+    if (result.buyerType !== "family" && email) {
+      await assertNoActiveIndividualEnrollment({ email, courseSlug: body.courseSlug })
+    }
 
     return NextResponse.json({
       ok: true,
@@ -48,6 +57,9 @@ export async function POST(request: Request) {
       }
     })
   } catch (error) {
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
+    }
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load manual payment details" }, { status: 400 })
   }
 }

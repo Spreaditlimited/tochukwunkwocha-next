@@ -1,6 +1,7 @@
 import crypto from "crypto"
 
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
+import { assertNoActiveIndividualEnrollment } from "@/lib/enrollment-guard"
 import { prisma } from "@/lib/prisma"
 import {
   checkoutContext,
@@ -13,13 +14,14 @@ import {
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
-import { createStudentPasswordResetToken } from "@/lib/student-auth"
+import { createStudentPasswordResetToken, createStudentTemporaryPassword } from "@/lib/student-auth"
 import { sendEmail } from "@/lib/email"
 import { sendManualPaymentMetaPurchase as dispatchManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { addColumnIfMissing } from "@/lib/schema-guards"
-import { normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
+import { assertFamilyLearnersCanEnroll, normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
 import { familyEnrollmentEnabledForCourse } from "@/lib/payments/course-checkout"
 import { ensurePaystackAuditTable } from "@/lib/payments/paystack-audit"
+import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 
 export type EnrollmentPaymentRow = {
   paymentUuid: string
@@ -61,6 +63,7 @@ export type EnrollmentPaymentRow = {
   providerReceivedCurrency: string | null
   providerLastCheckedAt: Date | null
   providerLastError: string | null
+  accountExists: boolean
   createdAt: Date | null
 }
 
@@ -369,9 +372,11 @@ export async function listEnrollmentCourses(): Promise<EnrollmentCourseOption[]>
 async function countEnrolledSeats(courseSlug: string, batchKey: string) {
   const rows = await prisma.$queryRaw<Array<{ total: number | bigint | null }>>`
     SELECT (
-      COALESCE((SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END) FROM course_orders WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'paid'), 0)
+      COALESCE((SELECT COUNT(*) FROM course_orders WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'paid' AND COALESCE(buyer_type, 'student') <> 'family'), 0)
       +
-      COALESCE((SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END) FROM course_manual_payments WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'approved'), 0)
+      COALESCE((SELECT COUNT(*) FROM course_manual_payments WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'approved' AND COALESCE(buyer_type, 'student') <> 'family'), 0)
+      +
+      COALESCE((SELECT COUNT(*) FROM family_child_enrollments WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'active'), 0)
     ) AS total
   `.catch(() => [{ total: 0 }])
   return toInt(rows[0]?.total)
@@ -485,6 +490,10 @@ export async function listEnrollmentPayments(input: {
       NULL AS providerReceivedCurrency,
       NULL AS providerLastCheckedAt,
       NULL AS providerLastError,
+      EXISTS(
+        SELECT 1 FROM student_accounts sa
+        WHERE sa.email = course_manual_payments.email
+      ) AS accountExists,
       created_at AS createdAt
     FROM course_manual_payments
     WHERE (
@@ -529,6 +538,7 @@ export async function listEnrollmentPayments(input: {
         NULL AS proofPublicId,
         CASE
           WHEN status = 'paid' THEN 'approved'
+          WHEN status = 'duplicate_payment_review' THEN 'duplicate_payment_review'
           WHEN (
             SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
             WHERE pe.order_uuid = course_orders.order_uuid
@@ -543,7 +553,11 @@ export async function listEnrollmentPayments(input: {
         END AS status,
         'online' AS source,
         UPPER(COALESCE(provider, 'Online')) AS providerLabel,
-        CASE WHEN status = 'paid' THEN 'Automatically verified by payment provider' ELSE 'Awaiting confirmation from Paystack' END AS reviewNote,
+        CASE
+          WHEN status = 'paid' THEN 'Automatically verified by payment provider'
+          WHEN status = 'duplicate_payment_review' THEN 'Payment was confirmed, but access was withheld because this email already owns this course. Review the existing enrollment and arrange a refund or a controlled batch transfer.'
+          ELSE 'Awaiting confirmation from Paystack'
+        END AS reviewNote,
         UPPER(COALESCE(provider, 'Online')) AS reviewedBy,
         COALESCE(paid_at, updated_at, created_at) AS reviewedAt,
         0 AS metaPurchaseSent,
@@ -585,13 +599,18 @@ export async function listEnrollmentPayments(input: {
           WHERE pe.order_uuid = course_orders.order_uuid AND pe.error_message IS NOT NULL
           ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
         ) AS providerLastError,
+        EXISTS(
+          SELECT 1 FROM student_accounts sa
+          WHERE sa.email = course_orders.email COLLATE utf8mb4_0900_ai_ci
+        ) AS accountExists,
         created_at AS createdAt
       FROM course_orders
-      WHERE (status = 'paid' OR LOWER(COALESCE(provider, '')) = 'paystack')
+      WHERE (status IN ('paid', 'duplicate_payment_review') OR LOWER(COALESCE(provider, '')) = 'paystack')
         AND (${courseSlug} = 'all' OR course_slug = ${courseSlug})
         AND (
           ${status} = 'all'
           OR (${status} IN ('approved', 'paid') AND status = 'paid')
+          OR (${status} = 'duplicate_payment_review' AND status = 'duplicate_payment_review')
           OR (${status} = 'provider_processing' AND status <> 'paid' AND COALESCE((
             SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
             WHERE pe.order_uuid = course_orders.order_uuid
@@ -638,6 +657,7 @@ export async function listEnrollmentPayments(input: {
       metaPurchaseDispatchStatus: clean(row.metaPurchaseDispatchStatus, 24) || (Boolean(Number(row.metaPurchaseSent || 0)) ? "sent" : "pending"),
       metaPurchaseAttemptCount: Math.max(0, toInt(row.metaPurchaseAttemptCount)),
       recoveryOrigin: Boolean(Number(row.recoveryOrigin || 0)),
+      accountExists: Boolean(Number(row.accountExists || 0)),
       providerExpectedAmountMinor: row.providerExpectedAmountMinor === null || row.providerExpectedAmountMinor === undefined ? null : toInt(row.providerExpectedAmountMinor),
       providerReceivedAmountMinor: row.providerReceivedAmountMinor === null || row.providerReceivedAmountMinor === undefined ? null : toInt(row.providerReceivedAmountMinor)
     }))
@@ -838,6 +858,7 @@ function activationEmailBody(input: {
   fullName: string
   email: string
   resetLink: string
+  temporaryPassword?: string
   vars: Record<string, string>
   createdAccount: boolean
 }) {
@@ -857,15 +878,18 @@ function activationEmailBody(input: {
         "Your dashboard account has been created.",
         `Email: ${input.email}`,
         "",
-        "Please set your password using the secure link below before signing in:",
-        input.resetLink
+        `Temporary password: ${input.temporaryPassword || ""}`,
+        `Sign in here: ${siteBaseUrl()}/dashboard/login`,
+        "",
+        "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password."
       ].join("\n"),
       html: [
         `<p>Hello ${escapeHtml(input.fullName || "there")},</p>`,
         "<p>Your dashboard account has been created.</p>",
         `<p><strong>Email:</strong> ${escapeHtml(input.email)}</p>`,
-        "<p>Please set your password using the secure link below before signing in:</p>",
-        `<p><a href="${escapeHtml(input.resetLink)}">${escapeHtml(input.resetLink)}</a></p>`
+        `<p><strong>Temporary password:</strong> <span style="font-family:monospace;">${escapeHtml(input.temporaryPassword || "")}</span></p>`,
+        `<p><a href="${escapeHtml(`${siteBaseUrl()}/dashboard/login`)}">Sign in to your learning dashboard</a></p>`,
+        "<p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>"
       ].join("\n")
     }
   }
@@ -956,9 +980,13 @@ async function sendActivationEmailToStudent(input: {
   const fullName = providedName || clean(existingAccount?.fullName, 180) || displayNameFallback(email)
   await findOrCreateStudentAccount({ fullName, email })
   const createdAccount = !existingAccount
-  const reset = await createStudentPasswordResetToken(email, { neverExpires: true })
-  if (!reset?.token) throw new Error("Could not generate password reset token.")
-  const resetLink = `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+  const temporary = createdAccount ? await createStudentTemporaryPassword(email) : null
+  const reset = createdAccount ? null : await createStudentPasswordResetToken(email, { neverExpires: true })
+  if (createdAccount && !temporary?.password) throw new Error("Could not generate a temporary password.")
+  if (!createdAccount && !reset?.token) throw new Error("Could not generate password reset token.")
+  const resetLink = reset?.token
+    ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+    : `${siteBaseUrl()}/dashboard/login`
   const batchLabel = clean(input.batchLabel, 120) || "Batch"
   const vars = {
     first_name: firstNameFromFullName(fullName, email),
@@ -968,23 +996,24 @@ async function sendActivationEmailToStudent(input: {
     course_slug: clean(input.courseSlug, 120),
     batch_key: clean(input.batchKey, 80),
     batch_label: batchLabel,
-    temp_password: ""
+    temp_password: temporary?.password || ""
   }
   const subject = clean(input.subject, 220) || (
-    input.mode === "batch"
-      ? `Important: New Password Reset Link for ${batchLabel}`
-      : createdAccount ? "Your Dashboard Access (Password Reset Required)" : "Your Dashboard Password Reset Link"
+    createdAccount
+      ? "Your Tochukwu Tech learning account is ready"
+      : input.mode === "batch" ? `Important: New Password Reset Link for ${batchLabel}` : "Your Dashboard Password Reset Link"
   )
   const body = activationEmailBody({
     messageTemplate: input.messageTemplate,
     fullName,
     email,
     resetLink,
+    temporaryPassword: temporary?.password,
     vars,
     createdAccount
   })
-  await sendEmail({ to: email, subject, html: body.html, text: body.text })
-  return { email, fullName, createdAccount }
+  const delivery = await sendEmail({ to: email, subject, html: body.html, text: body.text })
+  return { email, fullName, createdAccount, emailSent: Boolean(delivery.ok) }
 }
 
 export async function addExternalStudentPayment(input: {
@@ -1032,6 +1061,11 @@ export async function addExternalStudentPayment(input: {
   }
   if (new Set(learnerEmails).size !== learnerEmails.length) {
     throw new Error("Each learner email must be unique.")
+  }
+  if (buyerType === "family") {
+    await assertFamilyLearnersCanEnroll(groupLearners, courseSlug)
+  } else {
+    await assertNoActiveIndividualEnrollment({ email, courseSlug })
   }
 
   const context = await checkoutContext({
@@ -1305,6 +1339,122 @@ export async function resendManualPaymentActivationEmail(input: {
     messageTemplate: input.messageTemplate,
     mode: "single"
   })
+}
+
+export async function resendPaidEnrollmentActivationEmail(input: {
+  source: string
+  paymentUuid: string
+}) {
+  const source = clean(input.source, 20).toLowerCase()
+  const paymentUuid = clean(input.paymentUuid, 80)
+  if (!paymentUuid) throw new Error("Payment reference is required.")
+  if (source === "manual") {
+    const result = await resendManualPaymentActivationEmail({ paymentUuid })
+    return { ...result, source, accountCreated: result.createdAccount }
+  }
+  if (source !== "online") throw new Error("Unsupported enrollment source.")
+
+  const rows = await prisma.$queryRaw<Array<{
+    order_uuid: string
+    course_slug: string | null
+    first_name: string | null
+    email: string | null
+    phone: string | null
+    buyer_type: string | null
+    seat_count: number | bigint | null
+    batch_key: string | null
+    batch_label: string | null
+  }>>`
+    SELECT order_uuid, course_slug, first_name, email, phone, buyer_type, seat_count, batch_key, batch_label
+    FROM course_orders
+    WHERE order_uuid = ${paymentUuid}
+      AND status = 'paid'
+      AND LOWER(COALESCE(provider, '')) IN ('paystack', 'stripe')
+    LIMIT 1
+  `
+  const order = rows[0]
+  if (!order) throw new Error("A paid Paystack or Stripe enrollment was not found.")
+  const email = normalizeEmail(order.email)
+  if (!email) throw new Error("The paid enrollment does not have a valid email address.")
+  const existingAccount = await prisma.studentAccount.findUnique({ where: { email } })
+  if (!existingAccount) {
+    const provisioned = await provisionStudentForPaidOrder(order, { createSession: false })
+    if (!provisioned?.account) throw new Error("The student account could not be provisioned.")
+    return {
+      source,
+      email,
+      fullName: provisioned.account.fullName,
+      accountCreated: true,
+      emailSent: provisioned.activationEmailSent
+    }
+  }
+
+  const sent = await sendActivationEmailToStudent({
+    email,
+    fullName: order.first_name || existingAccount.fullName,
+    courseSlug: order.course_slug,
+    batchKey: order.batch_key,
+    batchLabel: order.batch_label,
+    mode: "single"
+  })
+  return { ...sent, source, accountCreated: false }
+}
+
+export async function provisionAllMissingPaidEnrollmentAccounts(input?: { limit?: number }) {
+  const limit = Math.max(1, Math.min(500, toInt(input?.limit, 500)))
+  const [onlineRows, manualRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ source: "online"; paymentUuid: string; email: string; createdAt: Date | null }>>`
+      SELECT 'online' AS source, co.order_uuid AS paymentUuid, LOWER(TRIM(co.email)) AS email, co.created_at AS createdAt
+      FROM course_orders co
+      WHERE co.status = 'paid'
+        AND LOWER(COALESCE(co.provider, '')) IN ('paystack', 'stripe')
+        AND COALESCE(TRIM(co.email), '') <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM student_accounts sa
+          WHERE sa.email = co.email COLLATE utf8mb4_0900_ai_ci
+        )
+      ORDER BY co.created_at ASC
+      LIMIT ${limit}
+    `,
+    prisma.$queryRaw<Array<{ source: "manual"; paymentUuid: string; email: string; createdAt: Date | null }>>`
+      SELECT 'manual' AS source, mp.payment_uuid AS paymentUuid, LOWER(TRIM(mp.email)) AS email, mp.created_at AS createdAt
+      FROM course_manual_payments mp
+      WHERE mp.status = 'approved'
+        AND COALESCE(TRIM(mp.email), '') <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM student_accounts sa
+          WHERE sa.email = mp.email
+        )
+      ORDER BY mp.created_at ASC
+      LIMIT ${limit}
+    `
+  ])
+  const candidates = [...onlineRows, ...manualRows]
+    .sort((left, right) => (left.createdAt?.getTime() || 0) - (right.createdAt?.getTime() || 0))
+  const uniqueByEmail = new Map<string, (typeof candidates)[number]>()
+  for (const candidate of candidates) {
+    const email = normalizeEmail(candidate.email)
+    if (email && !uniqueByEmail.has(email)) uniqueByEmail.set(email, candidate)
+  }
+  const targets = Array.from(uniqueByEmail.values()).slice(0, limit)
+  let accountsCreated = 0
+  let emailsSent = 0
+  let failed = 0
+  const failures: Array<{ email: string; error: string }> = []
+  for (const target of targets) {
+    try {
+      const result = await resendPaidEnrollmentActivationEmail(target)
+      if (result.accountCreated) accountsCreated += 1
+      if (result.emailSent !== false) emailsSent += 1
+    } catch (error) {
+      failed += 1
+      failures.push({
+        email: target.email,
+        error: clean(error instanceof Error ? error.message : error, 500)
+      })
+    }
+  }
+  return { checked: targets.length, accountsCreated, emailsSent, failed, failures }
 }
 
 export async function resendBatchActivationEmails(input: {

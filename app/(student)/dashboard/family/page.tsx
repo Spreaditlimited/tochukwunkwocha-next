@@ -1,21 +1,23 @@
 import Link from "next/link"
-import { Clock3, KeyRound, Ticket, UserRound, Users } from "lucide-react"
+import { ArrowLeftRight, Clock3, KeyRound, Ticket, UserRound, Users } from "lucide-react"
 
 import {
   EmptyStudentState,
   StudentDashboardCard,
   StudentDashboardShell
 } from "@/components/student-dashboard/StudentDashboardShell"
-import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/student-dashboard/BatchSwitchPanel"
 import { CopyButton } from "@/components/student-dashboard/CopyButton"
 import { GroupEnrollmentPanel } from "@/components/student-dashboard/GroupEnrollmentPanel"
+import { GroupLearnerBatchPicker } from "@/components/student-dashboard/GroupLearnerBatchPicker"
+import { BatchSwitchPanel } from "@/components/student-dashboard/BatchSwitchPanel"
 import { AccessCodeResetButton } from "@/components/AccessCodeResetButton"
 import { TrademarkText } from "@/components/TrademarkText"
-import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { courseName, getFamilyDashboard, hasPendingGroupManualPayment, listActiveLearningCourseOptions, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import { getLearningCourseForStudent } from "@/lib/learning-player"
+import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
+import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 
 export const dynamic = "force-dynamic"
 
@@ -27,6 +29,7 @@ export default async function StudentFamilyPage({
   const session = await requireStudent()
   const params = searchParams ? await searchParams : {}
   const data = await getFamilyDashboard(session.account.id)
+  const wholeGroupBatchOptions = (await getBatchSwitchOptions(session.account)).filter((item) => item.sourceType === "family")
   const learnerProgressEntries = await Promise.all(data.children.map(async (child) => {
     const key = `${child.childId}:${child.courseSlug}`
     if (!child.accountId || !child.accountEmail || !child.courseSlug) {
@@ -50,26 +53,6 @@ export default async function StudentFamilyPage({
   const manualPaymentPending =
     String(params.manual_payment || "") === "pending" &&
     (await hasPendingGroupManualPayment(session.account.email))
-  const batchSwitchOptions = await getBatchSwitchOptions(session.account)
-  const batchSwitchEnrollments: BatchSwitchEnrollment[] = batchSwitchOptions.map((item) => ({
-    sourceType: item.sourceType,
-    sourceId: item.sourceId,
-    courseSlug: item.courseSlug,
-    batchKey: item.batchKey,
-    batchLabel: item.batchLabel,
-    batchStartText: item.batchStartText,
-    currentBatchIsFuture: item.currentBatchIsFuture,
-    seatCount: item.seatCount,
-    canSwitch: item.canSwitch,
-    lockedReason: item.lockedReason,
-    options: item.options.map((option) => ({
-      batchKey: option.batchKey,
-      batchLabel: option.batchLabel,
-      batchStartText: option.batchStartText,
-      remainingSeats: option.remainingSeats
-    }))
-  }))
-  
   const totalPurchased = data.seats.reduce((sum, seat) => sum + seat.seatsPurchased, 0)
   const totalAssigned = data.seats.reduce((sum, seat) => sum + seat.seatsUsed, 0)
   const totalAvailable = data.seats.reduce((sum, seat) => sum + seat.seatsAvailable, 0)
@@ -130,6 +113,45 @@ export default async function StudentFamilyPage({
 
       <GroupEnrollmentPanel seats={data.seats} courses={courses} />
 
+      {wholeGroupBatchOptions.length ? (
+        <StudentDashboardCard className="mt-8 overflow-hidden p-0">
+          <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ArrowLeftRight className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="eyebrow text-primary">Optional Group Action</p>
+                <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Move an Entire Batch Group</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                  Move every learner you assigned to the same course and batch in one action. You can still move one learner at a time below. Only future batches can be changed.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-5 p-6 sm:p-8">
+            {wholeGroupBatchOptions.map((enrollment) => (
+              <div key={enrollment.sourceId} className="rounded-xl border border-border bg-background p-5">
+                <p className="font-heading text-base font-bold text-foreground">
+                  <TrademarkText text={enrollment.courseName} />
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {enrollment.seatCount} assigned {enrollment.seatCount === 1 ? "learner" : "learners"} in {enrollment.batchLabel}
+                </p>
+                <BatchSwitchPanel
+                  enrollments={wholeGroupBatchOptions}
+                  sourceType="family"
+                  courseSlug={enrollment.courseSlug}
+                  batchKey={enrollment.batchKey}
+                  compact
+                  showUnavailable
+                />
+              </div>
+            ))}
+          </div>
+        </StudentDashboardCard>
+      ) : null}
+
       {/* 1. High-Level Metrics */}
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <StudentDashboardCard className="flex flex-col justify-between p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
@@ -186,7 +208,7 @@ export default async function StudentFamilyPage({
                       </p>
                       <p className="mt-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/50"></span>
-                        {seat.batchLabel || seat.batchKey || "General access"}
+                        Course-level seat pool
                       </p>
                     </div>
 
@@ -204,14 +226,6 @@ export default async function StudentFamilyPage({
                         <p className="mt-1 font-heading text-lg font-black text-primary">{seat.seatsAvailable}</p>
                       </div>
                     </div>
-                    <BatchSwitchPanel
-                      enrollments={batchSwitchEnrollments}
-                      sourceType="family"
-                      courseSlug={seat.courseSlug}
-                      batchKey={seat.batchKey}
-                      compact
-                      showUnavailable
-                    />
                   </div>
                 ))}
               </div>
@@ -242,6 +256,20 @@ export default async function StudentFamilyPage({
                     totalLessons: 0,
                     completionPercent: 0
                   }
+                  const childCourse = courses.find((course) => course.courseSlug === child.courseSlug)
+                  const currentBatch = childCourse?.batches.find((batch) => batch.batchKey === child.batchKey)
+                  const currentBatchIsFuture = Number.isFinite(watWallDateTimeMs(currentBatch?.batchStartAt || null)) && watWallDateTimeMs(currentBatch?.batchStartAt || null) > Date.now()
+                  const learnerBatchOptions = currentBatchIsFuture
+                    ? (childCourse?.batches || [])
+                        .filter((batch) => batch.batchKey !== child.batchKey)
+                        .filter((batch) => Number.isFinite(watWallDateTimeMs(batch.batchStartAt)) && watWallDateTimeMs(batch.batchStartAt) > Date.now())
+                        .filter((batch) => batch.remainingSeats === null || batch.remainingSeats > 0)
+                        .map((batch) => ({
+                          batchKey: batch.batchKey,
+                          batchLabel: batch.batchLabel,
+                          batchStartText: formatDateTimeWAT(batch.batchStartAt)
+                        }))
+                    : []
                   return <div
                     key={`${child.childUuid}-${child.courseSlug}-${child.batchKey || ""}`}
                     className="group relative overflow-hidden rounded-xl border border-border bg-background p-5 transition-shadow hover:shadow-sm"
@@ -255,7 +283,7 @@ export default async function StudentFamilyPage({
                         <div>
                           <p className="font-heading text-lg font-bold text-foreground">{child.fullName}</p>
                           <p className="text-sm font-medium text-muted-foreground">
-                            {child.email || child.classLevel || child.age}
+                            Learner access code account
                           </p>
                         </div>
                       </div>
@@ -309,6 +337,11 @@ export default async function StudentFamilyPage({
                         />
                       </div>
                     ) : null}
+                    <GroupLearnerBatchPicker
+                      childId={child.childId}
+                      learnerName={child.fullName}
+                      options={learnerBatchOptions}
+                    />
                   </div>
                 })}
               </div>

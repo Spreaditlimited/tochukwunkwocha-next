@@ -11,7 +11,8 @@ type ManualPaymentNotification = {
   phone: string
   courseSlug: string
   dashboardPath: string
-  resetToken: string | null
+  temporaryPassword?: string | null
+  resetToken?: string | null
   sendEmail: boolean
 }
 
@@ -123,6 +124,7 @@ export async function processPaymentNotificationOutbox(input?: { limit?: number;
           email: payload.email,
           fullName: payload.fullName,
           courseSlug: payload.courseSlug,
+          temporaryPassword: payload.temporaryPassword,
           resetToken: payload.resetToken,
           dashboardPath: payload.dashboardPath
         })

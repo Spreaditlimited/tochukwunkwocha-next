@@ -9,8 +9,9 @@ import {
   addExternalStudentPayment,
   completeManualPaymentRecovery,
   deleteHolidayWaitlistContact,
+  provisionAllMissingPaidEnrollmentAccounts,
   resendBatchActivationEmails,
-  resendManualPaymentActivationEmail,
+  resendPaidEnrollmentActivationEmail,
   sendWhatsAppCampaign,
   updateManualPaymentEmail
 } from "@/lib/admin-enrollments"
@@ -34,9 +35,10 @@ export async function reconcilePaystackPaymentsAction(formData: FormData) {
       `${result.notPaid} not paid`
     ]
     if (result.mismatched) details.push(`${result.mismatched} amount or currency mismatch${result.mismatched === 1 ? "" : "es"}`)
+    if (result.duplicateReview) details.push(`${result.duplicateReview} duplicate payment${result.duplicateReview === 1 ? "" : "s"} held for review`)
     if (result.failed) details.push(`${result.failed} failed`)
     await setInternalToast({
-      type: result.failed || result.mismatched ? "error" : "success",
+      type: result.failed || result.mismatched || result.duplicateReview ? "error" : "success",
       title: "Paystack reconciliation complete",
       message: details.join(", ") + "."
     })
@@ -210,13 +212,48 @@ export async function sendManualPaymentMetaPurchaseAction(formData: FormData) {
 
 export async function resendManualPaymentActivationEmailAction(formData: FormData) {
   await requireAdmin("/internal/manual-payments")
-  await resendManualPaymentActivationEmail({
-    paymentUuid: String(formData.get("paymentUuid") || ""),
-    subject: String(formData.get("subject") || ""),
-    messageTemplate: String(formData.get("messageTemplate") || "")
-  })
-  await setInternalToast({ title: "Activation email sent", message: "The student reset/access email has been resent." })
+  try {
+    const result = await resendPaidEnrollmentActivationEmail({
+      source: String(formData.get("source") || "manual"),
+      paymentUuid: String(formData.get("paymentUuid") || "")
+    })
+    await setInternalToast({
+      type: result.emailSent ? "success" : "error",
+      title: result.accountCreated ? "Account provisioned" : result.emailSent ? "Activation email sent" : "Activation email was not sent",
+      message: result.accountCreated
+        ? result.emailSent
+          ? "The missing student account was created and its activation email was sent."
+          : "The missing student account was created, but SMTP did not accept the activation email. It is safe to retry."
+        : result.emailSent ? "The student reset/access email has been resent." : "SMTP did not accept the activation email. It is safe to retry."
+    })
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Activation was not sent",
+      message: error instanceof Error ? error.message : "The account could not be provisioned or emailed."
+    })
+  }
   revalidatePath("/internal/manual-payments")
+}
+
+export async function provisionMissingPaidEnrollmentAccountsAction() {
+  await requireAdmin("/internal/manual-payments")
+  try {
+    const result = await provisionAllMissingPaidEnrollmentAccounts({ limit: 500 })
+    await setInternalToast({
+      type: result.failed ? "error" : "success",
+      title: result.failed ? "Account provisioning completed with issues" : "Missing accounts provisioned",
+      message: `${result.checked} missing enrollment${result.checked === 1 ? "" : "s"} checked, ${result.accountsCreated} account${result.accountsCreated === 1 ? "" : "s"} created, ${result.emailsSent} activation email${result.emailsSent === 1 ? "" : "s"} processed${result.failed ? `, ${result.failed} failed` : ""}.`
+    })
+  } catch (error) {
+    await setInternalToast({
+      type: "error",
+      title: "Global account check failed",
+      message: error instanceof Error ? error.message : "Missing paid-enrollment accounts could not be provisioned."
+    })
+  }
+  revalidatePath("/internal/manual-payments")
+  revalidatePath("/dashboard")
 }
 
 export async function resendBatchActivationEmailsAction(formData: FormData) {

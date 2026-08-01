@@ -1,8 +1,16 @@
 import crypto from "crypto"
-import type { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
+import {
+  CourseEnrollmentConflictError,
+  assertNoActiveIndividualEnrollment,
+  claimIndividualCourseEnrollment,
+  ensureEnrollmentClaimTable
+} from "@/lib/enrollment-guard"
+import { sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
-import { findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
+import { courseUsesImmediateAccess, findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
+import { watWallDateTimeMs } from "@/lib/utils"
 
 const FAMILY_CODE_LENGTH = 10
 const FAMILY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -13,6 +21,8 @@ export type FamilyChildInput = {
   age?: string
   classLevel?: string
   email?: string
+  batchKey?: string
+  batchLabel?: string
 }
 
 type FamilyAccountRow = {
@@ -64,6 +74,26 @@ async function ensureFamilyChildCodeResetTable() {
   `)
 }
 
+async function ensureGroupLearnerBatchChangeTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_group_learner_batch_changes (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      family_id BIGINT NOT NULL,
+      child_id BIGINT NOT NULL,
+      parent_account_id BIGINT NOT NULL,
+      course_slug VARCHAR(120) NOT NULL,
+      old_batch_key VARCHAR(64) NOT NULL,
+      old_batch_label VARCHAR(120) NULL,
+      new_batch_key VARCHAR(64) NOT NULL,
+      new_batch_label VARCHAR(120) NULL,
+      created_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      KEY idx_tochukwu_group_batch_change_parent (parent_account_id, created_at),
+      KEY idx_tochukwu_group_batch_change_child (child_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+}
+
 export function normalizeFamilyChildren(input: unknown): FamilyChildInput[] {
   const rows = Array.isArray(input) ? input : []
   return rows
@@ -73,11 +103,26 @@ export function normalizeFamilyChildren(input: unknown): FamilyChildInput[] {
         fullName: clean(child.fullName || child.full_name || child.name, 180),
         age: clean(child.age, 40),
         classLevel: clean(child.classLevel || child.class_level || child.className, 80),
-        email: normalizeEmail(child.email)
+        email: normalizeEmail(child.email),
+        batchKey: clean(child.batchKey || child.batch_key, 64),
+        batchLabel: clean(child.batchLabel || child.batch_label, 120)
       }
     })
     .filter((child) => Boolean(child.fullName))
     .slice(0, MAX_CHILDREN)
+}
+
+export async function assertFamilyLearnersCanEnroll(childrenInput: unknown, courseSlugInput: string) {
+  const courseSlug = clean(courseSlugInput, 120).toLowerCase()
+  const children = normalizeFamilyChildren(childrenInput)
+  const emails = children.map((child) => normalizeEmail(child.email)).filter(Boolean)
+  if (new Set(emails).size !== emails.length) {
+    throw new Error("Each learner email must be unique.")
+  }
+  for (const email of emails) {
+    await assertNoActiveIndividualEnrollment({ email, courseSlug })
+  }
+  return true
 }
 
 export async function hasPurchasedFamilySeats(parentAccountId: bigint | number) {
@@ -91,6 +136,120 @@ export async function hasPurchasedFamilySeats(parentAccountId: bigint | number) 
       AND b.seats_purchased > 0
   `
   return Number(rows[0]?.total || 0) > 0
+}
+
+async function familyCourseSeatRows(
+  client: Prisma.TransactionClient | typeof prisma,
+  familyId: bigint,
+  courseSlug: string,
+  lock = false
+) {
+  const query = Prisma.sql`
+    SELECT id, seats_purchased AS seatsPurchased, seats_consumed AS seatsConsumed
+    FROM family_seat_balances
+    WHERE family_id = ${familyId}
+      AND course_slug = ${courseSlug}
+    ORDER BY id ASC
+    ${lock ? Prisma.sql`FOR UPDATE` : Prisma.empty}
+  `
+  return client.$queryRaw<Array<{ id: bigint; seatsPurchased: number | bigint | null; seatsConsumed: number | bigint | null }>>(query)
+}
+
+async function consumeCourseSeatPool(
+  tx: Prisma.TransactionClient,
+  rows: Array<{ id: bigint; seatsPurchased: number | bigint | null; seatsConsumed: number | bigint | null }>,
+  quantity: number,
+  timestamp: Date
+) {
+  let remaining = Math.max(0, Math.round(quantity))
+  for (const row of rows) {
+    if (remaining <= 0) break
+    const available = Math.max(0, Number(row.seatsPurchased || 0) - Number(row.seatsConsumed || 0))
+    const used = Math.min(available, remaining)
+    if (!used) continue
+    await tx.$executeRaw`
+      UPDATE family_seat_balances
+      SET seats_consumed = seats_consumed + ${used}, updated_at = ${timestamp}
+      WHERE id = ${row.id}
+      LIMIT 1
+    `
+    remaining -= used
+  }
+  if (remaining > 0) throw new Error("The group seat balance changed before the assignment completed. Please try again.")
+}
+
+async function validatedFamilyLearnerBatches(
+  client: Prisma.TransactionClient | typeof prisma,
+  childrenInput: unknown,
+  courseSlugInput: string,
+  lock = false
+) {
+  const courseSlug = clean(courseSlugInput, 120).toLowerCase()
+  const children = normalizeFamilyChildren(childrenInput)
+  if (await courseUsesImmediateAccess(courseSlug)) {
+    return children.map((child) => ({ ...child, batchKey: "", batchLabel: "Immediate access" }))
+  }
+  const requestedKeys = Array.from(new Set(children.map((child) => clean(child.batchKey, 64)).filter(Boolean)))
+  const rows = await client.$queryRaw<Array<{
+    batchKey: string
+    batchLabel: string
+    status: string | null
+    isActive: number | bigint | boolean | null
+    seatLimit: number | bigint | null
+  }>>(Prisma.sql`
+    SELECT batch_key AS batchKey, batch_label AS batchLabel, status, is_active AS isActive, seat_limit AS seatLimit
+    FROM course_batches
+    WHERE course_slug = ${courseSlug}
+      ${requestedKeys.length ? Prisma.sql`AND batch_key IN (${Prisma.join(requestedKeys)})` : Prisma.empty}
+    ${lock ? Prisma.sql`FOR UPDATE` : Prisma.empty}
+  `)
+
+  if (!rows.length) {
+    if (requestedKeys.length) throw new Error("The selected batch does not belong to this course.")
+    return children.map((child) => ({ ...child, batchKey: "", batchLabel: "Immediate access" }))
+  }
+  if (!requestedKeys.length || children.some((child) => !clean(child.batchKey, 64))) {
+    throw new Error("Choose a batch for every learner.")
+  }
+
+  const batches = new Map(rows.map((row) => [clean(row.batchKey, 64), row]))
+  const requestedByBatch = new Map<string, number>()
+  for (const child of children) {
+    const batchKey = clean(child.batchKey, 64)
+    const batch = batches.get(batchKey)
+    if (!batch) throw new Error("The selected batch does not belong to this course.")
+    const open = Boolean(Number(batch.isActive || 0)) || clean(batch.status, 40).toLowerCase() === "open"
+    if (!open) throw new Error(`${batch.batchLabel || batchKey} is not open for learner assignment.`)
+    requestedByBatch.set(batchKey, (requestedByBatch.get(batchKey) || 0) + 1)
+  }
+
+  for (const [batchKey, requested] of requestedByBatch) {
+    const batch = batches.get(batchKey)!
+    if (batch.seatLimit === null || batch.seatLimit === undefined) continue
+    const counts = await client.$queryRaw<Array<{ total: number | bigint | null }>>(Prisma.sql`
+      SELECT (
+        COALESCE((SELECT COUNT(*) FROM course_orders
+          WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'paid'
+            AND COALESCE(buyer_type, 'student') <> 'family'), 0)
+        + COALESCE((SELECT COUNT(*) FROM course_manual_payments
+          WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'approved'
+            AND COALESCE(buyer_type, 'student') <> 'family'), 0)
+        + COALESCE((SELECT COUNT(*) FROM family_child_enrollments
+          WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey} AND status = 'active'), 0)
+      ) AS total
+    `)
+    const remaining = Math.max(0, Number(batch.seatLimit || 0) - Number(counts[0]?.total || 0))
+    if (requested > remaining) throw new Error(`Only ${remaining} learner seat${remaining === 1 ? "" : "s"} remain in ${batch.batchLabel || batchKey}.`)
+  }
+
+  return children.map((child) => {
+    const batch = batches.get(clean(child.batchKey, 64))
+    return { ...child, batchKey: clean(batch?.batchKey, 64), batchLabel: clean(batch?.batchLabel, 120) }
+  })
+}
+
+export async function prepareFamilyLearnerAssignments(childrenInput: unknown, courseSlugInput: string) {
+  return validatedFamilyLearnerBatches(prisma, childrenInput, courseSlugInput)
 }
 
 async function assignFamilyChildCode(childId: bigint | number, client: Prisma.TransactionClient | typeof prisma = prisma) {
@@ -188,6 +347,165 @@ export async function resetFamilyChildAccessCode(input: {
   })
 }
 
+function familyBatchDateText(value: Date | string | null) {
+  if (!value) return ""
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) return ""
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(date)
+}
+
+export async function moveFamilyLearnerBatch(input: {
+  parentAccountId: bigint | number
+  childId: bigint | number
+  targetBatchKey: string
+}) {
+  const parentAccountId = BigInt(input.parentAccountId)
+  const childId = BigInt(input.childId)
+  const targetBatchKey = clean(input.targetBatchKey, 64)
+  if (parentAccountId <= BigInt(0) || childId <= BigInt(0) || !targetBatchKey) {
+    throw new Error("Learner batch details are incomplete.")
+  }
+
+  await Promise.all([ensureEnrollmentClaimTable(), ensureGroupLearnerBatchChangeTable()])
+  const changed = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{
+      familyId: bigint
+      childId: bigint
+      accountId: bigint | null
+      fullName: string
+      accountEmail: string | null
+      parentEmail: string
+      parentName: string
+      courseSlug: string
+      oldBatchKey: string
+      oldBatchLabel: string | null
+      oldBatchStartAt: Date | null
+      oldBrevoListId: string | null
+    }>>(Prisma.sql`
+      SELECT f.id AS familyId, c.id AS childId, c.account_id AS accountId, c.full_name AS fullName,
+             a.email AS accountEmail, f.parent_email AS parentEmail, f.parent_name AS parentName,
+             e.course_slug AS courseSlug, e.batch_key AS oldBatchKey, e.batch_label AS oldBatchLabel,
+             old_batch.batch_start_at AS oldBatchStartAt, old_batch.brevo_list_id AS oldBrevoListId
+      FROM family_children c
+      JOIN family_accounts f ON f.id = c.family_id
+      JOIN family_child_enrollments e ON e.child_id = c.id
+      LEFT JOIN student_accounts a ON a.id = c.account_id
+      LEFT JOIN course_batches old_batch
+        ON old_batch.course_slug = e.course_slug AND old_batch.batch_key = e.batch_key
+      WHERE c.id = ${childId}
+        AND c.parent_account_id = ${parentAccountId}
+        AND f.parent_account_id = ${parentAccountId}
+        AND c.status = 'active'
+        AND e.status = 'active'
+      LIMIT 1
+      FOR UPDATE
+    `)
+    const learner = rows[0]
+    if (!learner) throw new Error("Learner enrollment not found.")
+    if (!learner.oldBatchKey || !Number.isFinite(watWallDateTimeMs(learner.oldBatchStartAt)) || watWallDateTimeMs(learner.oldBatchStartAt) <= Date.now()) {
+      throw new Error("This learner's current batch has already started and cannot be changed.")
+    }
+    if (learner.oldBatchKey === targetBatchKey) throw new Error("Choose a different batch.")
+
+    const targets = await tx.$queryRaw<Array<{
+      batchKey: string
+      batchLabel: string
+      batchStartAt: Date | null
+      status: string
+      isActive: number | bigint | boolean | null
+      seatLimit: number | bigint | null
+      brevoListId: string | null
+    }>>(Prisma.sql`
+      SELECT batch_key AS batchKey, batch_label AS batchLabel, batch_start_at AS batchStartAt,
+             status, is_active AS isActive, seat_limit AS seatLimit, brevo_list_id AS brevoListId
+      FROM course_batches
+      WHERE course_slug = ${learner.courseSlug}
+        AND batch_key = ${targetBatchKey}
+      LIMIT 1
+      FOR UPDATE
+    `)
+    const target = targets[0]
+    if (!target) throw new Error("The selected batch does not belong to this learner's course.")
+    const targetOpen = Boolean(Number(target.isActive || 0)) || clean(target.status, 40).toLowerCase() === "open"
+    if (!targetOpen) throw new Error("The selected batch is not open.")
+    if (!Number.isFinite(watWallDateTimeMs(target.batchStartAt)) || watWallDateTimeMs(target.batchStartAt) <= Date.now()) {
+      throw new Error("The selected batch has already started.")
+    }
+
+    if (target.seatLimit !== null && target.seatLimit !== undefined) {
+      const counts = await tx.$queryRaw<Array<{ total: number | bigint | null }>>(Prisma.sql`
+        SELECT (
+          COALESCE((SELECT COUNT(*) FROM course_orders
+            WHERE course_slug = ${learner.courseSlug} AND batch_key = ${targetBatchKey} AND status = 'paid'
+              AND COALESCE(buyer_type, 'student') <> 'family'), 0)
+          + COALESCE((SELECT COUNT(*) FROM course_manual_payments
+            WHERE course_slug = ${learner.courseSlug} AND batch_key = ${targetBatchKey} AND status = 'approved'
+              AND COALESCE(buyer_type, 'student') <> 'family'), 0)
+          + COALESCE((SELECT COUNT(*) FROM family_child_enrollments
+            WHERE course_slug = ${learner.courseSlug} AND batch_key = ${targetBatchKey} AND status = 'active'), 0)
+        ) AS total
+      `)
+      if (Number(counts[0]?.total || 0) >= Number(target.seatLimit)) {
+        throw new Error("The selected batch has no available learner seats.")
+      }
+    }
+
+    const timestamp = now()
+    await tx.$executeRaw`
+      UPDATE family_child_enrollments
+      SET batch_key = ${target.batchKey}, batch_label = ${target.batchLabel}, updated_at = ${timestamp}
+      WHERE child_id = ${childId}
+        AND family_id = ${learner.familyId}
+        AND course_slug = ${learner.courseSlug}
+        AND status = 'active'
+      LIMIT 1
+    `
+    await tx.$executeRaw`
+      UPDATE tochukwu_course_enrollment_claims
+      SET batch_key = ${target.batchKey}, batch_label = ${target.batchLabel}, updated_at = ${timestamp}
+      WHERE source_type = 'family_child'
+        AND source_uuid = ${`family_child_${childId.toString()}`}
+      LIMIT 1
+    `
+    await tx.$executeRaw`
+      INSERT INTO tochukwu_group_learner_batch_changes
+        (family_id, child_id, parent_account_id, course_slug, old_batch_key, old_batch_label,
+         new_batch_key, new_batch_label, created_at)
+      VALUES
+        (${learner.familyId}, ${childId}, ${parentAccountId}, ${learner.courseSlug}, ${learner.oldBatchKey},
+         ${learner.oldBatchLabel || null}, ${target.batchKey}, ${target.batchLabel || null}, ${timestamp})
+    `
+    return { learner, target }
+  })
+
+  const notificationEmail = normalizeEmail(changed.learner.parentEmail)
+  await sendBatchSwitchConfirmationEmail({
+    email: notificationEmail,
+    fullName: changed.learner.parentName,
+    courseName: changed.learner.courseSlug,
+    oldBatchLabel: changed.learner.oldBatchLabel || changed.learner.oldBatchKey,
+    oldBatchStartText: familyBatchDateText(changed.learner.oldBatchStartAt),
+    newBatchLabel: changed.target.batchLabel,
+    newBatchStartText: familyBatchDateText(changed.target.batchStartAt)
+  }).catch(() => null)
+
+  return {
+    childId: Number(childId),
+    courseSlug: changed.learner.courseSlug,
+    batchKey: changed.target.batchKey,
+    batchLabel: changed.target.batchLabel
+  }
+}
+
 export async function upsertFamilyAccount(input: {
   parentAccountId: bigint | number
   parentName: string
@@ -259,7 +577,7 @@ export async function savePendingFamilyChildren(input: {
       INSERT INTO family_child_enrollments
         (child_id, course_slug, batch_key, batch_label, source_type, source_uuid, status, created_at, updated_at)
       VALUES
-        (${childId}, ${courseSlug}, ${input.batchKey || null}, ${input.batchLabel || null}, ${sourceType}, ${sourceUuid},
+        (${childId}, ${courseSlug}, ${child.batchKey || input.batchKey || null}, ${child.batchLabel || input.batchLabel || null}, ${sourceType}, ${sourceUuid},
          'pending_payment', ${timestamp}, ${timestamp})
     `
     created.push({ ...child, childId })
@@ -355,32 +673,26 @@ export async function consumeFamilySeatsForChildren(input: {
 }) {
   const children = normalizeFamilyChildren(input.children)
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
-  const batchKey = clean(input.batchKey, 64)
-  const batchLabel = clean(input.batchLabel, 120)
   if (!courseSlug || !children.length) throw new Error("Learner enrollment details are required.")
 
   const family = await upsertFamilyAccount(input)
   if (!family?.id) throw new Error("Enrollment account is required.")
 
+  await ensureEnrollmentClaimTable()
   return prisma.$transaction(async (tx) => {
-    const balances = await tx.$queryRaw<{ id: bigint; seats_purchased: number | bigint | null; seats_consumed: number | bigint | null }[]>`
-      SELECT id, seats_purchased, seats_consumed
-      FROM family_seat_balances
-      WHERE family_id = ${family.id}
-        AND course_slug = ${courseSlug}
-        AND batch_key = ${batchKey}
-      LIMIT 1
-      FOR UPDATE
-    `
-    const balance = balances[0]
-    const available = balance ? Math.max(0, Number(balance.seats_purchased || 0) - Number(balance.seats_consumed || 0)) : 0
-    if (!balance || children.length > available) {
+    const balances = await familyCourseSeatRows(tx, family.id, courseSlug, true)
+    const seatsPurchased = balances.reduce((total, row) => total + Number(row.seatsPurchased || 0), 0)
+    const seatsConsumed = balances.reduce((total, row) => total + Number(row.seatsConsumed || 0), 0)
+    const available = Math.max(0, seatsPurchased - seatsConsumed)
+    if (!balances.length || children.length > available) {
       throw new Error(`Only ${available} purchased seat${available === 1 ? "" : "s"} available for this programme.`)
     }
 
+    const assignedChildren = await validatedFamilyLearnerBatches(tx, children, courseSlug, true)
+
     const timestamp = now()
     const created: Array<{ childId: bigint; fullName: string }> = []
-    for (const child of children) {
+    for (const child of assignedChildren) {
       const account = await findOrCreateStudentAccount({
         fullName: child.fullName,
         email: child.email || syntheticChildEmail()
@@ -402,12 +714,20 @@ export async function consumeFamilySeatsForChildren(input: {
       `
       const childId = childRows[0]?.id
       if (!childId) continue
+      await claimIndividualCourseEnrollment(tx, {
+        email: account.email,
+        courseSlug,
+          sourceType: "family_child",
+          sourceUuid: `family_child_${childId.toString()}`,
+          batchKey: child.batchKey,
+          batchLabel: child.batchLabel
+      })
       created.push({ childId, fullName: child.fullName })
       await tx.$executeRaw`
         INSERT INTO family_child_enrollments
           (child_id, family_id, account_id, course_slug, batch_key, batch_label, source_type, source_uuid, status, paid_at, created_at, updated_at)
         VALUES
-          (${childId}, ${family.id}, ${account.id}, ${courseSlug}, ${batchKey || null}, ${batchLabel || null},
+          (${childId}, ${family.id}, ${account.id}, ${courseSlug}, ${child.batchKey || null}, ${child.batchLabel || null},
            'family_seat', ${`family_seat_${childId.toString()}`}, 'active', ${timestamp}, ${timestamp}, ${timestamp})
       `
     }
@@ -416,27 +736,22 @@ export async function consumeFamilySeatsForChildren(input: {
       await assignFamilyChildCode(child.childId, tx)
     }
 
-    await tx.$executeRaw`
-      UPDATE family_seat_balances
-      SET seats_consumed = ${Number(balance.seats_consumed || 0) + created.length}, updated_at = ${timestamp}
-      WHERE id = ${balance.id}
-      LIMIT 1
-    `
+    await consumeCourseSeatPool(tx, balances, created.length, timestamp)
     const ledgerUuid = `consume_${crypto.randomUUID().replace(/-/g, "")}`
     await tx.$executeRaw`
       INSERT INTO family_seat_ledger
         (family_id, course_slug, batch_key, entry_type, quantity, source_type, source_uuid, idempotency_key, metadata_json, created_at, updated_at)
       VALUES
-        (${family.id}, ${courseSlug}, ${batchKey}, 'consume', ${created.length}, 'family_dashboard', ${ledgerUuid}, ${ledgerUuid},
-         ${JSON.stringify({ children: created.map((child) => child.childId.toString()) })}, ${timestamp}, ${timestamp})
+        (${family.id}, ${courseSlug}, '', 'consume', ${created.length}, 'family_dashboard', ${ledgerUuid}, ${ledgerUuid},
+         ${JSON.stringify({ children: created.map((child) => child.childId.toString()), assignments: assignedChildren.map((child) => ({ batch_key: child.batchKey })) })}, ${timestamp}, ${timestamp})
     `
 
     return {
       ok: true as const,
       familyId: Number(family.id),
       created: created.length,
-      seatsPurchased: Number(balance.seats_purchased || 0),
-      seatsUsed: Number(balance.seats_consumed || 0) + created.length
+      seatsPurchased,
+      seatsUsed: seatsConsumed + created.length
     }
   })
 }
@@ -453,6 +768,7 @@ export async function provisionFamilyOrder(input: {
   batchLabel?: string | null
   quantity: number
 }) {
+  await ensureEnrollmentClaimTable()
   const credited = await creditFamilySeats(input)
   if (!credited.ok) return credited
 
@@ -467,9 +783,13 @@ export async function provisionFamilyOrder(input: {
       account_id: bigint | null
       enrollment_id: bigint
       enrollment_status: string | null
+      course_slug: string
+      batch_key: string | null
+      batch_label: string | null
     }>
   >`
-    SELECT c.id, c.full_name, c.email, c.account_id, e.id AS enrollment_id, e.status AS enrollment_status
+    SELECT c.id, c.full_name, c.email, c.account_id, e.id AS enrollment_id, e.status AS enrollment_status,
+           e.course_slug, e.batch_key, e.batch_label
     FROM family_children c
     JOIN family_child_enrollments e ON e.child_id = c.id
     WHERE c.source_type = ${input.sourceType}
@@ -480,9 +800,19 @@ export async function provisionFamilyOrder(input: {
   `
 
   let provisioned = 0
+  let duplicateLearners = 0
   const timestamp = now()
-  for (const child of children) {
+  const preparedAssignments = children.length
+    ? await prepareFamilyLearnerAssignments(children.map((child) => ({
+        fullName: clean(child.full_name, 180) || "Student",
+        email: normalizeEmail(child.email),
+        batchKey: clean(child.batch_key, 64),
+        batchLabel: clean(child.batch_label, 120)
+      })), clean(input.courseSlug, 120).toLowerCase())
+    : []
+  for (const [childIndex, child] of children.entries()) {
     const wasActive = clean(child.enrollment_status, 40).toLowerCase() === "active"
+    if (wasActive) continue
     const account = child.account_id
       ? null
       : await findOrCreateStudentAccount({
@@ -490,49 +820,82 @@ export async function provisionFamilyOrder(input: {
           email: normalizeEmail(child.email) || syntheticChildEmail()
         })
     const accountId = child.account_id || account?.id || null
-    await assignFamilyChildCode(child.id)
-    await prisma.$executeRaw`
-      UPDATE family_children
-      SET family_id = ${family.id},
-          parent_account_id = ${BigInt(input.parentAccountId)},
-          account_id = ${accountId},
-          status = 'active',
-          updated_at = ${timestamp}
-      WHERE id = ${child.id}
-    `
-    await prisma.$executeRaw`
-      UPDATE family_child_enrollments
-      SET family_id = ${family.id},
-          account_id = ${accountId},
-          status = 'active',
-          paid_at = COALESCE(paid_at, ${timestamp}),
-          updated_at = ${timestamp}
-      WHERE id = ${child.enrollment_id}
-    `
-    if (!wasActive) provisioned += 1
+    if (!accountId) continue
+    const assignment = preparedAssignments[childIndex]
+    if (!assignment) continue
+    try {
+      await prisma.$transaction(async (tx) => {
+        const lockedAssignments = await validatedFamilyLearnerBatches(
+          tx,
+          [assignment],
+          clean(input.courseSlug, 120).toLowerCase(),
+          true
+        )
+        const lockedAssignment = lockedAssignments[0]
+        if (!lockedAssignment) throw new Error("The learner batch assignment could not be confirmed.")
+        await claimIndividualCourseEnrollment(tx, {
+          email: account?.email || normalizeEmail(child.email),
+          courseSlug: clean(input.courseSlug, 120).toLowerCase(),
+          sourceType: "family_child",
+          sourceUuid: `family_child_${child.id.toString()}`,
+          batchKey: lockedAssignment.batchKey,
+          batchLabel: lockedAssignment.batchLabel
+        })
+        await assignFamilyChildCode(child.id, tx)
+        await tx.$executeRaw`
+          UPDATE family_children
+          SET family_id = ${family.id},
+              parent_account_id = ${BigInt(input.parentAccountId)},
+              account_id = ${accountId},
+              status = 'active',
+              updated_at = ${timestamp}
+          WHERE id = ${child.id}
+        `
+        await tx.$executeRaw`
+          UPDATE family_child_enrollments
+          SET family_id = ${family.id},
+              account_id = ${accountId},
+              batch_key = ${lockedAssignment.batchKey || null},
+              batch_label = ${lockedAssignment.batchLabel || null},
+              status = 'active',
+              paid_at = COALESCE(paid_at, ${timestamp}),
+              updated_at = ${timestamp}
+          WHERE id = ${child.enrollment_id}
+        `
+      })
+      provisioned += 1
+    } catch (error) {
+      if (!(error instanceof CourseEnrollmentConflictError)) throw error
+      duplicateLearners += 1
+      await prisma.$executeRaw`
+        UPDATE family_children
+        SET family_id = ${family.id}, parent_account_id = ${BigInt(input.parentAccountId)},
+            account_id = ${accountId}, status = 'duplicate_blocked', updated_at = ${timestamp}
+        WHERE id = ${child.id}
+      `
+      await prisma.$executeRaw`
+        UPDATE family_child_enrollments
+        SET family_id = ${family.id}, account_id = ${accountId}, status = 'duplicate_blocked', updated_at = ${timestamp}
+        WHERE id = ${child.enrollment_id}
+      `
+    }
   }
 
   if (provisioned > 0) {
-    await prisma.$executeRaw`
-      UPDATE family_seat_balances
-      SET seats_consumed = LEAST(seats_purchased, seats_consumed + ${provisioned}),
-          batch_label = COALESCE(${clean(input.batchLabel, 120) || null}, batch_label),
-          updated_at = ${timestamp}
-      WHERE family_id = ${family.id}
-        AND course_slug = ${clean(input.courseSlug, 120).toLowerCase()}
-        AND batch_key = ${clean(input.batchKey, 64)}
-      LIMIT 1
-    `
+    await prisma.$transaction(async (tx) => {
+      const balanceRows = await familyCourseSeatRows(tx, family.id, clean(input.courseSlug, 120).toLowerCase(), true)
+      await consumeCourseSeatPool(tx, balanceRows, provisioned, timestamp)
+    })
     await prisma.$executeRaw`
       INSERT INTO family_seat_ledger
         (family_id, course_slug, batch_key, entry_type, quantity, source_type, source_uuid, idempotency_key, metadata_json, created_at, updated_at)
       VALUES
-        (${family.id}, ${clean(input.courseSlug, 120).toLowerCase()}, ${clean(input.batchKey, 64)}, 'consume', ${provisioned},
+        (${family.id}, ${clean(input.courseSlug, 120).toLowerCase()}, '', 'consume', ${provisioned},
          ${input.sourceType}, ${input.sourceUuid}, ${`${input.sourceType}:${input.sourceUuid}:consume`},
-         ${JSON.stringify({ provisioned_from_pending_children: true })}, ${timestamp}, ${timestamp})
+         ${JSON.stringify({ provisioned_from_pending_children: true, assignments: preparedAssignments.map((child) => ({ batch_key: child.batchKey })) })}, ${timestamp}, ${timestamp})
       ON DUPLICATE KEY UPDATE id = id
     `
   }
 
-  return { ok: true as const, familyId: Number(family.id), credited: credited.credited, provisioned }
+  return { ok: true as const, familyId: Number(family.id), credited: credited.credited, provisioned, duplicateLearners }
 }

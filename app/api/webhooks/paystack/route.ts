@@ -8,6 +8,7 @@ import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallment
 import { recordPaystackAuditEvent, validateCourseOrderPaystackPayment } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { fulfillPaidShopOrder, SHOP_PAYMENT_SCOPE } from "@/lib/shop"
+import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
 export const dynamic = "force-dynamic"
 
@@ -68,7 +69,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })
   }
   if (paymentScope === "installment" || metadata.installment_plan_uuid) {
-    await markInstallmentPaymentPaid(reference, data.id ? String(data.id) : null)
+    try {
+      await markInstallmentPaymentPaid(reference, data.id ? String(data.id) : null)
+    } catch (error) {
+      if (isCourseEnrollmentConflict(error)) {
+        return NextResponse.json({ ok: true, scope: "installment", duplicateReview: true })
+      }
+      throw error
+    }
     return NextResponse.json({ ok: true, scope: "installment" })
   }
 
@@ -131,8 +139,14 @@ export async function POST(request: Request) {
       providerReference: reference,
       providerOrderId: data.id ? String(data.id) : null
     })
-    await createAffiliateCommissionForOrder(orderUuid)
-    await provisionStudentForPaidOrder(order)
+    const provisioned = await provisionStudentForPaidOrder(order, { createSession: false })
+    if (!provisioned?.account) throw new Error("The paid enrollment account could not be provisioned.")
+    await createAffiliateCommissionForOrder(orderUuid).catch((error) => {
+      console.error("[paystack-webhook] affiliate commission failed after enrollment provisioning", {
+        orderUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
     await recordPaystackAuditEvent({
       orderUuid,
       providerReference: reference,
@@ -156,6 +170,9 @@ export async function POST(request: Request) {
       errorCode: "webhook_processing_failed",
       errorMessage: error instanceof Error ? error.message : String(error)
     })
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json({ ok: true, scope: "course_checkout", orderUuid, duplicateReview: true })
+    }
     throw error
   }
 }

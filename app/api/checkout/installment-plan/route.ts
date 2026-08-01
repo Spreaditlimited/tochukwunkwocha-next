@@ -13,6 +13,11 @@ import {
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
 import { createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
+import {
+  assertNoActiveIndividualEnrollment,
+  enrollmentConflictPayload,
+  isCourseEnrollmentConflict
+} from "@/lib/enrollment-guard"
 
 export async function POST(request: Request) {
   try {
@@ -44,6 +49,9 @@ export async function POST(request: Request) {
     })
     if (!context.batch) {
       return NextResponse.json({ ok: false, error: "No open batch is available for this course." }, { status: 409 })
+    }
+    if (context.buyerType !== "family") {
+      await assertNoActiveIndividualEnrollment({ email, courseSlug })
     }
 
     const plan = await createInstallmentPlan({
@@ -115,6 +123,9 @@ export async function POST(request: Request) {
       batch: context.batch
     })
   } catch (error) {
+    if (isCourseEnrollmentConflict(error)) {
+      return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
+    }
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not create installment plan" }, { status: 500 })
   }
 }

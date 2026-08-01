@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
-import { createStudentPasswordResetToken, createStudentSessionForAccount } from "@/lib/student-auth"
+import { createStudentSessionForAccount, createStudentTemporaryPassword } from "@/lib/student-auth"
 import { findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
 import { sendEnrollmentConfirmedWhatsApp } from "@/lib/transactional-whatsapp"
 
@@ -17,7 +17,10 @@ type PaidOrderRow = {
   batch_label?: string | null
 }
 
-export async function provisionStudentForPaidOrder(order: PaidOrderRow | null | undefined) {
+export async function provisionStudentForPaidOrder(
+  order: PaidOrderRow | null | undefined,
+  options?: { createSession?: boolean }
+) {
   const email = normalizeEmail(order?.email)
   if (!email) return null
 
@@ -30,8 +33,8 @@ export async function provisionStudentForPaidOrder(order: PaidOrderRow | null | 
       phone: String(order?.phone || "").trim() || undefined
     }))
 
-  const reset = existing ? null : await createStudentPasswordResetToken(email, { neverExpires: true })
-  const session = await createStudentSessionForAccount(account)
+  const needsFirstUsePassword = !existing || (existing.mustResetPassword && !existing.resetRequestedAt)
+  const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
   await syncEnrollmentToBrevo({
     fullName: account.fullName,
     email: account.email,
@@ -47,13 +50,15 @@ export async function provisionStudentForPaidOrder(order: PaidOrderRow | null | 
     courseSlug: order?.course_slug || "",
     dashboardPath: String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
   }).catch(() => null)
-  if (reset?.token) {
-    await sendStudentAccountReadyEmail({
+  let activationEmailSent = false
+  if (temporary?.password) {
+    const delivery = await sendStudentAccountReadyEmail({
       email: account.email,
       fullName: account.fullName,
       courseSlug: order?.course_slug || "",
-      resetToken: reset.token
+      temporaryPassword: temporary.password
     }).catch(() => null)
+    activationEmailSent = Boolean(delivery?.ok)
   }
 
   if (String(order?.buyer_type || "").toLowerCase() === "family" && order?.order_uuid && order?.course_slug) {
@@ -71,9 +76,21 @@ export async function provisionStudentForPaidOrder(order: PaidOrderRow | null | 
     })
   }
 
+  const session = options?.createSession === false
+    ? null
+    : await createStudentSessionForAccount(account).catch((error) => {
+        console.error("[student-provisioning] account created but automatic sign-in session failed", {
+          email: account.email,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        return null
+      })
+
   return {
     account,
-    token: session.token,
-    resetToken: reset?.token || null
+    token: session?.token || null,
+    resetToken: null,
+    accountCreated: !existing,
+    activationEmailSent
   }
 }

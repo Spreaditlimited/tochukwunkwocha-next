@@ -819,16 +819,17 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
   const seats = await prisma.$queryRaw<FamilySeatRow[]>(Prisma.sql`
     SELECT
       COALESCE(course_slug, '') AS courseSlug,
-      batch_key AS batchKey,
-      batch_label AS batchLabel,
-      CAST(COALESCE(seats_purchased, 0) AS SIGNED) AS seatsPurchased,
-      CAST(COALESCE(seats_consumed, 0) AS SIGNED) AS seatsUsed,
-      CAST(GREATEST(0, COALESCE(seats_purchased, 0) - COALESCE(seats_consumed, 0)) AS SIGNED) AS seatsAvailable,
+      NULL AS batchKey,
+      NULL AS batchLabel,
+      CAST(COALESCE(SUM(seats_purchased), 0) AS SIGNED) AS seatsPurchased,
+      CAST(COALESCE(SUM(seats_consumed), 0) AS SIGNED) AS seatsUsed,
+      CAST(GREATEST(0, COALESCE(SUM(seats_purchased), 0) - COALESCE(SUM(seats_consumed), 0)) AS SIGNED) AS seatsAvailable,
       '' AS paymentProvider,
       '' AS paymentCurrency
     FROM family_seat_balances
     WHERE family_id = ${family.id}
-    ORDER BY course_slug ASC, batch_label ASC, batch_key ASC
+    GROUP BY course_slug
+    ORDER BY course_slug ASC
   `)
 
   return {
@@ -916,19 +917,29 @@ export async function listActiveLearningCourseOptions(): Promise<LearningCourseO
       b.is_active AS isActive,
       (
         COALESCE((
-          SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
+          SELECT COUNT(*)
           FROM course_orders
           WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
             AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
             AND status = 'paid'
+            AND COALESCE(buyer_type, 'student') <> 'family'
         ), 0)
         +
         COALESCE((
-          SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
+          SELECT COUNT(*)
           FROM course_manual_payments
           WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
             AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
             AND status = 'approved'
+            AND COALESCE(buyer_type, 'student') <> 'family'
+        ), 0)
+        +
+        COALESCE((
+          SELECT COUNT(*)
+          FROM family_child_enrollments
+          WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
+            AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
+            AND status = 'active'
         ), 0)
       ) AS enrolledCount
     FROM course_batches b

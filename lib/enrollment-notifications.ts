@@ -14,6 +14,17 @@ function siteBaseUrl() {
   return clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000", 500).replace(/\/$/, "")
 }
 
+function learningCourseName(value: unknown) {
+  const slug = clean(value, 120).toLowerCase()
+  const names: Record<string, string> = {
+    "prompt-to-profit": "Prompt to Profit",
+    "prompt-to-profit-holiday": "Prompt to Profit Holiday",
+    "prompt-to-production": "Prompt to Profit Advanced",
+    "ai-for-everyday-business-owners": "AI for Everyday Business Owners"
+  }
+  return names[slug] || clean(value, 120)
+}
+
 export async function resolveEnrollmentBrevoListId(input: {
   courseSlug?: string | null
   batchKey?: string | null
@@ -197,11 +208,14 @@ export async function sendStudentAccountReadyEmail(input: {
   email: string
   fullName?: string | null
   courseSlug?: string | null
+  temporaryPassword?: string | null
   resetToken?: string | null
 }) {
   const email = normalizeEmail(input.email)
   if (!email) return { ok: false, skipped: true }
+  const course = learningCourseName(input.courseSlug)
   const dashboardUrl = `${siteBaseUrl()}/dashboard`
+  const loginUrl = `${siteBaseUrl()}/dashboard/login`
   const setupUrl = input.resetToken
     ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`
     : dashboardUrl
@@ -212,15 +226,27 @@ export async function sendStudentAccountReadyEmail(input: {
     text: [
       `Hello ${clean(input.fullName, 120) || "there"},`,
       "",
-      `Your enrollment${input.courseSlug ? ` for ${clean(input.courseSlug, 120)}` : ""} is confirmed and your learning account is ready.`,
-      input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      `Your enrollment${course ? ` for ${course}` : ""} is confirmed and your learning account is ready.`,
+      input.temporaryPassword ? `Sign-in email: ${email}` : "",
+      input.temporaryPassword ? `Temporary password: ${input.temporaryPassword}` : "",
+      input.temporaryPassword ? `Sign in here: ${loginUrl}` : input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      input.temporaryPassword ? "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password." : "",
+      input.temporaryPassword ? "Keep these details private." : "",
       "",
       "Tochukwu Tech and AI Academy"
-    ].join("\n"),
+    ].filter(Boolean).join("\n"),
     html: `
       <p>Hello ${clean(input.fullName, 120) || "there"},</p>
-      <p>Your enrollment${input.courseSlug ? ` for <strong>${clean(input.courseSlug, 120)}</strong>` : ""} is confirmed and your learning account is ready.</p>
-      <p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>
+      <p>Your enrollment${course ? ` for <strong>${course}</strong>` : ""} is confirmed and your learning account is ready.</p>
+      ${input.temporaryPassword ? `
+        <div style="margin:20px 0;padding:16px;border:1px solid #dbe7f3;border-radius:10px;background:#f8fbff;">
+          <p style="margin:0 0 8px;"><strong>Sign-in email:</strong> ${email}</p>
+          <p style="margin:0;"><strong>Temporary password:</strong> <span style="font-family:monospace;font-size:16px;">${input.temporaryPassword}</span></p>
+        </div>
+        <p><a href="${loginUrl}">Sign in to your learning dashboard</a></p>
+        <p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>
+        <p>Keep these details private.</p>
+      ` : `<p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>`}
       <p>Tochukwu Tech and AI Academy</p>
     `
   })
@@ -231,13 +257,16 @@ export async function sendStudentPendingManualPaymentEmail(input: {
   email: string
   fullName?: string | null
   courseSlug?: string | null
+  temporaryPassword?: string | null
   resetToken?: string | null
   dashboardPath?: string | null
 }) {
   const email = normalizeEmail(input.email)
   if (!email) return { ok: false, skipped: true }
+  const course = learningCourseName(input.courseSlug)
   const dashboardPath = clean(input.dashboardPath || "/dashboard/courses?manual_payment=pending", 180)
   const dashboardUrl = `${siteBaseUrl()}${dashboardPath.startsWith("/") ? dashboardPath : "/dashboard/courses?manual_payment=pending"}`
+  const loginUrl = `${siteBaseUrl()}/dashboard/login`
   const setupUrl = input.resetToken
     ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`
     : dashboardUrl
@@ -248,19 +277,29 @@ export async function sendStudentPendingManualPaymentEmail(input: {
     text: [
       `Hello ${clean(input.fullName, 120) || "there"},`,
       "",
-      `Your manual payment${input.courseSlug ? ` for ${clean(input.courseSlug, 120)}` : ""} has been submitted and is awaiting verification.`,
+      `Your manual payment${course ? ` for ${course}` : ""} has been submitted and is awaiting verification.`,
       "Your student account has been created so you can track the enrollment status from your dashboard.",
-      input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      input.temporaryPassword ? `Sign-in email: ${email}` : "",
+      input.temporaryPassword ? `Temporary password: ${input.temporaryPassword}` : "",
+      input.temporaryPassword ? `Sign in here: ${loginUrl}` : input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      input.temporaryPassword ? "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password." : "",
       "",
       "Course access will open after your payment has been approved.",
       "",
       "Tochukwu Tech and AI Academy"
-    ].join("\n"),
+    ].filter(Boolean).join("\n"),
     html: `
       <p>Hello ${clean(input.fullName, 120) || "there"},</p>
-      <p>Your manual payment${input.courseSlug ? ` for <strong>${clean(input.courseSlug, 120)}</strong>` : ""} has been submitted and is awaiting verification.</p>
+      <p>Your manual payment${course ? ` for <strong>${course}</strong>` : ""} has been submitted and is awaiting verification.</p>
       <p>Your student account has been created so you can track the enrollment status from your dashboard.</p>
-      <p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>
+      ${input.temporaryPassword ? `
+        <div style="margin:20px 0;padding:16px;border:1px solid #dbe7f3;border-radius:10px;background:#f8fbff;">
+          <p style="margin:0 0 8px;"><strong>Sign-in email:</strong> ${email}</p>
+          <p style="margin:0;"><strong>Temporary password:</strong> <span style="font-family:monospace;font-size:16px;">${input.temporaryPassword}</span></p>
+        </div>
+        <p><a href="${loginUrl}">Sign in to your learning dashboard</a></p>
+        <p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>
+      ` : `<p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>`}
       <p>Course access will open after your payment has been approved.</p>
       <p>Tochukwu Tech and AI Academy</p>
     `

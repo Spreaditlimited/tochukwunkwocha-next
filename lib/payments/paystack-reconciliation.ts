@@ -12,6 +12,7 @@ import {
   validateCourseOrderPaystackPayment
 } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
+import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
 type ReconciliationCandidate = {
   orderUuid: string | null
@@ -32,6 +33,7 @@ export type PaystackReconciliationResult = {
   stillProcessing: number
   notPaid: number
   mismatched: number
+  duplicateReview: number
   failed: number
 }
 
@@ -78,6 +80,7 @@ export async function reconcileCoursePaystackOrders(input?: {
           WHERE LOWER(sa.email) = LOWER(co.email)
         )
       )
+      AND COALESCE(co.status, '') <> 'duplicate_payment_review'
     ORDER BY co.created_at DESC
     LIMIT ${limit}
   `
@@ -91,6 +94,7 @@ export async function reconcileCoursePaystackOrders(input?: {
     stillProcessing: 0,
     notPaid: 0,
     mismatched: 0,
+    duplicateReview: 0,
     failed: 0
   }
 
@@ -211,6 +215,19 @@ export async function reconcileCoursePaystackOrders(input?: {
       })
       await sendCourseOrderMetaPurchase({ orderUuid }).catch(() => null)
     } catch (error) {
+      if (isCourseEnrollmentConflict(error)) {
+        result.duplicateReview += 1
+        await recordPaystackAuditEvent({
+          orderUuid,
+          providerReference: reference,
+          source: "reconciliation",
+          eventType: "student.provision",
+          outcome: "failed",
+          errorCode: error.code,
+          errorMessage: error.message
+        })
+        continue
+      }
       result.failed += 1
       await recordPaystackAuditEvent({
         orderUuid,

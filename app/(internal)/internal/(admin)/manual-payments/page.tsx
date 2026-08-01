@@ -12,6 +12,7 @@ import {
   Send, 
   ShieldAlert, 
   Trash2, 
+  UserPlus,
   Users, 
   XCircle 
 } from "lucide-react"
@@ -37,6 +38,7 @@ import { formatDate } from "@/lib/utils"
 import {
   completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
+  provisionMissingPaidEnrollmentAccountsAction,
   reconcilePaystackPaymentsAction,
   resendBatchActivationEmailsAction,
   resendManualPaymentActivationEmailAction,
@@ -62,7 +64,7 @@ function param(params: Record<string, string | string[] | undefined>, key: strin
 function statusTone(status: string | null) {
   const raw = String(status || "").toLowerCase()
   if (raw === "approved" || raw === "paid") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-  if (raw === "rejected" || raw === "provider_mismatch" || raw === "provider_failed") return "border-destructive/20 bg-destructive/10 text-destructive"
+  if (raw === "rejected" || raw === "provider_mismatch" || raw === "provider_failed" || raw === "duplicate_payment_review") return "border-destructive/20 bg-destructive/10 text-destructive"
   return "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
 }
 
@@ -72,6 +74,7 @@ function statusLabel(status: string | null) {
   if (raw === "provider_processing") return "Awaiting Paystack"
   if (raw === "provider_mismatch") return "Payment Mismatch"
   if (raw === "provider_failed") return "Verification Issue"
+  if (raw === "duplicate_payment_review") return "Duplicate Payment Review"
   return raw.replace(/_/g, " ")
 }
 
@@ -613,13 +616,20 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 Online payment states and manual payment submissions, consolidated into one operational ledger.
               </p>
             </div>
-            <form action={reconcilePaystackPaymentsAction} className="shrink-0">
-              <input type="hidden" name="courseSlug" value={courseSlug} />
-              <input type="hidden" name="batchKey" value={batchKey} />
-              <button type="submit" className="btn-primary w-full justify-center shadow-sm sm:w-auto">
-                <RefreshCw className="mr-2 h-4 w-4" /> Reconcile Paystack
-              </button>
-            </form>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <form action={provisionMissingPaidEnrollmentAccountsAction}>
+                <button type="submit" className="btn-secondary w-full justify-center shadow-sm sm:w-auto">
+                  <UserPlus className="mr-2 h-4 w-4" /> Provision Missing Accounts
+                </button>
+              </form>
+              <form action={reconcilePaystackPaymentsAction}>
+                <input type="hidden" name="courseSlug" value={courseSlug} />
+                <input type="hidden" name="batchKey" value={batchKey} />
+                <button type="submit" className="btn-primary w-full justify-center shadow-sm sm:w-auto">
+                  <RefreshCw className="mr-2 h-4 w-4" /> Reconcile Paystack
+                </button>
+              </form>
+            </div>
           </div>
           
           <ScrollPreservingGetForm className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
@@ -637,6 +647,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                   { value: "pending_verification", label: "Pending Review" },
                   { value: "provider_processing", label: "Awaiting Paystack" },
                   { value: "provider_issue", label: "Paystack Issues" },
+                  { value: "duplicate_payment_review", label: "Duplicate Payment Review" },
                   { value: "recovery_required", label: "Recovery Required" },
                   { value: "approved", label: "Approved" },
                   { value: "rejected", label: "Rejected" }
@@ -831,15 +842,29 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       {payment.status === "approved" && (
                         <form action={resendManualPaymentActivationEmailAction}>
                           <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                          <input type="hidden" name="source" value="manual" />
                           <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
                             <Mail className="mr-1.5 h-3.5 w-3.5" /> Resend Activation
                           </button>
                         </form>
                       )}
                       </div>
+                    ) : payment.status === "approved" && ["PAYSTACK", "STRIPE"].includes(payment.providerLabel) ? (
+                      <div className="grid w-[240px] gap-3 rounded-xl border border-border bg-background p-4 text-xs shadow-sm">
+                        <span className={`inline-flex w-fit items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${payment.accountExists ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+                          {payment.accountExists ? "Account connected" : "Account missing"}
+                        </span>
+                        <form action={resendManualPaymentActivationEmailAction}>
+                          <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                          <input type="hidden" name="source" value="online" />
+                          <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
+                            <Mail className="mr-1.5 h-3.5 w-3.5" /> {payment.accountExists ? "Resend Activation" : "Provision & Send Activation"}
+                          </button>
+                        </form>
+                      </div>
                     ) : (
                       <div className="w-[240px] whitespace-normal break-words rounded-xl border border-border bg-background p-4 text-xs leading-relaxed text-muted-foreground shadow-sm">
-                        Online order details are provider-verified. Email changes should be made on the linked student account.
+                        Online order details are provider-verified. Activation recovery is available after payment confirmation.
                       </div>
                     )}
                   </td>

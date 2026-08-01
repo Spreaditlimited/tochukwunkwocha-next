@@ -1,8 +1,14 @@
 import crypto, { randomUUID } from "crypto"
+import type { Prisma } from "@prisma/client"
 
 import { getAdminSettingValues } from "@/lib/admin-settings"
 import { buildAffiliateSeatCommissions } from "@/lib/affiliate-commission-calculator"
 import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
+import {
+  CourseEnrollmentConflictError,
+  claimIndividualCourseEnrollment,
+  ensureEnrollmentClaimTable
+} from "@/lib/enrollment-guard"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { getConfiguredStripeFee, grossUpPaystackAmount, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
@@ -267,19 +273,29 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
            cb.seat_limit, cb.batch_start_at,
            (
              COALESCE((
-               SELECT SUM(CASE WHEN co.seat_count IS NULL OR co.seat_count < 1 THEN 1 ELSE co.seat_count END)
+               SELECT COUNT(*)
                FROM course_orders co
                WHERE co.course_slug COLLATE utf8mb4_unicode_ci = cb.course_slug COLLATE utf8mb4_unicode_ci
                  AND co.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
                  AND co.status = 'paid'
+                 AND COALESCE(co.buyer_type, 'student') <> 'family'
              ), 0)
              +
              COALESCE((
-               SELECT SUM(CASE WHEN mp.seat_count IS NULL OR mp.seat_count < 1 THEN 1 ELSE mp.seat_count END)
+               SELECT COUNT(*)
                FROM course_manual_payments mp
                WHERE mp.course_slug COLLATE utf8mb4_unicode_ci = cb.course_slug COLLATE utf8mb4_unicode_ci
                  AND mp.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
                  AND mp.status = 'approved'
+                 AND COALESCE(mp.buyer_type, 'student') <> 'family'
+             ), 0)
+             +
+             COALESCE((
+               SELECT COUNT(*)
+               FROM family_child_enrollments fce
+               WHERE fce.course_slug COLLATE utf8mb4_unicode_ci = cb.course_slug COLLATE utf8mb4_unicode_ci
+                 AND fce.batch_key COLLATE utf8mb4_unicode_ci = cb.batch_key COLLATE utf8mb4_unicode_ci
+                 AND fce.status = 'active'
              ), 0)
            ) AS enrolled_count
     FROM course_batches cb
@@ -653,21 +669,23 @@ export async function checkoutContext(input: {
   const buyerType = normalizeBuyerType(input.buyerType)
   const seatCount = normalizeSeatCount({ buyerType, seatCount: input.seatCount, courseSlug, minimumFamilySeats: input.minimumFamilySeats })
   const provider = input.provider || providerForCountry(input.country)
-  if (input.requireExplicitHolidayBatch && courseSlug === HOLIDAY_COURSE_SLUG && !normalizeBatchKey(input.batchKey)) {
+  if (buyerType !== "family" && input.requireExplicitHolidayBatch && courseSlug === HOLIDAY_COURSE_SLUG && !normalizeBatchKey(input.batchKey)) {
     throw new Error("Please choose a batch.")
   }
   const batches = await listCheckoutBatches(courseSlug)
   const requestedBatchKey = normalizeBatchKey(input.batchKey)
-  const batch = requestedBatchKey
-    ? batches.find((candidate) => candidate.batchKey === requestedBatchKey) || null
-    : batches[0] || null
-  if (requestedBatchKey && !batch) {
+  const batch = buyerType === "family"
+    ? null
+    : requestedBatchKey
+      ? batches.find((candidate) => candidate.batchKey === requestedBatchKey) || null
+      : batches[0] || null
+  if (buyerType !== "family" && requestedBatchKey && !batch) {
     throw new Error("Selected batch is unavailable. Please choose another batch.")
   }
-  if (input.requireActiveBatch && !(await courseUsesImmediateAccess(courseSlug)) && !batch) {
+  if (input.requireActiveBatch && !(await courseUsesImmediateAccess(courseSlug)) && (buyerType === "family" ? !batches.length : !batch)) {
     throw new Error("No active batch is available for this course.")
   }
-  await assertBatchCapacity(batch, seatCount)
+  if (buyerType !== "family") await assertBatchCapacity(batch, seatCount)
   const result = await pricingWithCoupon({
     courseSlug,
     country: input.country,
@@ -759,26 +777,7 @@ export async function markCourseOrderPaid(input: {
   providerOrderId?: string | null
 }) {
   const paidAt = new Date()
-  try {
-    await prisma.$executeRaw`
-      UPDATE course_orders
-      SET status = 'paid',
-          paid_at = COALESCE(paid_at, ${paidAt}),
-          provider_reference = COALESCE(${input.providerReference || null}, provider_reference),
-          provider_order_id = COALESCE(${input.providerOrderId || null}, provider_order_id),
-          updated_at = ${paidAt}
-      WHERE order_uuid = ${input.orderUuid}
-    `
-  } catch (_error) {
-    await prisma.$executeRaw`
-      UPDATE course_orders
-      SET status = 'paid', updated_at = ${paidAt}
-      WHERE order_uuid = ${input.orderUuid}
-    `
-  }
-
-  const rows = await prisma.$queryRaw<
-    Array<{
+  type PaidCourseOrder = {
       order_uuid: string
       course_slug: string | null
       first_name: string | null
@@ -791,14 +790,62 @@ export async function markCourseOrderPaid(input: {
       seat_count: number | bigint | null
       batch_key: string | null
       batch_label: string | null
-    }>
-  >`
-    SELECT order_uuid, course_slug, first_name, email, phone, currency, discount_minor, coupon_id, buyer_type, seat_count, batch_key, batch_label
-    FROM course_orders
-    WHERE order_uuid = ${input.orderUuid}
-    LIMIT 1
-  `
-  const order = rows[0]
+    }
+
+  await ensureEnrollmentClaimTable()
+  const outcome = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<PaidCourseOrder & { status: string | null }>>`
+      SELECT order_uuid, course_slug, first_name, email, phone, currency, discount_minor, coupon_id,
+             buyer_type, seat_count, batch_key, batch_label, status
+      FROM course_orders
+      WHERE order_uuid = ${input.orderUuid}
+      LIMIT 1
+      FOR UPDATE
+    `
+    const current = rows[0]
+    if (!current) return { order: null as PaidCourseOrder | null, conflict: null as CourseEnrollmentConflictError | null }
+    if (String(current.status || "").toLowerCase() === "paid") {
+      return { order: current as PaidCourseOrder, conflict: null as CourseEnrollmentConflictError | null }
+    }
+
+    if (String(current.buyer_type || "student").toLowerCase() !== "family") {
+      try {
+        await claimIndividualCourseEnrollment(tx, {
+          email: current.email || "",
+          courseSlug: current.course_slug || "",
+          sourceType: "course_order",
+          sourceUuid: current.order_uuid,
+          batchKey: current.batch_key,
+          batchLabel: current.batch_label
+        })
+      } catch (error) {
+        if (!(error instanceof CourseEnrollmentConflictError)) throw error
+        await tx.$executeRaw`
+          UPDATE course_orders
+          SET status = 'duplicate_payment_review',
+              paid_at = COALESCE(paid_at, ${paidAt}),
+              provider_reference = COALESCE(${input.providerReference || null}, provider_reference),
+              provider_order_id = COALESCE(${input.providerOrderId || null}, provider_order_id),
+              updated_at = ${paidAt}
+          WHERE order_uuid = ${input.orderUuid}
+        `
+        return { order: null as PaidCourseOrder | null, conflict: error }
+      }
+    }
+
+    await tx.$executeRaw`
+      UPDATE course_orders
+      SET status = 'paid',
+          paid_at = COALESCE(paid_at, ${paidAt}),
+          provider_reference = COALESCE(${input.providerReference || null}, provider_reference),
+          provider_order_id = COALESCE(${input.providerOrderId || null}, provider_order_id),
+          updated_at = ${paidAt}
+      WHERE order_uuid = ${input.orderUuid}
+    `
+    return { order: current as PaidCourseOrder, conflict: null as CourseEnrollmentConflictError | null }
+  })
+  if (outcome.conflict) throw outcome.conflict
+  const order = outcome.order
   if (order) {
     await recordCouponRedemption({
       couponId: order.coupon_id ? Number(order.coupon_id) : null,
@@ -1761,23 +1808,39 @@ export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | 
       familyAccountId = Number(credited.familyId || familyAccountId || 0) || null
     }
 
-    await prisma.$executeRaw`
-      INSERT INTO course_orders
-        (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
-         discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, family_account_id,
-         status, batch_key, batch_label, paid_at, created_at, updated_at)
-      VALUES
-        (${orderUuid}, ${plan.course_slug}, ${plan.full_name || "Student"}, ${plan.email}, ${plan.phone_e164 || null},
-         ${plan.country || null}, ${plan.currency || "NGN"}, ${targetAmountMinor}, ${Number(plan.base_amount_minor || targetAmountMinor)},
-         ${Number(plan.discount_minor || 0)}, ${targetAmountMinor}, ${plan.coupon_code || null}, ${plan.coupon_id ? Number(plan.coupon_id) : null},
-         'wallet', ${buyerType}, ${seatCount}, ${familyAccountId}, 'paid', ${plan.batch_key || null}, ${plan.batch_label || null},
-         ${timestamp}, ${timestamp}, ${timestamp})
-      ON DUPLICATE KEY UPDATE
-        family_account_id = COALESCE(VALUES(family_account_id), family_account_id),
-        status = 'paid',
-        paid_at = COALESCE(paid_at, VALUES(paid_at)),
-        updated_at = VALUES(updated_at)
-    `
+    const insertPaidOrder = (client: Prisma.TransactionClient | typeof prisma) => client.$executeRaw`
+        INSERT INTO course_orders
+          (order_uuid, course_slug, first_name, email, phone, country, currency, amount_minor, base_amount_minor,
+           discount_minor, final_amount_minor, coupon_code, coupon_id, provider, buyer_type, seat_count, family_account_id,
+           status, batch_key, batch_label, paid_at, created_at, updated_at)
+        VALUES
+          (${orderUuid}, ${plan.course_slug}, ${plan.full_name || "Student"}, ${plan.email}, ${plan.phone_e164 || null},
+           ${plan.country || null}, ${plan.currency || "NGN"}, ${targetAmountMinor}, ${Number(plan.base_amount_minor || targetAmountMinor)},
+           ${Number(plan.discount_minor || 0)}, ${targetAmountMinor}, ${plan.coupon_code || null}, ${plan.coupon_id ? Number(plan.coupon_id) : null},
+           'wallet', ${buyerType}, ${seatCount}, ${familyAccountId}, 'paid', ${plan.batch_key || null}, ${plan.batch_label || null},
+           ${timestamp}, ${timestamp}, ${timestamp})
+        ON DUPLICATE KEY UPDATE
+          family_account_id = COALESCE(VALUES(family_account_id), family_account_id),
+          status = 'paid',
+          paid_at = COALESCE(paid_at, VALUES(paid_at)),
+          updated_at = VALUES(updated_at)
+      `
+    if (buyerType === "student") {
+      await ensureEnrollmentClaimTable()
+      await prisma.$transaction(async (tx) => {
+        await claimIndividualCourseEnrollment(tx, {
+          email: String(plan.email || ""),
+          courseSlug: String(plan.course_slug || ""),
+          sourceType: "course_order",
+          sourceUuid: orderUuid,
+          batchKey: plan.batch_key,
+          batchLabel: plan.batch_label
+        })
+        await insertPaidOrder(tx)
+      })
+    } else {
+      await insertPaidOrder(prisma)
+    }
     await recordCouponRedemption({
       couponId: plan.coupon_id ? Number(plan.coupon_id) : null,
       orderUuid,
@@ -1818,7 +1881,7 @@ export async function autoEnrollInstallmentPlanIfEligible(planIdInput: number | 
     // Preserve the deterministic order UUID for an idempotent retry.
     await prisma.$executeRaw`
       UPDATE student_installment_plans
-      SET status = 'open', updated_at = ${now()}
+      SET status = ${error instanceof CourseEnrollmentConflictError ? "duplicate_review" : "open"}, updated_at = ${now()}
       WHERE id = ${planId} AND status = 'enrolling' AND enrolled_order_uuid = ${orderUuid}
     `.catch(() => null)
     throw error

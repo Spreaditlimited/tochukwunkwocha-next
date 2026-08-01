@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import Link from "next/link"
 import {
+  AlertCircle,
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
@@ -187,11 +188,28 @@ function metaAttribution() {
 
 class CheckoutRequestError extends Error {
   code: string
+  action: { label: string; href: string } | null
 
-  constructor(message: string, code = "") {
+  constructor(message: string, code = "", action: { label: string; href: string } | null = null) {
     super(message)
     this.name = "CheckoutRequestError"
     this.code = code
+    this.action = action
+  }
+}
+
+function requestAction(value: unknown) {
+  if (!value || typeof value !== "object") return null
+  const candidate = value as { label?: unknown; href?: unknown }
+  const label = String(candidate.label || "").trim()
+  const href = String(candidate.href || "").trim()
+  return label && href.startsWith("/") ? { label, href } : null
+}
+
+function checkoutErrorDetails(error: unknown, fallback: string) {
+  return {
+    message: error instanceof Error ? error.message : fallback,
+    action: error instanceof CheckoutRequestError ? error.action : null
   }
 }
 
@@ -205,7 +223,11 @@ async function postJson<T>(url: string, body: Record<string, unknown>, signal?: 
   })
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.ok) {
-    throw new CheckoutRequestError(json?.error || "Request failed", String(json?.code || ""))
+    throw new CheckoutRequestError(
+      json?.error || "Request failed",
+      String(json?.code || ""),
+      requestAction(json?.action)
+    )
   }
   return json as T
 }
@@ -327,10 +349,11 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   const [installmentAmount, setInstallmentAmount] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
+  const [errorAction, setErrorAction] = useState<{ label: string; href: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const autoSelectedBatchRef = useRef("")
   const isNigeriaCheckout = isNigeriaCountry(country)
-  const pricingEmail = couponCode.trim() ? email : ""
+  const pricingEmail = couponCode.trim() || provider === "manual_transfer" ? email : ""
 
   const paymentOptions = useMemo(
     () =>
@@ -378,6 +401,19 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   }, [])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const paymentState = params.get("payment") || ""
+    const reason = params.get("reason") || ""
+    if (paymentState === "duplicate_review") {
+      setErrorMessage(reason || "Your payment was confirmed, but new access was withheld because this email already owns the course. Please contact support so the duplicate payment can be reviewed.")
+      setErrorAction({ label: "Open My Courses", href: "/dashboard/courses" })
+    } else if (paymentState === "failed" && reason) {
+      setErrorMessage(reason)
+      setErrorAction(null)
+    }
+  }, [])
+
+  useEffect(() => {
     if (autoSelectedBatchRef.current && autoSelectedBatchRef.current === batchKey) {
       return
     }
@@ -410,13 +446,17 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
           if (cancelled) return
           setBatches(result.batches || [])
           setPricing(result.pricing)
-          if (!batchKey && result.batches?.[0]?.batchKey) {
+          if (buyerType !== "family" && !batchKey && result.batches?.[0]?.batchKey) {
             autoSelectedBatchRef.current = result.batches[0].batchKey
             setBatchKey(result.batches[0].batchKey)
           }
         })
         .catch((error) => {
-          if (!cancelled && error?.name !== "AbortError") setErrorMessage(error.message)
+          if (!cancelled && error?.name !== "AbortError") {
+            const details = checkoutErrorDetails(error, "Could not load checkout details.")
+            setErrorMessage(details.message)
+            setErrorAction(details.action)
+          }
         })
     }, 250)
     return () => {
@@ -449,7 +489,11 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
           }
         })
         .catch((error) => {
-          if (!cancelled && error?.name !== "AbortError") setErrorMessage(error.message)
+          if (!cancelled && error?.name !== "AbortError") {
+            const details = checkoutErrorDetails(error, "Could not load bank transfer details.")
+            setErrorMessage(details.message)
+            setErrorAction(details.action)
+          }
         })
     }, 250)
     return () => {
@@ -462,6 +506,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   const applyCoupon = async () => {
     setCouponMessage("")
     setErrorMessage("")
+    setErrorAction(null)
     if (!couponCode.trim()) {
       setErrorMessage("Enter a coupon code first.")
       return
@@ -499,12 +544,15 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
       setCouponMessage(`${result.coupon.code} applied.`)
     } catch (error) {
       setPricing(null)
-      setErrorMessage(error instanceof Error ? error.message : "Could not apply coupon.")
+      const details = checkoutErrorDetails(error, "Could not apply coupon.")
+      setErrorMessage(details.message)
+      setErrorAction(details.action)
     }
   }
 
   const uploadProof = async (file: File) => {
     setErrorMessage("")
+    setErrorAction(null)
     setStatusMessage("")
     setProofFileName(file.name)
     setProofUrl("")
@@ -561,7 +609,9 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
     } catch (error) {
       setProofFileName("")
       setProofUploadProgress(0)
-      setErrorMessage(error instanceof Error ? error.message : "Could not upload payment proof.")
+      const details = checkoutErrorDetails(error, "Could not upload payment proof.")
+      setErrorMessage(details.message)
+      setErrorAction(details.action)
     } finally {
       setIsUploadingProof(false)
     }
@@ -570,6 +620,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   const submitCheckout = async (event: FormEvent) => {
     event.preventDefault()
     setErrorMessage("")
+    setErrorAction(null)
     setStatusMessage("")
     setIsSubmitting(true)
 
@@ -676,7 +727,9 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
       })
       window.location.href = result.checkoutUrl
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not complete checkout.")
+      const details = checkoutErrorDetails(error, "Could not complete checkout.")
+      setErrorMessage(details.message)
+      setErrorAction(details.action)
     } finally {
       setIsSubmitting(false)
     }
@@ -755,7 +808,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               <div className="surface-raised bg-card p-6 sm:p-8">
                 <h2 className="font-heading text-lg font-bold">Enrollment Options</h2>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2">
-                  {batches.length ? (
+                  {batches.length && buyerType !== "family" ? (
                     <label className="block">
                       <span className="label flex min-h-5 items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Batch</span>
                       <PremiumPicker
@@ -784,7 +837,11 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                       className="mt-2"
                       name="buyerType"
                       value={buyerType}
-                      onChange={(event) => setBuyerType(event.target.value === "family" ? "family" : "student")}
+                      onChange={(event) => {
+                        const nextBuyerType = event.target.value === "family" ? "family" : "student"
+                        setBuyerType(nextBuyerType)
+                        if (nextBuyerType === "family") setBatchKey("")
+                      }}
                       options={[
                         { value: "student", label: "Single learner" },
                         { value: "family", label: "Group seats" }
@@ -807,7 +864,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                           {selectedSeatCount} seats selected • Total: {displayPrice || <PriceSpinner />}
                         </p>
                         <p className="mt-2">
-                          Buy multiple seats now under one account. After payment, the seats become available in your dashboard so you can assign them to the right learners.
+                          Buy multiple seats now under one account. After payment, assign each learner to any eligible batch for this course from your dashboard.
                         </p>
                         {pricing?.groupDiscountMinor ? (
                           <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-semibold leading-snug text-primary">
@@ -922,7 +979,20 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                 </div>
               ) : null}
 
-              {errorMessage ? <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">{errorMessage}</div> : null}
+              {errorMessage ? (
+                <div role="alert" className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-heading text-sm font-black">Please review this message</p>
+                    <p className="mt-1 text-sm font-medium leading-relaxed">{errorMessage}</p>
+                    {errorAction ? (
+                      <Link href={errorAction.href} className="mt-3 inline-flex rounded-lg border border-destructive/30 bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm transition hover:bg-background">
+                        {errorAction.label}
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {statusMessage ? <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">{statusMessage}</div> : null}
 
               <section className="surface-raised overflow-hidden bg-brand-ink text-white lg:hidden">

@@ -9,10 +9,11 @@ export const dynamic = "force-dynamic"
 export default async function ResetPasswordPage({
   searchParams
 }: {
-  searchParams?: Promise<{ token?: string }>
+  searchParams?: Promise<{ token?: string; first_use?: string }>
 }) {
   const params = searchParams ? await searchParams : {}
   const token = String(params.token || "").trim()
+  const firstUse = String(params.first_use || "") === "1"
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/20 p-5 sm:p-6 lg:p-8">
@@ -33,7 +34,9 @@ export default async function ResetPasswordPage({
             {token ? "Create a new password" : "Reset your password"}
           </h1>
           <p className="mt-3 text-base text-muted-foreground">
-            {token ? "Enter a new password for your learning account." : "Enter the email connected to your course purchase."}
+            {firstUse
+              ? "Your temporary password has been accepted and cannot be used again. Create your private password to continue."
+              : token ? "Enter a new password for your learning account." : "Enter the email connected to your course purchase."}
           </p>
         </div>
         <PasswordResetForm token={token} />

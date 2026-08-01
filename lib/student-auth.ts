@@ -62,6 +62,10 @@ function randomToken() {
   return crypto.randomBytes(48).toString("base64url")
 }
 
+function randomTemporaryPassword() {
+  return `Tt1!${crypto.randomBytes(12).toString("base64url")}`
+}
+
 function shaToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex")
 }
@@ -458,10 +462,37 @@ export async function loginStudent(emailInput: string, passwordInput: string) {
   await clearStudentAuthAttempts(identity)
 
   if (account.mustResetPassword) {
+    const token = randomToken()
+    const replacementSalt = crypto.randomBytes(16).toString("hex")
+    const replacementHash = await hashPassword(randomToken(), replacementSalt)
+    const now = new Date()
+    const consumed = await prisma.studentAccount.updateMany({
+      where: {
+        id: account.id,
+        passwordHash: account.passwordHash,
+        mustResetPassword: true
+      },
+      data: {
+        passwordHash: replacementHash,
+        passwordSalt: replacementSalt,
+        resetTokenHash: shaToken(token),
+        resetTokenExpiresAt: null,
+        resetRequestedAt: now,
+        updatedAt: now
+      }
+    })
+    if (!consumed.count) {
+      return {
+        ok: false as const,
+        error: "That temporary password has already been used. Use the password setup page or request a new password link."
+      }
+    }
+    await prisma.studentSession.deleteMany({ where: { accountId: account.id } })
     return {
       ok: false as const,
       code: "PASSWORD_RESET_REQUIRED",
-      error: "Password reset required before sign in"
+      error: "Create your private password to finish signing in.",
+      passwordSetupToken: token
     }
   }
 
@@ -471,6 +502,38 @@ export async function loginStudent(emailInput: string, passwordInput: string) {
     ok: true as const,
     token: session.token,
     account: session.account
+  }
+}
+
+export async function createStudentTemporaryPassword(emailInput: string) {
+  const email = normalizeEmail(emailInput)
+  if (!email) return null
+  const account = await prisma.studentAccount.findUnique({ where: { email } })
+  if (!account) return null
+  const password = randomTemporaryPassword()
+  const salt = crypto.randomBytes(16).toString("hex")
+  const hash = await hashPassword(password, salt)
+  const now = new Date()
+  await prisma.$transaction([
+    prisma.studentAccount.update({
+      where: { id: account.id },
+      data: {
+        passwordHash: hash,
+        passwordSalt: salt,
+        mustResetPassword: true,
+        resetTokenHash: null,
+        resetTokenExpiresAt: null,
+        resetRequestedAt: now,
+        updatedAt: now
+      }
+    }),
+    prisma.studentSession.deleteMany({ where: { accountId: account.id } })
+  ])
+  return {
+    password,
+    accountId: account.id,
+    email: account.email,
+    fullName: account.fullName
   }
 }
 
