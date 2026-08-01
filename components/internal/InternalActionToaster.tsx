@@ -93,6 +93,12 @@ export function InternalActionToaster() {
   }, [show])
 
   useEffect(() => {
+    if (!toast || toast.type === "loading") return
+    const timer = window.setTimeout(() => setToast(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
+  useEffect(() => {
     function checkForServerToast() {
       const fromCookie = readCookieToast()
       if (fromCookie) {
@@ -106,8 +112,9 @@ export function InternalActionToaster() {
       const form = event.target instanceof HTMLFormElement ? event.target : null
       if (!form || !form.closest("[data-internal-dashboard-shell]")) return
       const submitter = event.submitter instanceof HTMLElement ? event.submitter : null
+      if (form.getAttribute("data-toast-managed") === "true" || submitter?.getAttribute("data-toast-managed") === "true") return
       const label = labelFromSubmitter(submitter)
-      const maxAttempts = submitter?.getAttribute("data-toast-long") === "true" ? 2400 : 300
+      const maxAttempts = submitter?.getAttribute("data-toast-long") === "true" ? 240 : 60
       stopPolling()
       show({
         type: "loading",
@@ -126,14 +133,7 @@ export function InternalActionToaster() {
         if (attempts >= maxAttempts) {
           window.clearInterval(timer)
           if (pollTimerRef.current === timer) pollTimerRef.current = null
-          setToast((current) => current?.type === "loading"
-            ? {
-                id: idRef.current++,
-                type: "error",
-                title: "Completion report not received",
-                message: "The server did not return a completion report. Refresh the page and check the affected record before trying the action again."
-              }
-            : current)
+          setToast((current) => current?.type === "loading" ? null : current)
         }
       }, 250)
       pollTimerRef.current = timer

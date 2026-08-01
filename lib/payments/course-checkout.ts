@@ -847,6 +847,16 @@ export async function markCourseOrderPaid(input: {
   if (outcome.conflict) throw outcome.conflict
   const order = outcome.order
   if (order) {
+    await prisma.$executeRaw`
+      UPDATE tochukwu_abandoned_enrollment_followups f
+      JOIN course_orders co ON co.order_uuid = f.order_uuid
+      SET f.status = 'stopped', f.stopped_at = ${paidAt}, f.stopped_reason = 'payment_confirmed',
+          f.locked_at = NULL, f.last_error = NULL, f.updated_at = ${paidAt}
+      WHERE LOWER(COALESCE(co.email, '')) = LOWER(${String(order.email || "")})
+        AND co.course_slug = ${String(order.course_slug || "")}
+        AND COALESCE(co.batch_key, '') = ${String(order.batch_key || "")}
+        AND f.status IN ('pending', 'retry', 'processing')
+    `.catch(() => null)
     await recordCouponRedemption({
       couponId: order.coupon_id ? Number(order.coupon_id) : null,
       orderUuid: input.orderUuid,

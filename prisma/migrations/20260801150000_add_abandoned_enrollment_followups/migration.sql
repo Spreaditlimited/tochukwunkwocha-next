@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS `tochukwu_abandoned_enrollment_followups` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `order_uuid` VARCHAR(64) NOT NULL,
+  `status` VARCHAR(32) NOT NULL DEFAULT 'pending',
+  `whatsapp_opted_in` TINYINT(1) NOT NULL DEFAULT 0,
+  `reminder_count` INTEGER NOT NULL DEFAULT 0,
+  `email_cycle_sent` INTEGER NOT NULL DEFAULT 0,
+  `whatsapp_cycle_sent` INTEGER NOT NULL DEFAULT 0,
+  `first_reminder_at` DATETIME NOT NULL,
+  `next_reminder_at` DATETIME NOT NULL,
+  `last_reminder_at` DATETIME NULL,
+  `attempts` INTEGER NOT NULL DEFAULT 0,
+  `locked_at` DATETIME NULL,
+  `stopped_at` DATETIME NULL,
+  `stopped_reason` VARCHAR(80) NULL,
+  `last_error` VARCHAR(1000) NULL,
+  `created_at` DATETIME NOT NULL,
+  `updated_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_tochukwu_abandoned_order` (`order_uuid`),
+  KEY `idx_tochukwu_abandoned_due` (`status`, `next_reminder_at`),
+  KEY `idx_tochukwu_abandoned_lock` (`status`, `locked_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -91,7 +91,7 @@ export function AddExternalStudentForm({
         </div>
       </div>
 
-      <form ref={formRef} action={formAction} className="p-6 sm:p-8">
+      <form ref={formRef} action={formAction} data-toast-managed="true" className="p-6 sm:p-8">
         {state.status === "error" ? (
           <div
             role="alert"
@@ -206,8 +206,6 @@ export function AddExternalStudentForm({
               type="submit"
               disabled={pending || !courseSlug || (!immediateAccess && (!batchKey || batchRequiredButUnavailable))}
               aria-busy={pending}
-              data-toast="Provisioning access"
-              data-toast-long="true"
             >
               {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
               {pending ? "Provisioning..." : "Provision Access"}

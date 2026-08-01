@@ -44,12 +44,14 @@ function clean(value: unknown, max = 190) {
 export async function reconcileCoursePaystackOrders(input?: {
   courseSlug?: string
   batchKey?: string
+  orderUuid?: string
   limit?: number
 }): Promise<PaystackReconciliationResult> {
   const requestedCourse = normalizeCourse(input?.courseSlug)
   const courseSlug = requestedCourse && requestedCourse !== "all" ? requestedCourse : "all"
   const requestedBatch = clean(input?.batchKey, 80)
   const batchKey = requestedBatch && requestedBatch !== "all" ? requestedBatch : "all"
+  const orderUuid = clean(input?.orderUuid, 64)
   const limit = Math.max(1, Math.min(Math.round(Number(input?.limit || 80)), 300))
 
   const candidates = await prisma.$queryRaw<ReconciliationCandidate[]>`
@@ -70,6 +72,7 @@ export async function reconcileCoursePaystackOrders(input?: {
     WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
       AND co.provider_reference IS NOT NULL
       AND TRIM(co.provider_reference) <> ''
+      AND (${orderUuid} = '' OR co.order_uuid = ${orderUuid})
       AND (${courseSlug} = 'all' OR co.course_slug = ${courseSlug})
       AND (${batchKey} = 'all' OR COALESCE(co.batch_key, '') = ${batchKey})
       AND (

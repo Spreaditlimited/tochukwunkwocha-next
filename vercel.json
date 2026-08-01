@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/payment-notifications",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/abandoned-enrollment-followups",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

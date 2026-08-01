@@ -1,11 +1,11 @@
 import { getAdminSettingValue } from "@/lib/admin-settings"
 
 type TransactionalWhatsAppPayload = {
-  event: "manual_payment_submitted" | "enrollment_confirmed" | "live_class_reminder"
+  event: "manual_payment_submitted" | "enrollment_confirmed" | "live_class_reminder" | "enrollment_payment_reminder"
   phone: string
   templateName: string
-  languageCode: string
-  parameters: string[]
+  templateLanguage: string
+  templateVariables: string[]
   metadata?: Record<string, string>
 }
 
@@ -59,7 +59,9 @@ async function sendTransactionalWhatsApp(payload: TransactionalWhatsAppPayload) 
     body: JSON.stringify({
       ...payload,
       phone,
-      parameters: payload.parameters.map((item) => clean(item, 500))
+      templateName: clean(payload.templateName, 120),
+      templateLanguage: clean(payload.templateLanguage, 20) || "en",
+      templateVariables: payload.templateVariables.map((item) => clean(item, 500))
     }),
     signal: AbortSignal.timeout(8_000)
   })
@@ -82,8 +84,8 @@ export function sendManualPaymentSubmittedWhatsApp(input: {
     event: "manual_payment_submitted",
     phone: clean(input.phone, 80),
     templateName: "tochukwu_manual_payment_received",
-    languageCode: "en",
-    parameters: [
+    templateLanguage: "en",
+    templateVariables: [
       firstName(input.fullName),
       transactionalCourseName(input.courseSlug),
       dashboardUrl(input.dashboardPath || "/dashboard/courses?manual_payment=pending")
@@ -105,8 +107,8 @@ export function sendEnrollmentConfirmedWhatsApp(input: {
     event: "enrollment_confirmed",
     phone: clean(input.phone, 80),
     templateName: "tochukwu_enrollment_confirmed",
-    languageCode: "en_GB",
-    parameters: [
+    templateLanguage: "en_GB",
+    templateVariables: [
       firstName(input.fullName),
       transactionalCourseName(input.courseSlug),
       dashboardUrl(input.dashboardPath || "/dashboard/courses")
@@ -127,8 +129,8 @@ export function sendLiveClassReminderWhatsApp(input: {
     event: "live_class_reminder",
     phone: clean(input.phone, 80),
     templateName: "tochukwu_live_class_reminder",
-    languageCode: "en",
-    parameters: [
+    templateLanguage: "en",
+    templateVariables: [
       firstName(input.fullName),
       clean(input.sessionTitle, 160) || "live class",
       transactionalCourseName(input.courseSlug),
@@ -137,6 +139,33 @@ export function sendLiveClassReminderWhatsApp(input: {
     metadata: {
       courseSlug: clean(input.courseSlug, 120),
       sessionTitle: clean(input.sessionTitle, 160)
+    }
+  })
+}
+
+export function sendEnrollmentPaymentReminderWhatsApp(input: {
+  phone?: string | null
+  fullName?: string | null
+  courseSlug?: string | null
+  batchLabel?: string | null
+  checkoutUrl: string
+  stopUrl: string
+}) {
+  return sendTransactionalWhatsApp({
+    event: "enrollment_payment_reminder",
+    phone: clean(input.phone, 80),
+    templateName: "tochukwu_enrollment_payment_reminder",
+    templateLanguage: "en_GB",
+    templateVariables: [
+      firstName(input.fullName),
+      transactionalCourseName(input.courseSlug),
+      clean(input.batchLabel, 120) || "your selected intake",
+      clean(input.checkoutUrl, 500),
+      clean(input.stopUrl, 500)
+    ],
+    metadata: {
+      courseSlug: clean(input.courseSlug, 120),
+      batchLabel: clean(input.batchLabel, 120)
     }
   })
 }

@@ -21,7 +21,7 @@ export async function setInternalToast(payload: InternalToastPayload) {
 
   cookieStore.set(COOKIE_NAME, value, {
     path: "/internal",
-    maxAge: 600,
+    maxAge: 60,
     sameSite: "lax"
   })
 }

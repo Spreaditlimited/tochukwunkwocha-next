@@ -334,3 +334,62 @@ export async function sendInstallmentStartedEmail(input: {
   })
   return { ok: true }
 }
+
+export async function sendAbandonedEnrollmentReminderEmail(input: {
+  email: string
+  fullName?: string | null
+  courseSlug?: string | null
+  batchLabel?: string | null
+  checkoutUrl: string
+  stopUrl: string
+  reminderNumber: number
+}) {
+  const email = normalizeEmail(input.email)
+  if (!email) return { ok: false, skipped: true }
+  const name = clean(input.fullName, 120) || "there"
+  const course = learningCourseName(input.courseSlug) || "your selected course"
+  const batch = clean(input.batchLabel, 120)
+  const selection = batch ? `${course} — ${batch}` : course
+  const checkoutUrl = clean(input.checkoutUrl, 1000)
+  const stopUrl = clean(input.stopUrl, 1000)
+  const initial = input.reminderNumber <= 1
+  const subject = initial
+    ? `Need help completing your ${course} enrollment?`
+    : `A gentle reminder about your ${course} enrollment`
+  const opening = initial
+    ? `It looks like you started enrolling for ${selection}, but we have not yet confirmed your payment.`
+    : `This is a gentle reminder that your enrollment for ${selection} has not yet been completed.`
+
+  await sendEmail({
+    to: email,
+    subject,
+    text: [
+      `Hello ${name},`,
+      "",
+      opening,
+      "",
+      "If you experienced an error or had difficulty completing the payment, you can continue securely here:",
+      checkoutUrl,
+      "",
+      "If your account was charged already, please do not attempt another payment. Reply to this email with your payment reference and we will check it for you.",
+      "",
+      "We will automatically stop these reminders once your payment is confirmed or enrollment closes.",
+      "",
+      `Stop payment reminders: ${stopUrl}`,
+      "",
+      "Warm regards,",
+      "Tochukwu Tech and AI Academy"
+    ].join("\n"),
+    html: `
+      <p>Hello ${name},</p>
+      <p>${opening}</p>
+      <p>If you experienced an error or had difficulty completing the payment, you can continue securely using the button below.</p>
+      <p style="margin:24px 0;"><a href="${checkoutUrl}" style="display:inline-block;border-radius:10px;background:#0d4f9a;color:#ffffff;padding:12px 20px;font-weight:800;text-decoration:none;">Complete My Enrollment</a></p>
+      <p>If your account was charged already, <strong>please do not attempt another payment</strong>. Reply to this email with your payment reference and we will check it for you.</p>
+      <p>We will automatically stop these reminders once your payment is confirmed or enrollment closes.</p>
+      <p style="margin-top:24px;font-size:12px;color:#64748b;"><a href="${stopUrl}" style="color:#64748b;">Stop payment reminders</a></p>
+      <p>Warm regards,<br/>Tochukwu Tech and AI Academy</p>
+    `
+  })
+  return { ok: true }
+}

@@ -15,6 +15,7 @@ import {
 } from "@/lib/payments/course-checkout"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
 import { ServerTiming } from "@/lib/server-timing"
+import { enqueueAbandonedEnrollmentFollowup } from "@/lib/abandoned-enrollment-followups"
 import {
   assertNoActiveIndividualEnrollment,
   enrollmentConflictPayload,
@@ -83,6 +84,15 @@ export async function POST(request: Request) {
       clientIp: clientIpFromRequest(request),
       userAgent: request.headers.get("user-agent") || "",
       affiliateCode: body.affiliateCode
+    })
+    await enqueueAbandonedEnrollmentFollowup({
+      orderUuid,
+      whatsappOptedIn: body.whatsappOptIn === true
+    }).catch((error) => {
+      console.error("[checkout] abandoned enrollment follow-up could not be queued", {
+        orderUuid,
+        error: error instanceof Error ? error.message : String(error)
+      })
     })
     timing.mark("order")
     const metadata = { order_uuid: orderUuid, course_slug: returnSlug, checkout_course_slug: courseSlug, first_name: firstName }

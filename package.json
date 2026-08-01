@@ -27,7 +27,9 @@
     "smoke:course-enrollment-guard-db": "node --env-file=.env scripts/smoke-course-enrollment-guard-db.mjs",
     "smoke:group-seat-batches": "node scripts/smoke-group-seat-batch-assignment.mjs",
     "smoke:temporary-student-password": "node scripts/smoke-temporary-student-password.mjs",
-    "smoke:paid-account-provisioning": "node scripts/smoke-paid-account-provisioning.mjs"
+    "smoke:paid-account-provisioning": "node scripts/smoke-paid-account-provisioning.mjs",
+    "smoke:manual-payment-toasts": "node scripts/smoke-manual-payment-toast-completion.mjs",
+    "smoke:abandoned-enrollment-followups": "node scripts/smoke-abandoned-enrollment-followups.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

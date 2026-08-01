@@ -1,0 +1,56 @@
+import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+
+const root = process.cwd()
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8")
+
+const checkout = read("app/api/checkout/order/route.ts")
+const followups = read("lib/abandoned-enrollment-followups.ts")
+const email = read("lib/enrollment-notifications.ts")
+const whatsapp = read("lib/transactional-whatsapp.ts")
+const reconciliation = read("lib/payments/paystack-reconciliation.ts")
+const cron = read("app/api/cron/abandoned-enrollment-followups/route.ts")
+const stop = read("app/api/checkout/follow-up/stop/route.ts")
+const schedule = read("vercel.json")
+const migration = read("prisma/migrations/20260801150000_add_abandoned_enrollment_followups/migration.sql")
+const checkoutForm = read("components/checkout/CourseCheckoutForm.tsx")
+
+assert.match(checkoutForm, /useState\(true\)/)
+assert.match(checkout, /enqueueAbandonedEnrollmentFollowup\(/)
+assert.ok(
+  checkout.indexOf("enqueueAbandonedEnrollmentFollowup({") < checkout.indexOf("initializePaystack({"),
+  "Follow-up must be queued even when provider initialization fails"
+)
+assert.match(followups, /20 \* 60_000/)
+assert.match(followups, /24 \* 60 \* 60_000/)
+assert.match(followups, /reconcileCoursePaystackOrders\(\{ orderUuid: row\.orderUuid, limit: 1 \}\)/)
+assert.match(followups, /Paystack verification was unavailable; the reminder was deferred\./)
+assert.match(followups, /payment_review_required/)
+assert.match(followups, /matchingPaidOrderExists/)
+assert.match(followups, /newerAttemptExists/)
+assert.match(followups, /batchStartAt/)
+assert.match(followups, /courseStartAt/)
+assert.match(followups, /DELETE FROM course_orders/)
+assert.match(followups, /email_cycle_sent/)
+assert.match(followups, /whatsapp_cycle_sent/)
+assert.match(followups, /let whatsappError = ""/)
+assert.match(followups, /last_error = \$\{whatsappError \|\| null\}/)
+assert.match(followups, /return \{ checked: rows\.length, sent, stopped, expired, failed, whatsappFailed \}/)
+assert.match(followups, /customer_opt_out/)
+assert.match(email, /Need help completing your \$\{course\} enrollment\?/)
+assert.match(email, /A gentle reminder about your \$\{course\} enrollment/)
+assert.match(email, /If your account was charged already/)
+assert.match(whatsapp, /templateName: "tochukwu_enrollment_payment_reminder"/)
+assert.match(whatsapp, /templateLanguage: "en_GB"/)
+assert.match(whatsapp, /templateVariables: \[/)
+assert.match(whatsapp, /clean\(input\.stopUrl, 500\)/)
+assert.doesNotMatch(whatsapp, /languageCode:/)
+assert.doesNotMatch(whatsapp, /parameters: \[/)
+assert.match(reconciliation, /orderUuid\?: string/)
+assert.match(cron, /processAbandonedEnrollmentFollowups/)
+assert.match(stop, /verifyAbandonedEnrollmentStopToken/)
+assert.match(schedule, /\/api\/cron\/abandoned-enrollment-followups/)
+assert.match(migration, /UNIQUE KEY `uniq_tochukwu_abandoned_order`/)
+
+console.log("Abandoned enrollment follow-up smoke test passed.")

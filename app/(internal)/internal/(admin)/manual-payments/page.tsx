@@ -5,14 +5,13 @@ import {
   CreditCard, 
   ExternalLink, 
   Filter, 
-  Mail, 
+  Mail,
   MessageCircle, 
   MonitorPlay, 
   RefreshCw, 
   Send, 
   ShieldAlert, 
   Trash2, 
-  UserPlus,
   Users, 
   XCircle 
 } from "lucide-react"
@@ -38,16 +37,17 @@ import { formatDate } from "@/lib/utils"
 import {
   completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
-  provisionMissingPaidEnrollmentAccountsAction,
   reconcilePaystackPaymentsAction,
   resendBatchActivationEmailsAction,
-  resendManualPaymentActivationEmailAction,
   reviewManualPaymentAction,
   sendManualPaymentMetaPurchaseAction,
   sendWhatsAppCampaignAction,
   updateManualPaymentEmailAction
 } from "./actions"
 import { AddExternalStudentForm } from "./AddExternalStudentForm"
+import { ActivationEmailForm } from "./ActivationEmailForm"
+import { ManagedActionForm, ManagedSubmitButton } from "./ManagedActionForm"
+import { ProvisionMissingAccountsForm } from "./ProvisionMissingAccountsForm"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -292,7 +292,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           </div>
           <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
         </summary>
-        <form action={resendBatchActivationEmailsAction} className="p-6 sm:p-8">
+        <ManagedActionForm action={resendBatchActivationEmailsAction} className="p-6 sm:p-8">
           <div className="grid gap-5 lg:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span>
@@ -318,12 +318,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </span>
             </label>
             <div className="flex justify-end lg:col-span-2">
-              <button className="btn-primary w-full justify-center shadow-sm sm:w-auto" type="submit">
+              <ManagedSubmitButton pendingLabel="Sending..." className="btn-primary w-full justify-center shadow-sm sm:w-auto">
                 <Mail className="mr-2 h-4 w-4" /> Send To Batch
-              </button>
+              </ManagedSubmitButton>
             </div>
           </div>
-        </form>
+        </ManagedActionForm>
         {onboardingFailures.length ? (
           <div className="border-t border-border bg-background p-6 sm:p-8">
             <p className="text-[10px] font-bold uppercase tracking-widest text-destructive">Latest Failed Recipients</p>
@@ -378,7 +378,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           </summary>
           
           <div className="p-6 sm:p-8">
-            <form action={sendWhatsAppCampaignAction} className="grid gap-5 lg:grid-cols-2">
+            <ManagedActionForm action={sendWhatsAppCampaignAction} className="grid gap-5 lg:grid-cols-2">
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Campaign Name</span>
                 <input name="campaignName" defaultValue="Prompt to Profit WhatsApp Campaign" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
@@ -413,14 +413,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                 />
               </label>
               <div className="grid gap-3 pt-2 sm:grid-cols-2 lg:col-span-2">
-                <button name="sendMode" value="test" className="btn-secondary justify-center shadow-sm" type="submit">
+                <ManagedSubmitButton name="sendMode" value="test" pendingLabel="Sending test..." className="btn-secondary justify-center shadow-sm">
                   Send Test Broadcast
-                </button>
-                <button name="sendMode" value="campaign" className="btn-primary justify-center shadow-sm" type="submit">
+                </ManagedSubmitButton>
+                <ManagedSubmitButton name="sendMode" value="campaign" pendingLabel="Dispatching..." className="btn-primary justify-center shadow-sm">
                   <Send className="mr-2 h-4 w-4" /> Dispatch Campaign
-                </button>
+                </ManagedSubmitButton>
               </div>
-            </form>
+            </ManagedActionForm>
             
             <div className="mt-8">
               <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recent Campaigns</h3>
@@ -589,12 +589,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     <p className="mt-0.5">U: {formatDate(contact.updatedAt)}</p>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <form action={deleteHolidayWaitlistContactAction}>
+                    <ManagedActionForm action={deleteHolidayWaitlistContactAction}>
                       <input type="hidden" name="id" value={contact.id} />
-                      <button className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-muted-foreground shadow-sm transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive" type="submit">
+                      <ManagedSubmitButton pendingLabel="Purging..." className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-muted-foreground shadow-sm transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive">
                         <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Purge
-                      </button>
-                    </form>
+                      </ManagedSubmitButton>
+                    </ManagedActionForm>
                   </td>
                 </tr>
               )) : (
@@ -617,18 +617,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-              <form action={provisionMissingPaidEnrollmentAccountsAction}>
-                <button type="submit" data-toast-long="true" title="Processes up to 8 missing accounts per run so Vercel can return a complete report." className="btn-secondary w-full justify-center shadow-sm sm:w-auto">
-                  <UserPlus className="mr-2 h-4 w-4" /> Provision Missing Accounts
-                </button>
-              </form>
-              <form action={reconcilePaystackPaymentsAction}>
+              <ProvisionMissingAccountsForm />
+              <ManagedActionForm action={reconcilePaystackPaymentsAction}>
                 <input type="hidden" name="courseSlug" value={courseSlug} />
                 <input type="hidden" name="batchKey" value={batchKey} />
-                <button type="submit" className="btn-primary w-full justify-center shadow-sm sm:w-auto">
+                <ManagedSubmitButton pendingLabel="Reconciling..." className="btn-primary w-full justify-center shadow-sm sm:w-auto">
                   <RefreshCw className="mr-2 h-4 w-4" /> Reconcile Paystack
-                </button>
-              </form>
+                </ManagedSubmitButton>
+              </ManagedActionForm>
             </div>
           </div>
           
@@ -781,7 +777,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                         <p className="mt-2 leading-relaxed">Complete the recovery form before approving or rejecting this payment.</p>
                       </div>
                     ) : payment.source === "manual" && (payment.status === "pending_verification" || payment.status === "pending" || payment.status === "submitted") ? (
-                      <form action={reviewManualPaymentAction} className="grid w-[280px] gap-3 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
+                      <ManagedActionForm action={reviewManualPaymentAction} className="grid w-[280px] gap-3 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                         <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                         <textarea 
                           name="reviewNote" 
@@ -790,14 +786,14 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                           className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
                         />
                         <div className="grid grid-cols-2 gap-2">
-                          <button name="action" value="approve" className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-white transition-all hover:bg-emerald-600 shadow-sm" type="submit">
+                          <ManagedSubmitButton name="action" value="approve" pendingLabel="Approving..." className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-white transition-all hover:bg-emerald-600 shadow-sm">
                             <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Approve
-                          </button>
-                          <button name="action" value="reject" className="inline-flex items-center justify-center rounded-lg bg-destructive px-3 py-2 text-xs font-bold text-white transition-all hover:bg-destructive/90 shadow-sm" type="submit">
+                          </ManagedSubmitButton>
+                          <ManagedSubmitButton name="action" value="reject" pendingLabel="Rejecting..." className="inline-flex items-center justify-center rounded-lg bg-destructive px-3 py-2 text-xs font-bold text-white transition-all hover:bg-destructive/90 shadow-sm">
                             <XCircle className="mr-1.5 h-3.5 w-3.5" /> Reject
-                          </button>
+                          </ManagedSubmitButton>
                         </div>
-                      </form>
+                      </ManagedActionForm>
                     ) : (
                       <div className="w-[280px] rounded-xl border border-border bg-background p-4 shadow-sm">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audit Log</p>
@@ -815,18 +811,18 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                   </td>
                   <td className="px-6 py-5">
                     {payment.status === "recovery_required" ? (
-                      <form action={completeManualPaymentRecoveryAction} className="grid w-[280px] gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-inner">
+                      <ManagedActionForm action={completeManualPaymentRecoveryAction} className="grid w-[280px] gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-inner">
                         <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                         <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-300">Complete recovery</p>
                         <input name="firstName" defaultValue={payment.firstName || ""} required placeholder="Customer full name" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
                         <input name="email" type="email" required placeholder="Customer email" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
                         <input name="phone" required placeholder="Customer phone" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
                         <input name="transferReference" defaultValue={payment.transferReference || ""} placeholder="Bank reference (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
-                        <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">Save Details &amp; Approve</button>
-                      </form>
+                        <ManagedSubmitButton pendingLabel="Saving & approving..." className="btn-secondary w-full justify-center py-2 text-xs shadow-sm">Save Details &amp; Approve</ManagedSubmitButton>
+                      </ManagedActionForm>
                     ) : payment.source === "manual" ? (
                       <div className="grid w-[240px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
-                      <form action={updateManualPaymentEmailAction} className="grid gap-2.5">
+                      <ManagedActionForm action={updateManualPaymentEmailAction} className="grid gap-2.5">
                         <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                         <input 
                           name="newEmail" 
@@ -835,18 +831,12 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                           placeholder="Correct email address"
                           className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" 
                         />
-                        <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
+                        <ManagedSubmitButton pendingLabel="Saving..." className="btn-secondary w-full justify-center py-2 text-xs shadow-sm">
                           Apply Correction
-                        </button>
-                      </form>
+                        </ManagedSubmitButton>
+                      </ManagedActionForm>
                       {payment.status === "approved" && (
-                        <form action={resendManualPaymentActivationEmailAction}>
-                          <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
-                          <input type="hidden" name="source" value="manual" />
-                          <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
-                            <Mail className="mr-1.5 h-3.5 w-3.5" /> Resend Activation
-                          </button>
-                        </form>
+                        <ActivationEmailForm paymentUuid={payment.paymentUuid} source="manual" />
                       )}
                       </div>
                     ) : payment.status === "approved" && ["PAYSTACK", "STRIPE"].includes(payment.providerLabel) ? (
@@ -854,13 +844,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                         <span className={`inline-flex w-fit items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${payment.accountExists ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
                           {payment.accountExists ? "Account connected" : "Account missing"}
                         </span>
-                        <form action={resendManualPaymentActivationEmailAction}>
-                          <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
-                          <input type="hidden" name="source" value="online" />
-                          <button className="btn-secondary w-full justify-center py-2 text-xs shadow-sm" type="submit">
-                            <Mail className="mr-1.5 h-3.5 w-3.5" /> {payment.accountExists ? "Resend Activation" : "Provision & Send Activation"}
-                          </button>
-                        </form>
+                        <ActivationEmailForm paymentUuid={payment.paymentUuid} source="online" accountExists={payment.accountExists} />
                       </div>
                     ) : (
                       <div className="w-[240px] whitespace-normal break-words rounded-xl border border-border bg-background p-4 text-xs leading-relaxed text-muted-foreground shadow-sm">
@@ -870,7 +854,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                   </td>
                   <td className="min-w-0 px-6 py-5">
                     {payment.source === "manual" ? (
-                      <form action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] min-w-0 max-w-[260px] gap-2.5 overflow-hidden whitespace-normal rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
+                      <ManagedActionForm action={sendManualPaymentMetaPurchaseAction} className="grid w-[260px] min-w-0 max-w-[260px] gap-2.5 overflow-hidden whitespace-normal rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                       <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
                       
                       <div className="mb-1 flex items-center justify-between">
@@ -885,9 +869,9 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       <input name="fbclid" placeholder="fbclid (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       <input name="eventSourceUrl" placeholder="Event Source URL (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
                       
-                      <button className="btn-secondary mt-1 w-full justify-center py-2 text-xs shadow-sm" type="submit" disabled={payment.metaPurchaseSent || payment.metaPurchaseDispatchStatus === "sending"}>
+                      <ManagedSubmitButton pendingLabel="Dispatching..." className="btn-secondary mt-1 w-full justify-center py-2 text-xs shadow-sm" disabled={payment.metaPurchaseSent || payment.metaPurchaseDispatchStatus === "sending"}>
                         <Send className="mr-1.5 h-3.5 w-3.5" /> {payment.metaPurchaseSent ? "Already Dispatched" : payment.metaPurchaseDispatchStatus === "failed" ? "Retry Event" : payment.metaPurchaseDispatchStatus === "sending" ? "Dispatching…" : "Dispatch Event"}
-                      </button>
+                      </ManagedSubmitButton>
 
                       {payment.metaPurchaseLastError ? (
                         <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-red-500/15 bg-red-500/5 p-2 text-[10px] leading-relaxed text-red-600 dark:text-red-400">
@@ -903,7 +887,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                           Last sent: {formatDate(payment.metaPurchaseSentAt)}
                         </p>
                       )}
-                      </form>
+                      </ManagedActionForm>
                     ) : (
                       <div className="w-[260px] whitespace-normal break-words rounded-xl border border-border bg-background p-4 text-xs leading-relaxed text-muted-foreground shadow-sm">
                         Purchase tracking is handled automatically during the {payment.providerLabel} checkout.
