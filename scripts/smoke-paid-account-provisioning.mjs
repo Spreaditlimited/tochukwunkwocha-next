@@ -14,6 +14,8 @@ const paystackWebhook = read("app/api/webhooks/paystack/route.ts")
 const stripeReturn = read("app/api/payments/stripe/return/route.ts")
 const stripeWebhook = read("app/api/webhooks/stripe/route.ts")
 const provisioning = read("lib/payments/post-payment-student.ts")
+const internalToaster = read("components/internal/InternalActionToaster.tsx")
+const internalToast = read("lib/internal-toast.ts")
 
 assert.match(gitignore, /^deliverables\/proposals\/$/m)
 assert.match(admin, /export async function resendPaidEnrollmentActivationEmail/)
@@ -25,6 +27,7 @@ assert.match(actions, /provisionMissingPaidEnrollmentAccountsAction/)
 assert.match(actions, /provisionAllMissingPaidEnrollmentAccounts\(\{ limit: 8 \}\)/)
 assert.match(page, /Provision Missing Accounts/)
 assert.match(page, /Processes up to 8 missing accounts per run/)
+assert.match(page, /data-toast-long="true"/)
 assert.match(page, /Provision & Send Activation/)
 assert.match(page, /Account missing/)
 
@@ -41,5 +44,8 @@ assert.ok(
   "Activation delivery must not depend on automatic session creation"
 )
 assert.match(provisioning, /automatic sign-in session failed/)
+assert.doesNotMatch(internalToaster, /setTimeout\(\(\) => setToast\(null\)/)
+assert.match(internalToaster, /Completion report not received/)
+assert.match(internalToast, /maxAge: 600/)
 
 console.log("Paid enrollment account provisioning smoke test passed.")

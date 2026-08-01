@@ -618,7 +618,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
               <form action={provisionMissingPaidEnrollmentAccountsAction}>
-                <button type="submit" title="Processes up to 8 missing accounts per run so Vercel can return a complete report." className="btn-secondary w-full justify-center shadow-sm sm:w-auto">
+                <button type="submit" data-toast-long="true" title="Processes up to 8 missing accounts per run so Vercel can return a complete report." className="btn-secondary w-full justify-center shadow-sm sm:w-auto">
                   <UserPlus className="mr-2 h-4 w-4" /> Provision Missing Accounts
                 </button>
               </form>
