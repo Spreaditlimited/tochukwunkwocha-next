@@ -70,8 +70,11 @@ function initializeGoogleAnalytics(id: string, sendPageView: boolean) {
   if (!id || window.gtag) return false
 
   window.dataLayer = window.dataLayer || []
-  window.gtag = function gtag(...args: unknown[]) {
-    window.dataLayer?.push(args)
+  window.gtag = function gtag(..._args: unknown[]) {
+    // Google expects each queued command to be the function's Arguments object.
+    // Pushing the rest-parameter array leaves `config` unprocessed and sends no hit.
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer?.push(arguments)
   }
   window.gtag("js", new Date())
   if (sendPageView) window.gtag("config", id)

@@ -29,7 +29,8 @@
     "smoke:temporary-student-password": "node scripts/smoke-temporary-student-password.mjs",
     "smoke:paid-account-provisioning": "node scripts/smoke-paid-account-provisioning.mjs",
     "smoke:manual-payment-toasts": "node scripts/smoke-manual-payment-toast-completion.mjs",
-    "smoke:abandoned-enrollment-followups": "node scripts/smoke-abandoned-enrollment-followups.mjs"
+    "smoke:abandoned-enrollment-followups": "node scripts/smoke-abandoned-enrollment-followups.mjs",
+    "smoke:google-analytics": "node scripts/smoke-google-analytics.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",
