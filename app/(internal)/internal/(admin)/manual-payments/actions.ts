@@ -239,11 +239,11 @@ export async function resendManualPaymentActivationEmailAction(formData: FormDat
 export async function provisionMissingPaidEnrollmentAccountsAction() {
   await requireAdmin("/internal/manual-payments")
   try {
-    const result = await provisionAllMissingPaidEnrollmentAccounts({ limit: 500 })
+    const result = await provisionAllMissingPaidEnrollmentAccounts({ limit: 8 })
     await setInternalToast({
       type: result.failed ? "error" : "success",
       title: result.failed ? "Account provisioning completed with issues" : "Missing accounts provisioned",
-      message: `${result.checked} missing enrollment${result.checked === 1 ? "" : "s"} checked, ${result.accountsCreated} account${result.accountsCreated === 1 ? "" : "s"} created, ${result.emailsSent} activation email${result.emailsSent === 1 ? "" : "s"} processed${result.failed ? `, ${result.failed} failed` : ""}.`
+      message: `${result.totalMissing} missing account${result.totalMissing === 1 ? " was" : "s were"} found. ${result.checked} checked in this run, ${result.accountsCreated} created, ${result.emailsSent} activation email${result.emailsSent === 1 ? "" : "s"} sent${result.failed ? `, ${result.failed} failed` : ""}.${result.remaining ? ` ${result.remaining} remain; click the button again to continue.` : " No missing accounts remain."}`
     })
   } catch (error) {
     await setInternalToast({

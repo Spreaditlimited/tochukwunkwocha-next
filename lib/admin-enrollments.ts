@@ -1401,7 +1401,8 @@ export async function resendPaidEnrollmentActivationEmail(input: {
 }
 
 export async function provisionAllMissingPaidEnrollmentAccounts(input?: { limit?: number }) {
-  const limit = Math.max(1, Math.min(500, toInt(input?.limit, 500)))
+  const processLimit = Math.max(1, Math.min(10, toInt(input?.limit, 8)))
+  const scanLimit = 500
   const [onlineRows, manualRows] = await Promise.all([
     prisma.$queryRaw<Array<{ source: "online"; paymentUuid: string; email: string; createdAt: Date | null }>>`
       SELECT 'online' AS source, co.order_uuid AS paymentUuid, LOWER(TRIM(co.email)) AS email, co.created_at AS createdAt
@@ -1414,7 +1415,7 @@ export async function provisionAllMissingPaidEnrollmentAccounts(input?: { limit?
           WHERE sa.email = co.email COLLATE utf8mb4_0900_ai_ci
         )
       ORDER BY co.created_at ASC
-      LIMIT ${limit}
+      LIMIT ${scanLimit}
     `,
     prisma.$queryRaw<Array<{ source: "manual"; paymentUuid: string; email: string; createdAt: Date | null }>>`
       SELECT 'manual' AS source, mp.payment_uuid AS paymentUuid, LOWER(TRIM(mp.email)) AS email, mp.created_at AS createdAt
@@ -1426,7 +1427,7 @@ export async function provisionAllMissingPaidEnrollmentAccounts(input?: { limit?
           WHERE sa.email = mp.email
         )
       ORDER BY mp.created_at ASC
-      LIMIT ${limit}
+      LIMIT ${scanLimit}
     `
   ])
   const candidates = [...onlineRows, ...manualRows]
@@ -1436,25 +1437,43 @@ export async function provisionAllMissingPaidEnrollmentAccounts(input?: { limit?
     const email = normalizeEmail(candidate.email)
     if (email && !uniqueByEmail.has(email)) uniqueByEmail.set(email, candidate)
   }
-  const targets = Array.from(uniqueByEmail.values()).slice(0, limit)
+  const totalMissing = uniqueByEmail.size
+  const targets = Array.from(uniqueByEmail.values()).slice(0, processLimit)
   let accountsCreated = 0
   let emailsSent = 0
   let failed = 0
   const failures: Array<{ email: string; error: string }> = []
-  for (const target of targets) {
-    try {
-      const result = await resendPaidEnrollmentActivationEmail(target)
-      if (result.accountCreated) accountsCreated += 1
-      if (result.emailSent !== false) emailsSent += 1
-    } catch (error) {
+  for (let index = 0; index < targets.length; index += 2) {
+    const results = await Promise.all(targets.slice(index, index + 2).map(async (target) => {
+      try {
+        const result = await resendPaidEnrollmentActivationEmail(target)
+        return { target, result, error: null as unknown }
+      } catch (error) {
+        return { target, result: null, error }
+      }
+    }))
+    for (const outcome of results) {
+      if (outcome.result) {
+        if (outcome.result.accountCreated) accountsCreated += 1
+        if (outcome.result.emailSent !== false) emailsSent += 1
+        continue
+      }
       failed += 1
       failures.push({
-        email: target.email,
-        error: clean(error instanceof Error ? error.message : error, 500)
+        email: outcome.target.email,
+        error: clean(outcome.error instanceof Error ? outcome.error.message : outcome.error, 500)
       })
     }
   }
-  return { checked: targets.length, accountsCreated, emailsSent, failed, failures }
+  return {
+    totalMissing,
+    checked: targets.length,
+    accountsCreated,
+    emailsSent,
+    failed,
+    remaining: Math.max(0, totalMissing - accountsCreated),
+    failures
+  }
 }
 
 export async function resendBatchActivationEmails(input: {
