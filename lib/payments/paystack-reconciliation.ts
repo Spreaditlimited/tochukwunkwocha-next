@@ -82,6 +82,29 @@ export async function reconcileCoursePaystackOrders(input?: {
           FROM student_accounts sa
           WHERE LOWER(sa.email) = LOWER(co.email)
         )
+        OR (
+          co.status = 'paid'
+          AND COALESCE(co.buyer_type, 'student') = 'family'
+          AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM family_seat_ledger ledger
+              WHERE ledger.source_type = 'course_order'
+                AND ledger.entry_type = 'purchase'
+                AND ledger.source_uuid COLLATE utf8mb4_unicode_ci = co.order_uuid COLLATE utf8mb4_unicode_ci
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM family_children child
+              JOIN family_child_enrollments enrollment ON enrollment.child_id = child.id
+              WHERE child.source_type = 'course_order'
+                AND enrollment.source_type = 'course_order'
+                AND child.source_uuid COLLATE utf8mb4_unicode_ci = co.order_uuid COLLATE utf8mb4_unicode_ci
+                AND enrollment.source_uuid COLLATE utf8mb4_unicode_ci = co.order_uuid COLLATE utf8mb4_unicode_ci
+                AND (child.status = 'pending_payment' OR enrollment.status = 'pending_payment')
+            )
+          )
+        )
       )
       AND COALESCE(co.status, '') <> 'duplicate_payment_review'
     ORDER BY co.created_at DESC

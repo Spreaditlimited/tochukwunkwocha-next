@@ -8,6 +8,7 @@ import {
 } from "@/components/student-dashboard/StudentDashboardShell"
 import { CopyButton } from "@/components/student-dashboard/CopyButton"
 import { GroupEnrollmentPanel } from "@/components/student-dashboard/GroupEnrollmentPanel"
+import { IndividualToGroupConversionPanel } from "@/components/student-dashboard/IndividualToGroupConversionPanel"
 import { GroupLearnerBatchPicker } from "@/components/student-dashboard/GroupLearnerBatchPicker"
 import { BatchSwitchPanel } from "@/components/student-dashboard/BatchSwitchPanel"
 import { AccessCodeResetButton } from "@/components/AccessCodeResetButton"
@@ -18,6 +19,7 @@ import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import { getLearningCourseForStudent } from "@/lib/learning-player"
 import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
+import { listConvertibleIndividualEnrollments } from "@/lib/group-enrollment-conversion"
 
 export const dynamic = "force-dynamic"
 
@@ -29,6 +31,10 @@ export default async function StudentFamilyPage({
   const session = await requireStudent()
   const params = searchParams ? await searchParams : {}
   const data = await getFamilyDashboard(session.account.id)
+  const convertibleEnrollments = await listConvertibleIndividualEnrollments({
+    parentAccountId: session.account.id,
+    parentEmail: session.account.email
+  })
   const wholeGroupBatchOptions = (await getBatchSwitchOptions(session.account)).filter((item) => item.sourceType === "family")
   const learnerProgressEntries = await Promise.all(data.children.map(async (child) => {
     const key = `${child.childId}:${child.courseSlug}`
@@ -110,6 +116,8 @@ export default async function StudentFamilyPage({
           </div>
         </div>
       </StudentDashboardCard>
+
+      <IndividualToGroupConversionPanel enrollments={convertibleEnrollments} />
 
       <GroupEnrollmentPanel seats={data.seats} courses={courses} />
 
@@ -244,7 +252,7 @@ export default async function StudentFamilyPage({
         <StudentDashboardCard className="p-0 overflow-hidden">
           <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
             <p className="eyebrow text-primary">Learners</p>
-            <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Assigned Children</h2>
+            <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Assigned Learners</h2>
           </div>
 
           <div className="p-6 sm:p-8">

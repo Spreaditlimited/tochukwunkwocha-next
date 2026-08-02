@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 
 import { getAdminSession } from "@/lib/auth"
+import { countIncompletePaidGroupOrders } from "@/lib/payments/group-order-reconciliation"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -40,7 +41,7 @@ export async function GET() {
   const startedAt = Date.now()
   try {
     await prisma.$queryRaw`SELECT 1`
-    const [variables, status, indexes] = await Promise.all([
+    const [variables, status, indexes, incompletePaidGroupOrders] = await Promise.all([
       prisma.$queryRaw<VariableRow[]>(Prisma.sql`
         SELECT VARIABLE_NAME AS variableName, VARIABLE_VALUE AS value
         FROM performance_schema.global_variables
@@ -60,7 +61,8 @@ export async function GET() {
             OR (TABLE_NAME = 'course_manual_payments' AND INDEX_NAME = 'idx_manual_payments_student_access')
             OR (TABLE_NAME = 'family_children' AND INDEX_NAME = 'idx_family_child_account_status')
           )
-      `)
+      `),
+      countIncompletePaidGroupOrders(5)
     ])
     const variableMap = Object.fromEntries(variables.map((row) => [row.variableName.toLowerCase(), row.value]))
     const statusMap = Object.fromEntries(status.map((row) => [row.variableName.toLowerCase(), row.value]))
@@ -78,6 +80,9 @@ export async function GET() {
       warnings.push("The InnoDB buffer pool is below the recommended 1 GB production baseline.")
     }
     if (indexes.length < 3) warnings.push("The student scale-readiness migration has not been fully applied.")
+    if (incompletePaidGroupOrders > 0) {
+      warnings.push(`${incompletePaidGroupOrders} paid group order${incompletePaidGroupOrders === 1 ? " is" : "s are"} awaiting seat or learner provisioning.`)
+    }
 
     return NextResponse.json({
       ok: true,
@@ -93,6 +98,10 @@ export async function GET() {
         waitTimeoutSeconds: Number(variableMap.wait_timeout || 0)
       },
       applicationPool: urlSettings,
+      groupOrderProvisioning: {
+        incompletePaidOrders: incompletePaidGroupOrders,
+        healthy: incompletePaidGroupOrders === 0
+      },
       requiredIndexesPresent: indexes.map((row) => `${row.tableName}.${row.indexName}`),
       warnings
     })

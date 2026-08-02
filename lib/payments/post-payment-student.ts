@@ -19,7 +19,7 @@ type PaidOrderRow = {
 
 export async function provisionStudentForPaidOrder(
   order: PaidOrderRow | null | undefined,
-  options?: { createSession?: boolean }
+  options?: { createSession?: boolean; sendNotifications?: boolean }
 ) {
   const email = normalizeEmail(order?.email)
   if (!email) return null
@@ -33,37 +33,7 @@ export async function provisionStudentForPaidOrder(
       phone: String(order?.phone || "").trim() || undefined
     }))
 
-  const needsFirstUsePassword = !existing || (existing.mustResetPassword && !existing.resetRequestedAt)
-  const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
   const isGroupEnrollment = String(order?.buyer_type || "").toLowerCase() === "family"
-  if (!isGroupEnrollment) {
-    await syncEnrollmentToBrevo({
-      fullName: account.fullName,
-      email: account.email,
-      phone: account.phoneE164 || String(order?.phone || ""),
-      courseSlug: order?.course_slug || "",
-      batchKey: order?.batch_key || "",
-      batchLabel: order?.batch_label || "",
-      source: "paid_course_enrollment"
-    }).catch(() => null)
-  }
-  await sendEnrollmentConfirmedWhatsApp({
-    phone: account.phoneE164 || String(order?.phone || ""),
-    fullName: account.fullName,
-    courseSlug: order?.course_slug || "",
-    dashboardPath: String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
-  }).catch(() => null)
-  let activationEmailSent = false
-  if (temporary?.password) {
-    const delivery = await sendStudentAccountReadyEmail({
-      email: account.email,
-      fullName: account.fullName,
-      courseSlug: order?.course_slug || "",
-      temporaryPassword: temporary.password
-    }).catch(() => null)
-    activationEmailSent = Boolean(delivery?.ok)
-  }
-
   if (isGroupEnrollment && order?.order_uuid && order?.course_slug) {
     await provisionFamilyOrder({
       sourceType: "course_order",
@@ -77,6 +47,39 @@ export async function provisionStudentForPaidOrder(
       batchLabel: order.batch_label || "",
       quantity: Math.max(1, Number(order.seat_count || 1))
     })
+  }
+
+  const sendNotifications = options?.sendNotifications !== false || !existing
+  const needsFirstUsePassword = sendNotifications && (!existing || (existing.mustResetPassword && !existing.resetRequestedAt))
+  const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
+  if (!isGroupEnrollment) {
+    await syncEnrollmentToBrevo({
+      fullName: account.fullName,
+      email: account.email,
+      phone: account.phoneE164 || String(order?.phone || ""),
+      courseSlug: order?.course_slug || "",
+      batchKey: order?.batch_key || "",
+      batchLabel: order?.batch_label || "",
+      source: "paid_course_enrollment"
+    }).catch(() => null)
+  }
+  if (sendNotifications) {
+    await sendEnrollmentConfirmedWhatsApp({
+      phone: account.phoneE164 || String(order?.phone || ""),
+      fullName: account.fullName,
+      courseSlug: order?.course_slug || "",
+      dashboardPath: isGroupEnrollment ? "/dashboard/family" : "/dashboard/courses"
+    }).catch(() => null)
+  }
+  let activationEmailSent = false
+  if (temporary?.password && sendNotifications) {
+    const delivery = await sendStudentAccountReadyEmail({
+      email: account.email,
+      fullName: account.fullName,
+      courseSlug: order?.course_slug || "",
+      temporaryPassword: temporary.password
+    }).catch(() => null)
+    activationEmailSent = Boolean(delivery?.ok)
   }
 
   const session = options?.createSession === false

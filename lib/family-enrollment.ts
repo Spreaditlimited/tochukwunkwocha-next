@@ -242,7 +242,7 @@ export async function prepareFamilyLearnerAssignments(childrenInput: unknown, co
   return validatedFamilyLearnerBatches(prisma, childrenInput, courseSlugInput)
 }
 
-async function assignFamilyChildCode(childId: bigint | number, client: Prisma.TransactionClient | typeof prisma = prisma) {
+export async function assignFamilyChildCode(childId: bigint | number, client: Prisma.TransactionClient | typeof prisma = prisma) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const code = makeFamilyCode()
     try {

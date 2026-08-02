@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS `tochukwu_individual_group_conversions` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `conversion_uuid` VARCHAR(64) NOT NULL,
+  `parent_account_id` BIGINT NOT NULL,
+  `child_account_id` BIGINT NOT NULL,
+  `family_id` BIGINT NOT NULL,
+  `child_id` BIGINT NOT NULL,
+  `enrollment_id` BIGINT NOT NULL,
+  `source_type` VARCHAR(40) NOT NULL,
+  `source_uuid` VARCHAR(80) NOT NULL,
+  `course_slug` VARCHAR(120) NOT NULL,
+  `batch_key` VARCHAR(64) NULL,
+  `batch_label` VARCHAR(120) NULL,
+  `child_name` VARCHAR(180) NOT NULL,
+  `metadata_json` LONGTEXT NULL,
+  `created_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_tochukwu_individual_group_conversion_uuid` (`conversion_uuid`),
+  UNIQUE KEY `uniq_tochukwu_individual_group_conversion_source` (`source_type`, `source_uuid`),
+  KEY `idx_tochukwu_individual_group_conversion_parent` (`parent_account_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

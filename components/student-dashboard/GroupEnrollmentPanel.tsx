@@ -61,8 +61,9 @@ async function requestJson<T>(url: string, body: Record<string, unknown>, method
 
 export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[]; courses: LearningCourseOption[] }) {
   const firstOpenSeat = seats.find((seat) => seat.seatsAvailable > 0)
-  const [courseSlug, setCourseSlug] = useState(firstOpenSeat?.courseSlug || courses[0]?.courseSlug || "")
-  const [batchKey, setBatchKey] = useState(firstOpenSeat?.batchKey || "")
+  const firstPurchasedSeat = seats.find((seat) => seat.seatsPurchased > 0)
+  const [courseSlug, setCourseSlug] = useState(firstOpenSeat?.courseSlug || firstPurchasedSeat?.courseSlug || courses[0]?.courseSlug || "")
+  const [batchKey, setBatchKey] = useState(firstOpenSeat?.batchKey || firstPurchasedSeat?.batchKey || "")
   const [country, setCountry] = useState("NG")
   const [learners, setLearners] = useState<LearnerRow[]>([emptyLearner()])
   const [isOpen, setIsOpen] = useState(false)
@@ -128,7 +129,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
     }
     if (batchOptions.some((option) => option.value === batchKey)) return
     const purchasedBatch = seats.find((seat) => (
-      seat.courseSlug === courseSlug && seat.seatsAvailable > 0 && batchOptions.some((option) => option.value === seat.batchKey)
+      seat.courseSlug === courseSlug && seat.seatsPurchased > 0 && batchOptions.some((option) => option.value === seat.batchKey)
     ))?.batchKey
     setBatchKey(purchasedBatch || batchOptions.find((option) => option.value)?.value || "")
   }, [batchKey, batchOptions, courseSlug, isImmediateAccess, seats])

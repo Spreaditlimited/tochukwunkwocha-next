@@ -44,11 +44,16 @@ assert.match(manualReview, /claimIndividualCourseEnrollment\(tx/)
 assert.match(manualReview, /releaseIndividualCourseEnrollmentClaim/)
 
 assert.match(adminEnrollment, /assertNoActiveIndividualEnrollment\(\{ email, courseSlug \}\)/)
-assert.match(adminEnrollment, /assertFamilyLearnersCanEnroll\(groupLearners, courseSlug\)/)
-assert.match(family, /assertFamilyLearnersCanEnroll/)
+assert.match(adminEnrollment, /normalizeFamilyChildren\(input\.groupLearners\)/)
+assert.match(family, /export function normalizeFamilyChildren/)
+assert.match(family, /email: syntheticChildEmail\(\)/)
+assert.doesNotMatch(
+  family.match(/export function normalizeFamilyChildren[\s\S]*?\.slice\(0, MAX_CHILDREN\)/)?.[0] || "",
+  /email/
+)
 assert.match(family, /sourceType: "family_child"/)
 assert.match(family, /status = 'duplicate_blocked'/)
-assert.match(groupRoute, /assertFamilyLearnersCanEnroll\(children, courseSlug\)/)
+assert.match(groupRoute, /normalizeFamilyChildren\(body\.children\)/)
 
 assert.match(batchSwitch, /export async function switchEnrollmentBatch/)
 assert.match(batchSwitch, /UPDATE tochukwu_course_enrollment_claims/)
