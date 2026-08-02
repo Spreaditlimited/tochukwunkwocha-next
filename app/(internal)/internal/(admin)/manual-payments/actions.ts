@@ -33,7 +33,7 @@ export async function reconcilePaystackPaymentsAction(
     const result = await reconcileCoursePaystackOrders({
       courseSlug: String(formData.get("courseSlug") || "all"),
       batchKey: String(formData.get("batchKey") || "all"),
-      limit: 80
+      limit: 20
     })
     const details = [
       `${result.markedPaid} payment${result.markedPaid === 1 ? "" : "s"} marked paid`,
@@ -55,10 +55,13 @@ export async function reconcilePaystackPaymentsAction(
       submittedAt: Date.now()
     }
   } catch (error) {
+    console.error("paystack_reconciliation_action_failed", {
+      error: error instanceof Error ? error.message : String(error)
+    })
     return {
       status: "error",
       title: "Paystack reconciliation failed",
-      message: error instanceof Error ? error.message : "Could not reconcile Paystack payments.",
+      message: "Could not reconcile Paystack payments. No payment status was changed by this failed run. Please try again or check the server logs.",
       submittedAt: Date.now()
     }
   }

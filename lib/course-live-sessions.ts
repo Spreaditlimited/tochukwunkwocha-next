@@ -59,9 +59,64 @@ function addMinutes(value: Date | null, minutes: number) {
 
 const LIVE_REMINDER_MAX_CHANNEL_ATTEMPTS = 5
 const LIVE_REMINDER_RETRY_DELAY_MS = 10 * 60 * 1000
+const LIVE_SESSION_ACCESS_MINUTES_BEFORE = 30
 
-type LiveReminderStage = "day_before" | "morning_of"
+type LiveReminderStage = "day_before" | "access_open"
 type LiveReminderChannel = "email" | "whatsapp"
+
+function shouldSendWhatsAppReminder(stage: LiveReminderStage) {
+  return stage === "day_before" || stage === "access_open"
+}
+
+function watCalendarDateParts(timestampMs: number) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(timestampMs))
+  const value = (type: "year" | "month" | "day") => Number(parts.find((part) => part.type === type)?.value || 0)
+  return { year: value("year"), month: value("month"), day: value("day") }
+}
+
+function reminderStageMatchesWatDate(session: CourseLiveSessionRow, stage: LiveReminderStage, timestampMs: number) {
+  if (!session.startsAt) return false
+  const expected = new Date(Date.UTC(
+    session.startsAt.getUTCFullYear(),
+    session.startsAt.getUTCMonth(),
+    session.startsAt.getUTCDate() - (stage === "day_before" ? 1 : 0)
+  ))
+  const today = watCalendarDateParts(timestampMs)
+  return expected.getUTCFullYear() === today.year
+    && expected.getUTCMonth() + 1 === today.month
+    && expected.getUTCDate() === today.day
+}
+
+function wallTimeLabel(value: Date | null) {
+  if (!value) return ""
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(value).replace(/\bam\b/i, "a.m.").replace(/\bpm\b/i, "p.m.") + " WAT"
+}
+
+function liveSessionReminderTimes(session: CourseLiveSessionRow) {
+  if (!session.startsAt) return { sessionTime: "", accessTime: "" }
+  const wallStartMs = Date.UTC(
+    session.startsAt.getUTCFullYear(),
+    session.startsAt.getUTCMonth(),
+    session.startsAt.getUTCDate(),
+    session.startsAt.getUTCHours(),
+    session.startsAt.getUTCMinutes(),
+    session.startsAt.getUTCSeconds()
+  )
+  return {
+    sessionTime: wallTimeLabel(new Date(wallStartMs)),
+    accessTime: wallTimeLabel(new Date(wallStartMs - LIVE_SESSION_ACCESS_MINUTES_BEFORE * 60 * 1000))
+  }
+}
 
 function resolveRelativeStart(batchStartAt: Date | null, dayOffset: number, timeOfDay: string) {
   if (!batchStartAt) return null
@@ -136,7 +191,7 @@ export async function ensureCourseLiveSessionTables() {
       zoom_start_url VARCHAR(1200) NULL,
       is_visible TINYINT(1) NOT NULL DEFAULT 1,
       reminder_enabled TINYINT(1) NOT NULL DEFAULT 1,
-      reminder_minutes_before INT NOT NULL DEFAULT 720,
+      reminder_minutes_before INT NOT NULL DEFAULT 30,
       reminder_send_at DATETIME NULL,
       reminder_sent_at DATETIME NULL,
       reminder_last_error VARCHAR(500) NULL,
@@ -257,7 +312,7 @@ export async function saveCourseLiveSession(input: {
   const explicitStart = wallDate(input.startsAt)
   const startsAt = explicitStart || resolveRelativeStart(batch.batchStartAt, dayOffset, timeOfDay)
   if (!startsAt) throw new Error("A valid live session date/time is required.")
-  const reminderMinutesBefore = Math.max(0, toInt(input.reminderMinutesBefore, 720))
+  const reminderMinutesBefore = LIVE_SESSION_ACCESS_MINUTES_BEFORE
   const reminderSendAt = addMinutes(startsAt, -reminderMinutesBefore)
   const sessionUuid = clean(input.sessionUuid, 64) || `live_${randomUUID().replace(/-/g, "")}`
   const now = new Date()
@@ -408,28 +463,34 @@ async function sendLiveSessionEmail(input: {
 }) {
   const course = courseName(input.session.courseSlug)
   const name = clean(input.recipient.fullName, 160)
-  const sessionTime = input.session.startsAt ? formatDateTimeWAT(input.session.startsAt) : ""
-  const zoomUrl = clean(input.session.zoomJoinUrl, 1200)
+  const { sessionTime, accessTime } = liveSessionReminderTimes(input.session)
   const isTomorrow = input.stage === "day_before"
-  const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : "is today"}`
+  const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : "access is open"}`
   const html = [
     `<p>Hello${name ? ` ${escapeHtml(name.split(" ")[0])}` : ""},</p>`,
-    `<p>Your live class for <strong>${escapeHtml(course)}</strong> is scheduled for ${isTomorrow ? "tomorrow" : "today"}.</p>`,
-    `<p><strong>Session:</strong> ${escapeHtml(input.session.sessionTitle)}<br/><strong>Time:</strong> ${escapeHtml(sessionTime)}<br/><strong>Batch:</strong> ${escapeHtml(input.session.batchLabel || input.session.batchKey)}</p>`,
-    `<p>Please log into your student dashboard, open Courses, and use the live class button on your course card.</p>`,
+    isTomorrow
+      ? `<p>Your <strong>${escapeHtml(input.session.sessionTitle)}</strong> for <strong>${escapeHtml(course)}</strong> is tomorrow at ${escapeHtml(sessionTime)}.</p>`
+      : `<p>Your <strong>${escapeHtml(input.session.sessionTitle)}</strong> for <strong>${escapeHtml(course)}</strong> starts today at ${escapeHtml(sessionTime)}.</p>`,
+    isTomorrow
+      ? `<p>Your live-class access link will become available in your dashboard 30 minutes before the session, at ${escapeHtml(accessTime)}.</p>`
+      : `<p>Your live-class access link is now available. Please log in to your dashboard, go to Courses, and use the live-class access button on your course card.</p>`,
     `<p><a href="${escapeHtml(dashboardUrl())}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Open student dashboard</a></p>`,
-    zoomUrl ? `<p style="font-size:13px;color:#64748b;">The Zoom access button is also available inside your dashboard.</p>` : ""
+    `<p>Tochukwu Tech and AI Academy</p>`
   ].filter(Boolean).join("")
   const text = [
     `Hello${name ? ` ${name.split(" ")[0]}` : ""},`,
     "",
-    `Your live class for ${course} is scheduled for ${isTomorrow ? "tomorrow" : "today"}.`,
-    `Session: ${input.session.sessionTitle}`,
-    `Time: ${sessionTime}`,
-    `Batch: ${input.session.batchLabel || input.session.batchKey}`,
+    isTomorrow
+      ? `Your ${input.session.sessionTitle} for ${course} is tomorrow at ${sessionTime}.`
+      : `Your ${input.session.sessionTitle} for ${course} starts today at ${sessionTime}.`,
     "",
-    "Please log into your student dashboard, open Courses, and use the live class button on your course card.",
-    `Dashboard: ${dashboardUrl()}`
+    isTomorrow
+      ? `Your live-class access link will become available in your dashboard 30 minutes before the session, at ${accessTime}.`
+      : "Your live-class access link is now available. Please log in to your dashboard, go to Courses, and use the live-class access button on your course card.",
+    "",
+    `Dashboard: ${dashboardUrl()}`,
+    "",
+    "Tochukwu Tech and AI Academy"
   ].join("\n")
   return sendBrevoTransactionalEmail({ to: input.recipient.email, name, subject, html, text })
 }
@@ -439,14 +500,7 @@ function liveReminderDueAt(session: CourseLiveSessionRow, stage: LiveReminderSta
   if (stage === "day_before") {
     return new Date(watWallDateTimeMs(session.startsAt) - 24 * 60 * 60 * 1000)
   }
-  return new Date(Date.UTC(
-    session.startsAt.getUTCFullYear(),
-    session.startsAt.getUTCMonth(),
-    session.startsAt.getUTCDate(),
-    5,
-    0,
-    0
-  ))
+  return new Date(watWallDateTimeMs(session.startsAt) - LIVE_SESSION_ACCESS_MINUTES_BEFORE * 60 * 1000)
 }
 
 async function reminderAlreadySent(sessionUuid: string, stage: LiveReminderStage) {
@@ -631,14 +685,20 @@ export async function sendDueLiveSessionReminders() {
   let attemptedSessions = 0
   let attemptedStages = 0
   for (const session of sessions) {
-    const stages: LiveReminderStage[] = ["day_before", "morning_of"]
+    const stages: LiveReminderStage[] = ["day_before", "access_open"]
     let sessionAttempted = false
     for (const stage of stages) {
       const dueAt = liveReminderDueAt(session, stage)
-      if (!dueAt || dueAt.getTime() > now || await reminderAlreadySent(session.sessionUuid, stage)) continue
+      if (
+        !dueAt
+        || dueAt.getTime() > now
+        || !reminderStageMatchesWatDate(session, stage, now)
+        || await reminderAlreadySent(session.sessionUuid, stage)
+      ) continue
       attemptedStages += 1
       sessionAttempted = true
       const recipients = await listSessionRecipients(normalizeSlug(session.courseSlug), normalizeBatchKey(session.batchKey))
+      const reminderTimes = liveSessionReminderTimes(session)
       const errors: string[] = []
       let allTerminal = true
       for (const recipient of recipients) {
@@ -651,19 +711,24 @@ export async function sendDueLiveSessionReminders() {
           destination: recipient.email,
           send: () => sendLiveSessionEmail({ session, recipient, stage })
         })
-        const whatsappResult = await deliverReminderChannel({
-          sessionUuid: session.sessionUuid,
-          stage,
-          recipientKey,
-          channel: "whatsapp",
-          destination: clean(recipient.phone, 80),
-          send: () => sendLiveClassReminderWhatsApp({
-            phone: recipient.phone,
-            fullName: recipient.fullName,
-            courseSlug: session.courseSlug,
-            sessionTitle: session.sessionTitle
-          })
-        })
+        const whatsappResult = shouldSendWhatsAppReminder(stage)
+          ? await deliverReminderChannel({
+              sessionUuid: session.sessionUuid,
+              stage,
+              recipientKey,
+              channel: "whatsapp",
+              destination: clean(recipient.phone, 80),
+              send: () => sendLiveClassReminderWhatsApp({
+                phone: recipient.phone,
+                fullName: recipient.fullName,
+                courseSlug: session.courseSlug,
+                sessionTitle: session.sessionTitle,
+                stage,
+                sessionTime: reminderTimes.sessionTime,
+                accessTime: reminderTimes.accessTime
+              })
+            })
+          : { terminal: true, sent: false, error: "" }
         if (emailResult.sent) {
           sent += 1
         }

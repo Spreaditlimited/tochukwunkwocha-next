@@ -65,7 +65,7 @@ export async function reconcileCoursePaystackOrders(input?: {
       (
         SELECT sa.id
         FROM student_accounts sa
-        WHERE LOWER(sa.email) = LOWER(co.email)
+        WHERE LOWER(sa.email) COLLATE utf8mb4_unicode_ci = LOWER(co.email) COLLATE utf8mb4_unicode_ci
         LIMIT 1
       ) AS accountId
     FROM course_orders co
@@ -80,7 +80,7 @@ export async function reconcileCoursePaystackOrders(input?: {
         OR NOT EXISTS (
           SELECT 1
           FROM student_accounts sa
-          WHERE LOWER(sa.email) = LOWER(co.email)
+          WHERE LOWER(sa.email) COLLATE utf8mb4_unicode_ci = LOWER(co.email) COLLATE utf8mb4_unicode_ci
         )
         OR (
           co.status = 'paid'

@@ -10,6 +10,7 @@ const paystackReconciliation = read("lib/payments/paystack-reconciliation.ts")
 const provisioning = read("lib/payments/post-payment-student.ts")
 const cron = read("app/api/cron/paystack-reconciliation/route.ts")
 const readiness = read("app/api/internal/system/readiness/route.ts")
+const manualPaymentActions = read("app/(internal)/internal/(admin)/manual-payments/actions.ts")
 const migration = read("prisma/migrations/20260802170000_add_group_order_provisioning_state/migration.sql")
 const vercel = read("vercel.json")
 
@@ -42,6 +43,17 @@ assert.match(provisioning, /options\?\.sendNotifications !== false \|\| !existin
 
 assert.match(paystackReconciliation, /ledger\.source_uuid COLLATE utf8mb4_unicode_ci = co\.order_uuid COLLATE utf8mb4_unicode_ci/)
 assert.match(paystackReconciliation, /child\.status = 'pending_payment' OR enrollment\.status = 'pending_payment'/)
+assert.equal(
+  (paystackReconciliation.match(/LOWER\(sa\.email\) COLLATE utf8mb4_unicode_ci = LOWER\(co\.email\) COLLATE utf8mb4_unicode_ci/g) || []).length,
+  2,
+  "Paystack reconciliation must normalize both student-account email comparisons to one collation."
+)
+assert.match(manualPaymentActions, /reconcileCoursePaystackOrders\(\{[\s\S]*?limit: 20[\s\S]*?\}\)/)
+assert.match(manualPaymentActions, /paystack_reconciliation_action_failed/)
+assert.doesNotMatch(
+  manualPaymentActions.match(/export async function reconcilePaystackPaymentsAction[\s\S]*?export async function reviewManualPaymentAction/)?.[0] || "",
+  /message:\s*error instanceof Error \? error\.message/
+)
 assert.match(cron, /reconcileCoursePaystackOrders/)
 assert.match(cron, /reconcilePaidGroupOrders\(\{ limit: 120, minimumAgeMinutes: 5 \}\)/)
 assert.match(readiness, /countIncompletePaidGroupOrders\(5\)/)

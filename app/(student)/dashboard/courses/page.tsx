@@ -239,7 +239,8 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           {course.liveSessions.map((session) => {
                             const sessionStartMs = watWallDateTimeMs(session.startsAt)
-                            const sessionLocked = !Number.isFinite(sessionStartMs) || sessionStartMs > Date.now()
+                            const accessOpensMs = sessionStartMs - 30 * 60 * 1000
+                            const sessionLocked = !Number.isFinite(accessOpensMs) || accessOpensMs > Date.now()
                             const content = (
                               <>
                                 <Video className="mr-2 h-4 w-4 shrink-0" />
@@ -269,7 +270,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                                 )}
                                 {session.startsAtLabel ? (
                                   <p className="text-xs font-semibold leading-relaxed text-sky-800 dark:text-sky-200">
-                                    {sessionLocked ? `Unlocks on ${session.startsAtLabel}.` : `Live class scheduled for ${session.startsAtLabel}.`}
+                                    {sessionLocked ? `Unlocks 30 minutes before the session. Session: ${session.startsAtLabel}.` : `Live class scheduled for ${session.startsAtLabel}.`}
                                   </p>
                                 ) : null}
                               </div>

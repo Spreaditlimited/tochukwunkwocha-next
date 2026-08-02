@@ -88,7 +88,7 @@ async function main() {
         zoom_start_url VARCHAR(1200) NULL,
         is_visible TINYINT(1) NOT NULL DEFAULT 1,
         reminder_enabled TINYINT(1) NOT NULL DEFAULT 1,
-        reminder_minutes_before INT NOT NULL DEFAULT 720,
+        reminder_minutes_before INT NOT NULL DEFAULT 30,
         reminder_send_at DATETIME NULL,
         reminder_sent_at DATETIME NULL,
         reminder_last_error VARCHAR(500) NULL,
@@ -129,7 +129,7 @@ async function main() {
       }
       for (const session of sessions) {
         const startsAt = wallDateFromBatch(batch.batchStartAt, session.offset, 19)
-        const reminderSendAt = new Date(startsAt.getTime() - 720 * 60 * 1000)
+        const reminderSendAt = new Date(startsAt.getTime() - 30 * 60 * 1000)
         await prisma.$executeRawUnsafe(
           `INSERT INTO tochukwu_course_batch_live_sessions
             (session_uuid, course_slug, batch_key, batch_label, session_title, day_offset, time_of_day, starts_at,
@@ -163,7 +163,7 @@ async function main() {
           zoom.zoomStartUrl || null,
           1,
           1,
-          720,
+          30,
           reminderSendAt,
           null,
           null,

@@ -252,7 +252,7 @@ export async function saveCourseLiveSessionAction(formData: FormData) {
     timeOfDay: String(formData.get("timeOfDay") || "19:00"),
     startsAt: String(formData.get("startsAt") || ""),
     zoomJoinUrl: String(formData.get("zoomJoinUrl") || ""),
-    reminderMinutesBefore: String(formData.get("reminderMinutesBefore") || "720"),
+    reminderMinutesBefore: "30",
     isVisible: formData.get("isVisible") === "on",
     reminderEnabled: formData.get("reminderEnabled") === "on",
     useSharedZoom: formData.get("useSharedZoom") === "on"

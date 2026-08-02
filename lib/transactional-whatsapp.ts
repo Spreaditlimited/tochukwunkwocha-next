@@ -133,21 +133,38 @@ export function sendLiveClassReminderWhatsApp(input: {
   fullName?: string | null
   courseSlug?: string | null
   sessionTitle?: string | null
+  stage: "day_before" | "access_open"
+  sessionTime: string
+  accessTime: string
 }) {
+  const dayBefore = input.stage === "day_before"
   return sendTransactionalWhatsApp({
     event: "live_class_reminder",
     phone: clean(input.phone, 80),
-    templateName: "tochukwu_live_class_reminder",
-    templateLanguage: "en",
-    templateVariables: [
-      firstName(input.fullName),
-      clean(input.sessionTitle, 160) || "live class",
-      transactionalCourseName(input.courseSlug),
-      dashboardUrl("/dashboard/courses")
-    ],
+    // Keep these names and variable orders aligned with the corresponding Meta templates.
+    templateName: dayBefore ? "tochukwu_live_class_day_before" : "tochukwu_live_class_reminder",
+    templateLanguage: dayBefore ? "en_GB" : "en",
+    templateVariables: dayBefore
+      ? [
+          firstName(input.fullName),
+          clean(input.sessionTitle, 160) || "live class",
+          transactionalCourseName(input.courseSlug),
+          clean(input.sessionTime, 80),
+          clean(input.accessTime, 80),
+          dashboardUrl("/dashboard/courses")
+        ]
+      : [
+          firstName(input.fullName),
+          clean(input.sessionTitle, 160) || "live class",
+          transactionalCourseName(input.courseSlug),
+          dashboardUrl("/dashboard/courses")
+        ],
     metadata: {
       courseSlug: clean(input.courseSlug, 120),
-      sessionTitle: clean(input.sessionTitle, 160)
+      sessionTitle: clean(input.sessionTitle, 160),
+      reminderStage: input.stage,
+      sessionTime: clean(input.sessionTime, 80),
+      accessTime: clean(input.accessTime, 80)
     }
   })
 }

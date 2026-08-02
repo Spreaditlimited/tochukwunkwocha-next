@@ -13,7 +13,7 @@ import {
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { listVideoLibrary } from "@/lib/admin-video-library"
-import { formatDate, formatDateTimeWAT } from "@/lib/utils"
+import { formatDateTimeWAT } from "@/lib/utils"
 import {
   activateCourseBatchAction,
   cloneVideoLibraryModuleAction,
@@ -281,7 +281,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                             <input name="dayOffset" type="number" min="0" defaultValue={Number(session.dayOffset || 0)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                             <input name="timeOfDay" type="time" defaultValue={session.timeOfDay || "19:00"} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                             <input name="startsAt" type="datetime-local" defaultValue={dateInput(session.startsAt)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                            <input name="reminderMinutesBefore" type="number" min="0" defaultValue={Number(session.reminderMinutesBefore || 720)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <div className="flex items-center rounded-lg border border-input bg-muted/30 px-3 py-2 text-xs font-bold text-muted-foreground">Access opens 30 minutes before</div>
                             <input name="zoomJoinUrl" defaultValue={session.zoomJoinUrl || ""} placeholder="Zoom join URL" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary lg:col-span-3" />
                             <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                               <input name="isVisible" type="checkbox" defaultChecked={Number(session.isVisible || 0) === 1} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
@@ -289,7 +289,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                             </label>
                             <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                               <input name="reminderEnabled" type="checkbox" defaultChecked={Number(session.reminderEnabled || 0) === 1} className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
-                              Brevo reminder
+                              Email and WhatsApp reminders
                             </label>
                             <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                               <input name="useSharedZoom" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
@@ -299,7 +299,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                           </form>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs font-semibold text-muted-foreground">
-                              {session.startsAt ? formatDateTimeWAT(session.startsAt) : "No date"} · {session.reminderSentAt ? `Reminder sent ${formatDate(session.reminderSentAt)}` : "Reminder pending"}
+                              {session.startsAt ? formatDateTimeWAT(session.startsAt) : "No date"} · {Number(session.reminderEnabled || 0) === 1 ? "Day-before and 30-minute reminders enabled" : "Reminders disabled"}
                             </p>
                             <form action={deleteCourseLiveSessionAction}>
                               <input type="hidden" name="sessionUuid" value={session.sessionUuid} />
@@ -315,7 +315,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                         <input name="dayOffset" type="number" min="0" placeholder="Day offset" defaultValue="0" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                         <input name="timeOfDay" type="time" defaultValue="19:00" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                         <input name="startsAt" type="datetime-local" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
-                        <input name="reminderMinutesBefore" type="number" min="0" defaultValue="720" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                        <div className="flex items-center rounded-lg border border-input bg-muted/30 px-3 py-2 text-xs font-bold text-muted-foreground">Access opens 30 minutes before</div>
                         <input name="zoomJoinUrl" placeholder="Optional Zoom URL; blank creates/reuses batch Zoom" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary lg:col-span-3" />
                         <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                           <input name="isVisible" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
@@ -323,7 +323,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                         </label>
                         <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                           <input name="reminderEnabled" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
-                          Brevo
+                          Email and WhatsApp reminders
                         </label>
                         <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                           <input name="useSharedZoom" type="checkbox" defaultChecked className="h-4 w-4 rounded border-input text-primary focus:ring-primary" />
