@@ -2,6 +2,7 @@ import crypto from "crypto"
 
 import { getMetaCapiConfig } from "@/lib/meta-capi-config"
 import { prisma } from "@/lib/prisma"
+import { publicSiteUrl } from "@/lib/public-site-url"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
 function clean(value: unknown, max = 500) {
@@ -183,7 +184,7 @@ export async function sendCourseOrderMetaPurchase(input: {
         event_time: Math.floor(Date.now() / 1000),
         event_id: eventId,
         action_source: "website",
-        event_source_url: clean(input.eventSourceUrl, 1200) || process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_BASE_URL || "http://localhost:3000",
+        event_source_url: clean(input.eventSourceUrl, 1200) || publicSiteUrl(),
         user_data: metaUserData({
           email: order.email,
           fullName: order.firstName,
@@ -264,7 +265,7 @@ export async function sendMetaLeadEvent(input: {
         event_time: Math.floor(Date.now() / 1000),
         event_id: eventId,
         action_source: "website",
-        event_source_url: clean(input.eventSourceUrl, 1200) || process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_BASE_URL || "http://localhost:3000",
+        event_source_url: clean(input.eventSourceUrl, 1200) || publicSiteUrl(),
         user_data: metaUserData({
           email,
           fullName: input.firstName,

@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma"
 import { getConfiguredStripeFee, grossUpPaystackAmount, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { getCourse } from "@/lib/public-offers"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
+import { batchHasNotStarted } from "@/lib/utils"
 
 export type CheckoutProvider = "paystack" | "stripe"
 
@@ -308,6 +309,8 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
     FROM course_batches cb
     WHERE cb.course_slug = ${courseSlug}
       AND (cb.is_active = 1 OR (${courseSlug} = ${HOLIDAY_COURSE_SLUG} AND cb.status = 'open'))
+      AND cb.batch_start_at IS NOT NULL
+      AND cb.batch_start_at > DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR)
     ORDER BY cb.is_active DESC, cb.batch_start_at IS NULL ASC, cb.batch_start_at ASC, cb.created_at DESC
   `
 
@@ -347,6 +350,13 @@ export async function assertBatchCapacity(batch: CheckoutBatch | null, seatCount
   if (!batch) return
   if (batch.remainingSeats !== null && seatCount > batch.remainingSeats) {
     throw new Error(`Only ${batch.remainingSeats} seats are left in this batch.`)
+  }
+}
+
+function assertBatchHasNotStarted(batch: CheckoutBatch | null | undefined) {
+  if (!batch) return
+  if (!batchHasNotStarted(batch.batchStartAt)) {
+    throw new Error("Selected batch has already started. Please choose another batch.")
   }
 }
 
@@ -722,6 +732,7 @@ export async function createCourseOrder(input: {
   userAgent?: string
   affiliateCode?: string
 }) {
+  assertBatchHasNotStarted(input.batch)
   const orderUuid = randomUUID()
   const now = new Date()
 
@@ -893,6 +904,7 @@ export async function createManualPayment(input: {
   userAgent?: string
   affiliateCode?: string
 }) {
+  assertBatchHasNotStarted(input.batch)
   const paymentUuid = `mp_${randomUUID().replace(/-/g, "")}`
   const now = new Date()
 
@@ -2062,10 +2074,48 @@ export async function initializeStripe(input: {
   }
 }
 
+export class PaystackVerificationRequestError extends Error {
+  status: number
+  code: string
+  providerMessage: string
+
+  constructor(input: { message: string; status: number; code?: string | null; providerMessage?: string | null }) {
+    super(input.message)
+    this.name = "PaystackVerificationRequestError"
+    this.status = input.status
+    this.code = String(input.code || "").trim().toLowerCase()
+    this.providerMessage = String(input.providerMessage || "").trim()
+  }
+}
+
+type PaystackVerificationResponse = {
+  status?: boolean
+  code?: string | null
+  message?: string | null
+  data?: {
+    id?: string | number | null
+    status?: string | null
+    reference?: string | null
+    amount?: string | number | null
+    currency?: string | null
+    metadata?: Record<string, unknown> | null
+  } | null
+}
+
+export function isPaystackTransactionNotFound(error: unknown): error is PaystackVerificationRequestError {
+  return error instanceof PaystackVerificationRequestError
+    && error.status === 400
+    && error.code === "transaction_not_found"
+}
+
 export async function inspectPaystackTransaction(reference: string) {
   const customerMessage = "We could not verify your card payment. Please contact support if you were charged."
-  const secret = String(process.env.PAYSTACK_SECRET_KEY || "").trim()
-  if (!secret) {
+  const adminSettings = await getAdminSettingValues(["PAYSTACK_SECRET_KEY"])
+  const secrets = Array.from(new Set([
+    String(process.env.PAYSTACK_SECRET_KEY || "").trim(),
+    String(adminSettings.PAYSTACK_SECRET_KEY || "").trim()
+  ].filter(Boolean)))
+  if (!secrets.length) {
     await reportPaymentProviderIssue({
       provider: "paystack",
       operation: "payment verification",
@@ -2075,28 +2125,49 @@ export async function inspectPaystackTransaction(reference: string) {
     })
     throw new Error(customerMessage)
   }
-  let response: Response
-  try {
-    response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        Accept: "application/json"
-      }
-    })
-  } catch (error) {
-    await reportPaymentProviderIssue({
-      provider: "paystack",
-      operation: "payment verification",
-      summary: "The verification request to Paystack failed.",
-      reference,
-      errorType: "network_error",
-      errorMessage: error instanceof Error ? error.message : String(error)
-    })
-    throw new Error(customerMessage)
+  let response: Response | null = null
+  let json: PaystackVerificationResponse | null = null
+  for (let index = 0; index < secrets.length; index += 1) {
+    try {
+      response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${secrets[index]}`,
+          Accept: "application/json"
+        },
+        signal: AbortSignal.timeout(10_000)
+      })
+    } catch (error) {
+      await reportPaymentProviderIssue({
+        provider: "paystack",
+        operation: "payment verification",
+        summary: "The verification request to Paystack failed.",
+        reference,
+        errorType: "network_error",
+        errorMessage: error instanceof Error ? error.message : String(error)
+      })
+      throw new Error(customerMessage)
+    }
+    json = await response.json().catch(() => null) as PaystackVerificationResponse | null
+    const missingReference = response.status === 400
+      && String(json?.code || "").trim().toLowerCase() === "transaction_not_found"
+    if (missingReference && index < secrets.length - 1) continue
+    break
   }
-  const json = await response.json().catch(() => null)
+  if (!response) throw new Error(customerMessage)
   if (!response.ok || !json?.status || !json?.data) {
+    const errorCode = String(json?.code || "").trim().toLowerCase()
+    const providerMessage = String(json?.message || `Paystack verify failed (${response.status})`).trim()
+    const requestError = new PaystackVerificationRequestError({
+      message: customerMessage,
+      status: response.status,
+      code: errorCode,
+      providerMessage
+    })
+    // An old, abandoned checkout can legitimately disappear from the active
+    // Paystack integration. Reconciliation handles this as a terminal local
+    // outcome; it is not a provider outage and must not page support.
+    if (isPaystackTransactionNotFound(requestError)) throw requestError
     await reportPaymentProviderIssue({
       provider: "paystack",
       operation: "payment verification",
@@ -2104,10 +2175,10 @@ export async function inspectPaystackTransaction(reference: string) {
       reference,
       status: response.status,
       requestId: response.headers.get("x-request-id") || response.headers.get("request-id"),
-      errorCode: json?.code || null,
-      errorMessage: json?.message || `Paystack verify failed (${response.status})`
+      errorCode: errorCode || null,
+      errorMessage: providerMessage
     })
-    throw new Error(customerMessage)
+    throw requestError
   }
   const providerStatus = String(json.data.status || "").trim().toLowerCase()
   return {

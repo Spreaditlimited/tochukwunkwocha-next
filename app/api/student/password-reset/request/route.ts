@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { sendEmail } from "@/lib/email"
+import { publicSiteUrl } from "@/lib/public-site-url"
 import { allowStudentPasswordResetRequest, createStudentPasswordResetToken } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 1000) {
@@ -8,7 +9,7 @@ function clean(value: unknown, max = 1000) {
 }
 
 function siteBaseUrl() {
-  return clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com", 1000).replace(/\/$/, "")
+  return publicSiteUrl()
 }
 
 function escapeHtml(value: string) {

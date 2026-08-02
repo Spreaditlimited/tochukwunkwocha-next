@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client"
 import { sendEmail } from "@/lib/email"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
+import { publicSiteUrl } from "@/lib/public-site-url"
 import { plainTextToRichNotes } from "@/lib/rich-notes"
 import { watWallDateTimeMs } from "@/lib/utils"
 
@@ -152,7 +153,7 @@ function escapeHtml(value: unknown) {
 }
 
 function siteBaseUrl() {
-  return String(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com").replace(/\/+$/, "")
+  return publicSiteUrl()
 }
 
 function parseCaptionsLanguages(value: string | null) {

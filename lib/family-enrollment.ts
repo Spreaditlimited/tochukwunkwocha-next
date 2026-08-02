@@ -183,8 +183,10 @@ async function validatedFamilyLearnerBatches(
     status: string | null
     isActive: number | bigint | boolean | null
     seatLimit: number | bigint | null
+    batchStartAt: Date | null
   }>>(Prisma.sql`
-    SELECT batch_key AS batchKey, batch_label AS batchLabel, status, is_active AS isActive, seat_limit AS seatLimit
+    SELECT batch_key AS batchKey, batch_label AS batchLabel, status, is_active AS isActive,
+           seat_limit AS seatLimit, batch_start_at AS batchStartAt
     FROM course_batches
     WHERE course_slug = ${courseSlug}
       ${requestedKeys.length ? Prisma.sql`AND batch_key IN (${Prisma.join(requestedKeys)})` : Prisma.empty}
@@ -207,6 +209,9 @@ async function validatedFamilyLearnerBatches(
     if (!batch) throw new Error("The selected batch does not belong to this course.")
     const open = Boolean(Number(batch.isActive || 0)) || clean(batch.status, 40).toLowerCase() === "open"
     if (!open) throw new Error(`${batch.batchLabel || batchKey} is not open for learner assignment.`)
+    if (!Number.isFinite(watWallDateTimeMs(batch.batchStartAt)) || watWallDateTimeMs(batch.batchStartAt) <= Date.now()) {
+      throw new Error(`${batch.batchLabel || batchKey} has already started and is no longer available for enrollment.`)
+    }
     requestedByBatch.set(batchKey, (requestedByBatch.get(batchKey) || 0) + 1)
   }
 

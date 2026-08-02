@@ -1,4 +1,5 @@
 import { getAdminSettingValue } from "@/lib/admin-settings"
+import { publicAbsoluteUrl } from "@/lib/public-site-url"
 
 type TransactionalWhatsAppPayload = {
   event: "manual_payment_submitted" | "enrollment_confirmed" | "live_class_reminder" | "enrollment_payment_reminder"
@@ -26,8 +27,7 @@ function normalizePhone(value: unknown) {
 }
 
 function dashboardUrl(path = "/dashboard/courses") {
-  const base = clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com", 500).replace(/\/$/, "")
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`
+  return publicAbsoluteUrl(path)
 }
 
 export function transactionalCourseName(slug: unknown) {

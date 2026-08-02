@@ -94,7 +94,7 @@ export default async function HomePage() {
                 <Globe2 className="h-6 w-6" />
                 <span className="font-heading text-xl font-bold">Trusted Globally</span>
               </div>
-              <p className="text-3xl font-black">400+ Learners</p>
+              <p className="text-3xl font-black">700+ Learners</p>
             </div>
             <div className="border-l border-white/10 pl-6 md:pl-8 text-slate-300">
               <p className="text-base leading-relaxed">

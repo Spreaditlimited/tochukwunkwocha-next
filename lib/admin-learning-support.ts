@@ -16,6 +16,7 @@ import {
 } from "@/lib/certificate-proof-conversation"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
+import { publicSiteUrl } from "@/lib/public-site-url"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 
 export { CERTIFICATE_PROOF_MARKER }
@@ -52,7 +53,7 @@ function boolFlag(value: unknown) {
 }
 
 function siteBaseUrl() {
-  return clean(process.env.SITE_BASE_URL || "https://tochukwunkwocha.com", 240).replace(/\/$/, "")
+  return publicSiteUrl()
 }
 
 function certificateNo() {

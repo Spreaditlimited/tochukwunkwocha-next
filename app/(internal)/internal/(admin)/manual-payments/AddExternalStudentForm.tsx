@@ -7,6 +7,7 @@ import { PremiumPicker } from "@/components/PremiumPicker"
 import { showInternalToast } from "@/components/internal/InternalActionToaster"
 import type { AffiliateAdminOption } from "@/lib/admin-affiliates"
 import type { EnrollmentBatchOption, EnrollmentCourseOption } from "@/lib/admin-enrollments"
+import { batchHasNotStarted } from "@/lib/utils"
 import {
   addExternalStudentPaymentAction,
   type ExternalStudentPaymentActionState
@@ -24,7 +25,8 @@ const initialActionState: ExternalStudentPaymentActionState = {
 }
 
 function batchCanReceiveEnrollment(batch: EnrollmentBatchOption) {
-  return batch.isActive || (batch.courseSlug === "prompt-to-profit-holiday" && batch.status.toLowerCase() === "open")
+  const open = batch.isActive || (batch.courseSlug === "prompt-to-profit-holiday" && batch.status.toLowerCase() === "open")
+  return open && batchHasNotStarted(batch.batchStartAt)
 }
 
 export function AddExternalStudentForm({

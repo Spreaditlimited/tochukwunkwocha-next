@@ -1,6 +1,7 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
+import { publicSiteUrl } from "@/lib/public-site-url"
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
@@ -11,7 +12,7 @@ function normalizeEmail(value: unknown) {
 }
 
 function siteBaseUrl() {
-  return clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000", 500).replace(/\/$/, "")
+  return publicSiteUrl()
 }
 
 function learningCourseName(value: unknown) {

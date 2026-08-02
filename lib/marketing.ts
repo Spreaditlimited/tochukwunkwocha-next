@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { sendEmail } from "@/lib/email"
 import { sendMetaLeadEvent } from "@/lib/meta-events"
 import { prisma } from "@/lib/prisma"
+import { publicSiteUrl } from "@/lib/public-site-url"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
 const DEFAULT_BREVO_LIST_ID = 17
@@ -71,7 +72,7 @@ function toInt(value: unknown, fallback = 0) {
 }
 
 function siteBaseUrl() {
-  return clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com", 240).replace(/\/+$/, "")
+  return publicSiteUrl()
 }
 
 function absoluteUrl(value: unknown) {

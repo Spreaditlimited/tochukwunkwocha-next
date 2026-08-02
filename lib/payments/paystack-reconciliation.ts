@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import {
   createAffiliateCommissionForOrder,
   inspectPaystackTransaction,
+  isPaystackTransactionNotFound,
   markCourseOrderPaid,
   normalizeCourse
 } from "@/lib/payments/course-checkout"
@@ -22,6 +23,7 @@ type ReconciliationCandidate = {
   status: string | null
   providerReference: string | null
   accountId: bigint | number | null
+  createdAt: Date | null
 }
 
 export type PaystackReconciliationResult = {
@@ -39,6 +41,20 @@ export type PaystackReconciliationResult = {
 
 function clean(value: unknown, max = 190) {
   return String(value || "").trim().slice(0, max)
+}
+
+const MISSING_PAYSTACK_REFERENCE_GRACE_MS = 24 * 60 * 60 * 1000
+const TERMINAL_PAYSTACK_STATUSES = new Set(["abandoned", "failed", "reversed"])
+
+async function markOrderTerminal(orderUuid: string, status: string) {
+  const terminalStatus = TERMINAL_PAYSTACK_STATUSES.has(status) ? status : "abandoned"
+  await prisma.$executeRaw`
+    UPDATE course_orders
+    SET status = ${terminalStatus}, updated_at = ${new Date()}
+    WHERE order_uuid = ${orderUuid}
+      AND COALESCE(status, 'pending') NOT IN ('paid', 'duplicate_payment_review')
+    LIMIT 1
+  `
 }
 
 export async function reconcileCoursePaystackOrders(input?: {
@@ -62,6 +78,7 @@ export async function reconcileCoursePaystackOrders(input?: {
       co.email,
       co.status,
       co.provider_reference AS providerReference,
+      co.created_at AS createdAt,
       (
         SELECT sa.id
         FROM student_accounts sa
@@ -106,7 +123,7 @@ export async function reconcileCoursePaystackOrders(input?: {
           )
         )
       )
-      AND COALESCE(co.status, '') <> 'duplicate_payment_review'
+      AND COALESCE(co.status, '') NOT IN ('duplicate_payment_review', 'abandoned', 'failed', 'reversed', 'expired', 'cancelled')
     ORDER BY co.created_at DESC
     LIMIT ${limit}
   `
@@ -144,7 +161,12 @@ export async function reconcileCoursePaystackOrders(input?: {
           if (!transaction.successful) {
             const processing = isPaystackProcessingStatus(transaction.providerStatus)
             if (processing) result.stillProcessing += 1
-            else result.notPaid += 1
+            else {
+              result.notPaid += 1
+              if (TERMINAL_PAYSTACK_STATUSES.has(transaction.providerStatus)) {
+                await markOrderTerminal(orderUuid, transaction.providerStatus)
+              }
+            }
             await recordPaystackAuditEvent({
               orderUuid,
               providerReference: reference,
@@ -198,6 +220,26 @@ export async function reconcileCoursePaystackOrders(input?: {
           })
         } catch (error) {
           result.checked += 1
+          if (isPaystackTransactionNotFound(error)) {
+            const createdAtMs = candidate.createdAt?.getTime() || 0
+            const beyondGracePeriod = createdAtMs > 0 && Date.now() - createdAtMs >= MISSING_PAYSTACK_REFERENCE_GRACE_MS
+            if (beyondGracePeriod) {
+              await markOrderTerminal(orderUuid, "abandoned")
+              result.notPaid += 1
+            } else {
+              result.stillProcessing += 1
+            }
+            await recordPaystackAuditEvent({
+              orderUuid,
+              providerReference: reference,
+              source: "reconciliation",
+              eventType: "transaction.verify",
+              outcome: beyondGracePeriod ? "not_paid" : "processing",
+              errorCode: "transaction_not_found",
+              errorMessage: error.providerMessage || "Paystack transaction reference was not found."
+            })
+            continue
+          }
           result.failed += 1
           await recordPaystackAuditEvent({
             orderUuid,

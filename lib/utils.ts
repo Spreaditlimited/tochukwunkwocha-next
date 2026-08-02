@@ -107,3 +107,11 @@ export function watWallDateTimeMs(value: Date | string | null | undefined) {
   const ms = new Date(raw).getTime()
   return Number.isFinite(ms) ? ms : NaN
 }
+
+export function batchHasNotStarted(
+  batchStartAt: Date | string | null | undefined,
+  currentTimeMs = Date.now()
+) {
+  const startTimeMs = watWallDateTimeMs(batchStartAt)
+  return Number.isFinite(startTimeMs) && startTimeMs > currentTimeMs
+}

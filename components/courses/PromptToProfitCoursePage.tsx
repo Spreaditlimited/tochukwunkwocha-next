@@ -28,6 +28,7 @@ import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
 import type { SiteShowcase } from "@/lib/site-showcases"
+import { formatDateTimeWAT } from "@/lib/utils"
 
 type Course = NonNullable<ReturnType<typeof getCourse>>
 
@@ -53,6 +54,11 @@ function formatCoursePrice(settings: PublicCourseSettings | null) {
   )
 }
 
+function batchSequence(value: string) {
+  const match = value.match(/\bbatch[\s_-]*(\d+)\b/i)
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY
+}
+
 export async function PromptToProfitCoursePage({
   course,
   courseSettings,
@@ -63,7 +69,11 @@ export async function PromptToProfitCoursePage({
   studentWebsites: SiteShowcase[]
 }) {
   const introductionVideo = await getPublicVideoSlot("prompt-to-profit-basic-intro")
-  const openBatches = courseSettings?.openBatches || []
+  const openBatches = [...(courseSettings?.openBatches || [])].sort((left, right) => {
+    const sequenceDifference = batchSequence(left.batchLabel || left.batchKey) - batchSequence(right.batchLabel || right.batchKey)
+    if (sequenceDifference) return sequenceDifference
+    return (left.batchStartAt || "").localeCompare(right.batchStartAt || "")
+  })
   const displayedPrice = formatCoursePrice(courseSettings)
   const enrollmentStatus = courseSettings
     ? courseSettings.isEnrollmentLocked
@@ -339,7 +349,7 @@ export async function PromptToProfitCoursePage({
                   ))}
                 </div>
                 <div>
-                  <p className="text-sm font-black uppercase tracking-[0.18em] text-white">Join 350+ builders</p>
+                  <p className="text-sm font-black uppercase tracking-[0.18em] text-white">Join 700+ builders</p>
                   <p className="mt-1 text-sm font-medium text-slate-400">Learning to build practical websites and digital tools with AI.</p>
                 </div>
               </div>
@@ -359,6 +369,34 @@ export async function PromptToProfitCoursePage({
                     {openBatches.length} {openBatches.length === 1 ? "batch" : "batches"} open
                   </p>
                   <p className="mt-2 text-sm font-semibold text-sky-400">{enrollmentStatus}</p>
+
+                  {openBatches.length ? (
+                    <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+                      {openBatches.map((batch) => {
+                        const startLabel = formatDateTimeWAT(batch.batchStartAt)
+                        return (
+                          <li
+                            key={batch.batchKey}
+                            className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3"
+                          >
+                            <div className="flex items-start gap-3">
+                              <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+                              <div>
+                                <p className="font-bold text-white">{batch.batchLabel}</p>
+                                {startLabel ? (
+                                  <p className="mt-1 text-sm font-medium text-slate-300">Starts {startLabel}</p>
+                                ) : null}
+                              </div>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="mt-4 text-sm leading-relaxed text-slate-300">
+                      There are no future batches available for enrollment right now.
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-8 border-t border-white/10 pt-6">

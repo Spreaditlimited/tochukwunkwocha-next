@@ -288,6 +288,13 @@ export async function applyAdminSettingsToProcessEnv() {
   `
   for (const row of rows) {
     if (KNOWN_KEYS.has(row.settingKey) && row.settingValue) {
+      // Payment credentials supplied by the deployment must remain stable for
+      // the lifetime of a serverless instance. A legacy admin-stored Paystack
+      // key is still available explicitly for historical verification, but it
+      // must never silently replace the key used to initialize new payments.
+      if (["PAYSTACK_SECRET_KEY", "PAYSTACK_PUBLIC_KEY"].includes(row.settingKey) && process.env[row.settingKey]) {
+        continue
+      }
       process.env[row.settingKey] = row.settingValue
     }
   }

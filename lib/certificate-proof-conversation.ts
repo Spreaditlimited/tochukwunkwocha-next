@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
+import { publicSiteUrl } from "@/lib/public-site-url"
 
 
 export type CertificateProofMessage = {
@@ -30,7 +31,7 @@ function escapeHtml(value: unknown) {
 }
 
 function siteBaseUrl() {
-  return clean(process.env.SITE_BASE_URL || "https://tochukwunkwocha.com", 240).replace(/\/$/, "")
+  return publicSiteUrl()
 }
 
 export async function ensureCertificateProofConversationTable() {

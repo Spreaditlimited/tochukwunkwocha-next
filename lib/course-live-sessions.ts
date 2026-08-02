@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 
 import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import { prisma } from "@/lib/prisma"
+import { publicAbsoluteUrl } from "@/lib/public-site-url"
 import { sendLiveClassReminderWhatsApp } from "@/lib/transactional-whatsapp"
 import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 import { createNoFixedTimeZoomMeeting } from "@/lib/zoom"
@@ -453,7 +454,7 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
 }
 
 function dashboardUrl() {
-  return clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com", 500).replace(/\/$/, "") + "/dashboard/courses"
+  return publicAbsoluteUrl("/dashboard/courses")
 }
 
 async function sendLiveSessionEmail(input: {

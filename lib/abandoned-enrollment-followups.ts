@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { sendAbandonedEnrollmentReminderEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
 import { reconcileCoursePaystackOrders } from "@/lib/payments/paystack-reconciliation"
+import { publicSiteUrl } from "@/lib/public-site-url"
 import { sendEnrollmentPaymentReminderWhatsApp } from "@/lib/transactional-whatsapp"
 
 type FollowupRow = {
@@ -38,7 +39,7 @@ function clean(value: unknown, max = 500) {
 }
 
 function siteBaseUrl() {
-  return clean(process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://tochukwunkwocha.com", 500).replace(/\/$/, "")
+  return publicSiteUrl()
 }
 
 function signingSecret() {
