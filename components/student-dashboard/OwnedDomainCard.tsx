@@ -3,6 +3,9 @@
 import { useState, type FormEvent, type ReactNode } from "react"
 import { CalendarClock, CreditCard, Globe2, Network, RefreshCw, Server } from "lucide-react"
 
+import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
+
 type DnsRecord = { key: string; host: string; type: string; value: string; ttl: number }
 type NetlifyDetails = {
   netlifyEmail: string
@@ -93,14 +96,18 @@ export function OwnedDomainCard({ domain }: { domain: OwnedDomain }) {
       setDnsStatus("DNS loaded. You can now edit and save.")
     } else {
       setDnsError(true)
-      setDnsStatus(dnsResult.reason instanceof Error ? dnsResult.reason.message : "Could not load DNS records.")
+      setDnsStatus(studentSafeErrorMessage(dnsResult.reason, "Could not load DNS records."))
     }
     if (netlifyResult.status === "fulfilled") {
       if (netlifyResult.value.details) setNetlify(netlifyResult.value.details)
       setNetlifyStatus(netlifyResult.value.details?.updatedAt ? `Last submitted: ${new Date(netlifyResult.value.details.updatedAt).toLocaleString()}` : "No Netlify details submitted yet.")
     } else {
       setNetlifyError(true)
-      setNetlifyStatus(netlifyResult.reason instanceof Error ? netlifyResult.reason.message : "Could not load Netlify details.")
+      setNetlifyStatus(studentSafeErrorMessage(netlifyResult.reason, "Could not load Netlify details."))
+    }
+    if (dnsResult.status === "rejected" || netlifyResult.status === "rejected") {
+      const reason = dnsResult.status === "rejected" ? dnsResult.reason : netlifyResult.status === "rejected" ? netlifyResult.reason : null
+      showStudentToast({ type: "error", title: "Domain details unavailable", message: studentSafeErrorMessage(reason, "Some domain details could not be loaded.") })
     }
     setLoaded(true)
     setLoading(false)
@@ -122,7 +129,7 @@ export function OwnedDomainCard({ domain }: { domain: OwnedDomain }) {
       if (!result.checkoutUrl) throw new Error("Missing renewal payment URL.")
       window.location.assign(result.checkoutUrl)
     } catch (reason) {
-      window.alert(reason instanceof Error ? reason.message : "Could not start renewal payment.")
+      showStudentToast({ type: "error", title: "Renewal unavailable", message: studentSafeErrorMessage(reason, "Could not start renewal payment.") })
       setRenewing(false)
     }
   }
@@ -142,15 +149,24 @@ export function OwnedDomainCard({ domain }: { domain: OwnedDomain }) {
         setNameservers(next)
       }
       setDnsStatus("Nameservers updated successfully.")
+      showStudentToast({ type: "success", title: "Nameservers updated", message: "Your nameserver changes were submitted successfully." })
     } catch (reason) {
       setDnsError(true)
-      setDnsStatus(reason instanceof Error ? reason.message : "Could not save nameservers.")
+      const message = studentSafeErrorMessage(reason, "Could not save nameservers.")
+      setDnsStatus(message)
+      showStudentToast({ type: "error", title: "Nameservers not saved", message })
     }
   }
 
   async function saveRecords() {
     const complete = records.filter((record) => record.host && record.type && record.value)
-    if (!complete.length) { setDnsError(true); setDnsStatus("Add at least one complete DNS record."); return }
+    if (!complete.length) {
+      const message = "Add at least one complete DNS record."
+      setDnsError(true)
+      setDnsStatus(message)
+      showStudentToast({ type: "error", title: "DNS record incomplete", message })
+      return
+    }
     setDnsError(false)
     setDnsStatus("Saving DNS records...")
     try {
@@ -160,9 +176,12 @@ export function OwnedDomainCard({ domain }: { domain: OwnedDomain }) {
         body: JSON.stringify({ domainName: domain.domainName, records: complete.map(({ host, type, value, ttl }) => ({ host, type, value, ttl })) })
       })
       setDnsStatus("DNS records updated successfully.")
+      showStudentToast({ type: "success", title: "DNS records updated", message: "Your DNS record changes were submitted successfully." })
     } catch (reason) {
       setDnsError(true)
-      setDnsStatus(reason instanceof Error ? reason.message : "Could not save DNS records.")
+      const message = studentSafeErrorMessage(reason, "Could not save DNS records.")
+      setDnsStatus(message)
+      showStudentToast({ type: "error", title: "DNS records not saved", message })
     }
   }
 
@@ -177,9 +196,12 @@ export function OwnedDomainCard({ domain }: { domain: OwnedDomain }) {
         body: JSON.stringify({ domainName: domain.domainName, ...netlify })
       })
       setNetlifyStatus("Netlify details submitted successfully.")
+      showStudentToast({ type: "success", title: "Netlify details submitted", message: "Your connection details were saved successfully." })
     } catch (reason) {
       setNetlifyError(true)
-      setNetlifyStatus(reason instanceof Error ? reason.message : "Could not submit Netlify details.")
+      const message = studentSafeErrorMessage(reason, "Could not submit Netlify details.")
+      setNetlifyStatus(message)
+      showStudentToast({ type: "error", title: "Netlify details not saved", message })
     }
   }
 

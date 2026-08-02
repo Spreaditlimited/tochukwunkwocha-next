@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { confirmStudentCertificateName, requireStudent } from "@/lib/student-auth"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 export async function POST() {
   try {
@@ -12,7 +13,9 @@ export async function POST() {
       message: "Certificate name confirmed."
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not confirm certificate name."
-    return NextResponse.json({ ok: false, error: message }, { status: message.includes("already") ? 409 : 400 })
+    return studentApiErrorResponse(error, "Could not confirm certificate name.", {
+      status: error instanceof Error && error.message.includes("already") ? 409 : 400,
+      context: "student_certificate_name_confirm_failed"
+    })
   }
 }

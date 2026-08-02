@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { listPayoutBanks } from "@/lib/affiliate-payout"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { requireStudent } from "@/lib/student-auth"
 
 export async function GET() {
@@ -9,6 +10,6 @@ export async function GET() {
     const banks = await listPayoutBanks()
     return NextResponse.json({ ok: true, banks })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load payout banks." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not load payout banks.", { status: 400, context: "student_payout_banks_failed" })
   }
 }

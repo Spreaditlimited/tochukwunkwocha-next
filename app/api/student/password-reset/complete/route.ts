@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { consumeStudentPasswordResetToken, createStudentSessionForAccount, setStudentSessionCookie } from "@/lib/student-auth"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   const token = String(body.token || "").trim()
   const password = String(body.password || "")
@@ -25,9 +26,6 @@ export async function POST(request: Request) {
       }
     })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not reset password" },
-      { status: 400 }
-    )
+    return studentApiErrorResponse(error, "Could not reset password.", { status: 400, context: "student_password_reset_failed" })
   }
 }

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 
 import { moveFamilyLearnerBatch } from "@/lib/family-enrollment"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { getStudentSession } from "@/lib/student-auth"
 
 export async function POST(request: Request) {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
 
   const body = await request.json().catch(() => null)
   const childId = Number(body?.childId || 0)
@@ -24,6 +25,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not change the learner's batch."
     const status = /not found|incomplete|required|does not belong/i.test(message) ? 400 : 409
-    return NextResponse.json({ ok: false, error: message }, { status })
+    return studentApiErrorResponse(error, "Could not change the learner's batch.", { status, context: "student_group_batch_change_failed" })
   }
 }

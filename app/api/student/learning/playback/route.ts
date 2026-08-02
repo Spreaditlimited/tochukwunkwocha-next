@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getLessonPlaybackSource } from "@/lib/learning-player"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { buildSignedLessonEmbedUrlFromRuntimeSettings } from "@/lib/learning-playback"
 import { consumeServerRateLimit } from "@/lib/server-rate-limit"
 import { requireStudent } from "@/lib/student-auth"
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const lessonId = Number(body?.lessonId || body?.lesson_id || 0)
   if (!Number.isFinite(lessonId) || lessonId <= 0) {
-    return NextResponse.json({ ok: false, error: "lessonId is required" }, { status: 400 })
+    return NextResponse.json({ ok: false, error: "Choose a lesson and try again." }, { status: 400 })
   }
 
   const source = await getLessonPlaybackSource(session.account.id, session.account.email, Math.trunc(lessonId))
@@ -31,9 +32,9 @@ export async function POST(request: Request) {
     const playback = await buildSignedLessonEmbedUrlFromRuntimeSettings({ videoUid: source.videoUid, hlsUrl: source.hlsUrl })
     return NextResponse.json({ ok: true, playback })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not issue lesson playback token." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not load this lesson video. Please try again.", {
+      status: 500,
+      context: "student_lesson_playback_failed"
+    })
   }
 }

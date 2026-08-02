@@ -120,7 +120,7 @@ async function clearAttempts(codeHash: string, ipHash: string) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   const code = normalizeCode(body.code)
   if (code.length < 8) return NextResponse.json({ ok: false, error: "Enter a valid group learner code." }, { status: 400 })

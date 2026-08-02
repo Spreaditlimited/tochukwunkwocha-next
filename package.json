@@ -17,6 +17,7 @@
     "shop:upload:workbooks": "node --env-file=.env scripts/upload-shop-workbooks-cloudinary.mjs",
     "shop:verify:workbooks": "node --env-file=.env scripts/verify-shop-workbook-assets.mjs",
     "shop:publish:workbooks": "node --env-file=.env scripts/publish-shop-workbooks.mjs",
+    "smoke:shop-workbook-catalog": "node scripts/smoke-shop-workbook-catalog.mjs",
     "smoke:certificate-proof": "node --env-file=.env scripts/smoke-certificate-proof.mjs",
     "smoke:business-financials": "node scripts/smoke-business-financials.mjs",
     "smoke:admin-group-enrollment": "node scripts/smoke-admin-group-enrollment.mjs",

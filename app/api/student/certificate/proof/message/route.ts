@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { studentApiErrorResponse } from "@/lib/student-api-error"
+
 import { CERTIFICATE_PROOF_MARKER, getLearnerCertificateBatchKey } from "@/lib/certificate-eligibility"
 import {
   addCertificateProofMessage,
@@ -63,16 +65,16 @@ export async function POST(request: Request) {
       courseSlug,
       subject: "New Student Message About Certificate Proof",
       message
-    }).catch((error) => ({
+    }).catch(() => ({
       attempted: true,
       sent: false,
-      error: error instanceof Error ? error.message : "Email delivery failed."
+      error: "The message was saved, but the email notification could not be delivered."
     }))
     return NextResponse.json({ ok: true, notification })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not send certificate proof message." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not send certificate proof message.", {
+      status: 500,
+      context: "student_certificate_proof_message_failed"
+    })
   }
 }

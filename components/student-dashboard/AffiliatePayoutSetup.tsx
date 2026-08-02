@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 type Bank = {
   name: string
@@ -171,7 +172,7 @@ export function AffiliatePayoutSetup({ initialAccount }: { initialAccount?: Init
       showStudentToast({ type: "success", title: "Affiliate payout updated", message: successMessage })
       router.refresh()
     } catch (requestError) {
-      const errorMessage = requestError instanceof Error ? requestError.message : "Request failed"
+      const errorMessage = studentSafeErrorMessage(requestError, "Could not update affiliate payout details.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Affiliate payout failed", message: errorMessage })
     } finally {

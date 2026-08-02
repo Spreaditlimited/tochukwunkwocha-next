@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 const COOKIE_NAME = "tochukwu_student_toast"
 const EVENT_NAME = "tochukwu:student-toast"
@@ -20,7 +21,10 @@ type Toast = {
 
 export function showStudentToast(input: Omit<Toast, "id">) {
   if (typeof window === "undefined") return
-  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: input }))
+  const detail = input.type === "error"
+    ? { ...input, message: studentSafeErrorMessage(input.message, "Something went wrong. Please try again.") }
+    : input
+  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail }))
 }
 
 function readCookieToast() {
@@ -38,7 +42,9 @@ function readCookieToast() {
     return {
       type: parsed.type || "success",
       title: parsed.title,
-      message: parsed.message || ""
+      message: parsed.type === "error"
+        ? studentSafeErrorMessage(parsed.message, "Something went wrong. Please try again.")
+        : parsed.message || ""
     }
   } catch {
     return null
@@ -71,7 +77,9 @@ export function StudentActionToaster() {
     function onToast(event: Event) {
       const detail = (event as CustomEvent<Omit<Toast, "id">>).detail
       if (!detail?.title) return
-      show(detail)
+      show(detail.type === "error"
+        ? { ...detail, message: studentSafeErrorMessage(detail.message, "Something went wrong. Please try again.") }
+        : detail)
     }
 
     window.addEventListener(EVENT_NAME, onToast)

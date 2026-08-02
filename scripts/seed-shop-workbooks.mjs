@@ -53,10 +53,50 @@ const workbooks = [
     description: "A beginner-friendly workbook for building a secure appointment booking application with a practical business workflow.",
     folder: "appointment-booking-system-workbook",
     filename: "Prompt-to-Profit-Workbook-05-Appointment-Booking-System.pdf"
+  },
+  {
+    number: 6,
+    slug: "sales-tracker-workbook",
+    title: "Sales Tracker",
+    subtitle: "Build an application that helps a business record, organise and understand its sales.",
+    description: "A beginner-friendly workbook for building a secure sales tracking application with calculated totals, useful statistics and complete record management.",
+    folder: "sales-tracker-workbook",
+    filename: "Prompt-to-Profit-Workbook-06-Sales-Tracker.pdf"
+  },
+  {
+    number: 7,
+    slug: "supplier-management-system-workbook",
+    title: "Supplier Management System",
+    subtitle: "Build an application that keeps supplier information organised and easy to manage.",
+    description: "A practical beginner workbook for building a secure supplier management application with detailed records, business statistics and useful contact actions.",
+    folder: "supplier-management-system-workbook",
+    filename: "Prompt-to-Profit-Workbook-07-Supplier-Management-System.pdf"
+  },
+  {
+    number: 8,
+    slug: "order-management-system-workbook",
+    title: "Order Management System",
+    subtitle: "Build an application that helps a business create, track and manage customer orders.",
+    description: "A beginner-friendly workbook for building a secure order management application with calculated totals, status tracking and complete record management.",
+    folder: "order-management-system-workbook",
+    filename: "Prompt-to-Profit-Workbook-08-Order-Management-System.pdf"
   }
 ]
 
-for (const workbook of workbooks) {
+const requestedSkus = new Set(
+  String(process.env.SHOP_WORKBOOK_SKUS || "")
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean)
+)
+const selectedWorkbooks = requestedSkus.size
+  ? workbooks.filter((workbook) => requestedSkus.has(`PTP-WB${String(workbook.number).padStart(2, "0")}-DIG`))
+  : workbooks
+if (requestedSkus.size !== selectedWorkbooks.length) {
+  throw new Error("SHOP_WORKBOOK_SKUS contains an unknown or duplicate workbook SKU.")
+}
+
+for (const workbook of selectedWorkbooks) {
   const existing = await prisma.shopProduct.findUnique({ where: { slug: workbook.slug } })
   const product = await prisma.shopProduct.upsert({
     where: { slug: workbook.slug },

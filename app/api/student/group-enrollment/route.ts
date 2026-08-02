@@ -8,6 +8,7 @@ import {
   savePendingFamilyChildren
 } from "@/lib/family-enrollment"
 import { enrollmentConflictPayload, isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import {
   checkoutContext,
   courseReferencePrefix,
@@ -39,7 +40,7 @@ async function groupPurchaseSeatCount(parentAccountId: bigint, requestedSeats: n
 export async function PUT(request: Request) {
   try {
     const session = await getStudentSession()
-    if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
     const body = await request.json()
     const courseSlug = normalizeCourse(body.courseSlug || "prompt-to-profit")
     const country = clean(body.country || "NG", 120) || "NG"
@@ -76,17 +77,17 @@ export async function PUT(request: Request) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not load group checkout pricing."
-    return NextResponse.json(
-      { ok: false, error: message },
-      { status: /capacity|seat|batch|locked|available|course/i.test(message) ? 400 : 500 }
-    )
+    return studentApiErrorResponse(error, "Could not load group checkout pricing.", {
+      status: /capacity|seat|batch|locked|available|course/i.test(message) ? 400 : 500,
+      context: "student_group_pricing_failed"
+    })
   }
 }
 
 export async function POST(request: Request) {
   try {
     const session = await getStudentSession()
-    if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
     const origin = new URL(request.url).origin
     const body = await request.json()
     const courseSlug = normalizeCourse(body.courseSlug || "prompt-to-profit")
@@ -205,9 +206,9 @@ export async function POST(request: Request) {
       return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
     }
     const message = error instanceof Error ? error.message : "Could not create group enrollment."
-    return NextResponse.json(
-      { ok: false, error: message },
-      { status: /capacity|seat|batch|locked|available|course/i.test(message) ? 400 : 500 }
-    )
+    return studentApiErrorResponse(error, "Could not create group enrollment.", {
+      status: /capacity|seat|batch|locked|available|course/i.test(message) ? 400 : 500,
+      context: "student_group_enrollment_failed"
+    })
   }
 }

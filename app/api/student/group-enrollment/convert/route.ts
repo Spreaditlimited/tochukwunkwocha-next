@@ -1,26 +1,18 @@
 import { NextResponse } from "next/server"
-import { Prisma } from "@prisma/client"
 
 import { convertIndividualEnrollmentToGroup } from "@/lib/group-enrollment-conversion"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { getStudentSession, verifyStudentPassword } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
 }
 
-function isPrismaError(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError
-    || error instanceof Prisma.PrismaClientUnknownRequestError
-    || error instanceof Prisma.PrismaClientRustPanicError
-    || error instanceof Prisma.PrismaClientInitializationError
-    || error instanceof Prisma.PrismaClientValidationError
-}
-
 export async function POST(request: Request) {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   const sourceTypeInput = clean(body.sourceType, 40)
   if (!["course_order", "manual_payment"].includes(sourceTypeInput)) {
@@ -55,19 +47,12 @@ export async function POST(request: Request) {
         : "Enrollment moved to Group Enrollment successfully."
     })
   } catch (error) {
-    const databaseError = isPrismaError(error)
     const internalMessage = error instanceof Error ? error.message : String(error)
-    console.error("individual_to_group_conversion_failed", {
-      accountId: session.account.id.toString(),
-      sourceType,
-      sourceUuid,
-      databaseError,
-      error: internalMessage
+    const status = /does not belong|password/i.test(internalMessage) ? 403 : 400
+    return studentApiErrorResponse(error, "The enrollment move could not be completed. Please try again.", {
+      status,
+      context: "individual_to_group_conversion_failed",
+      details: { accountId: session.account.id.toString(), sourceType, sourceUuid }
     })
-    const message = databaseError
-      ? "The enrollment move could not be completed. Please try again."
-      : internalMessage || "Could not move this enrollment to Group Enrollment."
-    const status = databaseError ? 500 : /does not belong|password/i.test(message) ? 403 : 400
-    return NextResponse.json({ ok: false, error: message }, { status })
   }
 }

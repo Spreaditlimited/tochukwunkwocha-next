@@ -6,7 +6,10 @@ const expectedSkus = [
   "PTP-WB02-DIG",
   "PTP-WB03-DIG",
   "PTP-WB04-DIG",
-  "PTP-WB05-DIG"
+  "PTP-WB05-DIG",
+  "PTP-WB06-DIG",
+  "PTP-WB07-DIG",
+  "PTP-WB08-DIG"
 ]
 const expectedPrices = new Map([
   ["NGN", 1_000_000],

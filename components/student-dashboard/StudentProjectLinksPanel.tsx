@@ -5,6 +5,7 @@ import { ExternalLink, Link2, Loader2, Trash2 } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import { STUDENT_PROJECT_LINK_DECLARATION_TEXT } from "@/lib/student-project-link-policy"
 
 type StudentProjectLink = {
@@ -83,7 +84,7 @@ export function StudentProjectLinksPanel({
       setDeclarationAccepted(false)
       showStudentToast({ type: "success", title: "Project link added", message: "Your additional project link is now available on your public project profile." })
     } catch (error) {
-      showStudentToast({ type: "error", title: "Project link not saved", message: error instanceof Error ? error.message : "Could not save project link." })
+      showStudentToast({ type: "error", title: "Project link not saved", message: studentSafeErrorMessage(error, "Could not save project link.") })
     } finally {
       setBusy("")
     }
@@ -96,7 +97,7 @@ export function StudentProjectLinksPanel({
       setLinks(result.links)
       showStudentToast({ type: "success", title: isPublic ? "Project link shown" : "Project link hidden" })
     } catch (error) {
-      showStudentToast({ type: "error", title: "Could not update link", message: error instanceof Error ? error.message : "Could not update project link." })
+      showStudentToast({ type: "error", title: "Could not update link", message: studentSafeErrorMessage(error, "Could not update project link.") })
     } finally {
       setBusy("")
     }
@@ -109,7 +110,7 @@ export function StudentProjectLinksPanel({
       setLinks(result.links)
       showStudentToast({ type: "success", title: "Project link removed" })
     } catch (error) {
-      showStudentToast({ type: "error", title: "Could not remove link", message: error instanceof Error ? error.message : "Could not remove project link." })
+      showStudentToast({ type: "error", title: "Could not remove link", message: studentSafeErrorMessage(error, "Could not remove project link.") })
     } finally {
       setBusy("")
     }

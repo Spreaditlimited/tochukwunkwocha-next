@@ -6,6 +6,7 @@ import { AlertCircle, CheckCircle2, Loader2, LockKeyhole, Mail } from "lucide-re
 
 import { PasswordField } from "@/components/PasswordField"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 type Props = {
   token?: string
@@ -49,7 +50,7 @@ export function PasswordResetForm({ token = "" }: Props) {
       setMessage(result.message)
       showStudentToast({ type: "success", title: "Reset link requested", message: result.message })
     } catch (requestError) {
-      const errorMessage = requestError instanceof Error ? requestError.message : "Request failed"
+      const errorMessage = studentSafeErrorMessage(requestError, "The password request could not be completed.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Password reset failed", message: errorMessage })
     } finally {

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { BookOpen, Captions, CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, Pencil, Play, RefreshCw, Search, ScrollText, Trash2, Upload, X } from "lucide-react"
 
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { LearningCoursePayload, LearningLesson } from "@/lib/learning-player"
 import { cn } from "@/lib/utils"
 
@@ -395,7 +396,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
         setPlaybackUrl(json.playback.embedUrl)
       })
       .catch((error) => {
-        if (!cancelled) setPlaybackError(error instanceof Error ? error.message : "Could not load lesson video.")
+        if (!cancelled) setPlaybackError(studentSafeErrorMessage(error, "Could not load lesson video."))
       })
       .finally(() => {
         if (!cancelled) setLoadingPlayback(false)
@@ -434,7 +435,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
         setSupport(json.support)
       })
       .catch((error) => {
-        if (!cancelled) setSupportError(error instanceof Error ? error.message : "Could not load learning support.")
+        if (!cancelled) setSupportError(studentSafeErrorMessage(error, "Could not load learning support."))
       })
     return () => {
       cancelled = true
@@ -455,7 +456,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       setCompletedIds((current) => new Set(current).add(activeLesson.id))
       showStudentToast({ type: "success", title: "Lesson completed", message: "Your course progress has been updated." })
     } catch (error) {
-      showStudentToast({ type: "error", title: "Progress update failed", message: error instanceof Error ? error.message : "Could not update progress." })
+      showStudentToast({ type: "error", title: "Progress update failed", message: studentSafeErrorMessage(error, "Could not update progress.") })
     } finally {
       setSaving(false)
     }
@@ -477,8 +478,9 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
     })
     const json = await response.json().catch(() => null)
     if (!response.ok || !json?.ok) {
-      setTranscriptError(json?.error || "Could not load transcript.")
-      showStudentToast({ type: "error", title: "Transcript unavailable", message: json?.error || "Could not load transcript." })
+      const message = studentSafeErrorMessage(json?.error, "Could not load transcript.")
+      setTranscriptError(message)
+      showStudentToast({ type: "error", title: "Transcript unavailable", message })
       return
     }
     setTranscript(json.transcriptText || "")
@@ -510,7 +512,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
     const response = await fetch(`/api/student/learning/support?course=${encodeURIComponent(course.courseSlug)}`)
     const json = await response.json().catch(() => null)
     if (response.ok && json?.ok) setSupport(json.support)
-    else setSupportError(json?.error || "Could not load learning support.")
+    else setSupportError(studentSafeErrorMessage(json?.error, "Could not load learning support."))
   }
 
   async function uploadAssignmentFiles(files: File[]) {
@@ -569,7 +571,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       showStudentToast({ type: "success", title: "Assignment submitted", message: "Your assignment has been sent for review." })
       await refreshSupport()
     } catch (error) {
-      showStudentToast({ type: "error", title: "Assignment submission failed", message: error instanceof Error ? error.message : "Could not submit assignment." })
+      showStudentToast({ type: "error", title: "Assignment submission failed", message: studentSafeErrorMessage(error, "Could not submit assignment.") })
     } finally {
       setSubmittingSupport(false)
     }
@@ -591,7 +593,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       showStudentToast({ type: "success", title: "Reply posted", message: "Your reply has been added to the discussion." })
       await refreshSupport()
     } catch (error) {
-      showStudentToast({ type: "error", title: "Reply failed", message: error instanceof Error ? error.message : "Could not create reply." })
+      showStudentToast({ type: "error", title: "Reply failed", message: studentSafeErrorMessage(error, "Could not create reply.") })
     } finally {
       setSubmittingSupport(false)
     }
@@ -619,7 +621,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       showStudentToast({
         type: "error",
         title: discussionEdit.kind === "thread" ? "Thread update failed" : "Reply update failed",
-        message: json?.error || "Could not update discussion."
+        message: studentSafeErrorMessage(json?.error, "Could not update discussion.")
       })
       return
     }
@@ -655,7 +657,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       showStudentToast({
         type: "error",
         title: discussionDelete.kind === "thread" ? "Thread delete failed" : "Reply delete failed",
-        message: json?.error || "Could not delete discussion item."
+        message: studentSafeErrorMessage(json?.error, "Could not delete discussion item.")
       })
       return
     }
@@ -700,7 +702,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       showStudentToast({ type: "success", title: "Discussion posted", message: "Your question has been added to the course discussion." })
       await refreshSupport()
     } catch (error) {
-      showStudentToast({ type: "error", title: "Discussion post failed", message: error instanceof Error ? error.message : "Could not create thread." })
+      showStudentToast({ type: "error", title: "Discussion post failed", message: studentSafeErrorMessage(error, "Could not create discussion.") })
     } finally {
       setSubmittingSupport(false)
     }

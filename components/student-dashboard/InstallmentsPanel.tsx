@@ -7,6 +7,7 @@ import { CheckCircle2, CreditCard, ShieldCheck, WalletCards } from "lucide-react
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { SeatCountStepper } from "@/components/SeatCountStepper"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { LearningCourseOption } from "@/lib/student-dashboard"
 import type { StudentInstallmentPlan } from "@/lib/student-installments"
 
@@ -118,7 +119,7 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
       })
       window.location.href = payment.checkoutUrl
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not start installment."
+      const message = studentSafeErrorMessage(error, "Could not start installment.")
       showStudentToast({ type: "error", title: "Installment failed", message })
     } finally {
       setBusyKey("")
@@ -140,7 +141,7 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
       showStudentToast({ type: "success", title: "Payment ready", message: "Redirecting to secure payment." })
       window.location.href = payment.checkoutUrl
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not start payment."
+      const message = studentSafeErrorMessage(error, "Could not start payment.")
       showStudentToast({ type: "error", title: "Payment failed", message })
       setBusyKey("")
     }

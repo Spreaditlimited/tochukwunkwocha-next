@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
 
+import { studentApiErrorResponse } from "@/lib/student-api-error"
+
 import {
   certificateEligibilitySnapshot,
   ensureCertificateEligibilityColumns,
@@ -182,10 +184,10 @@ export async function GET(request: Request) {
       } : null
     })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not load certificate proof review." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not load certificate proof review.", {
+      status: 500,
+      context: "student_certificate_proof_load_failed"
+    })
   }
 }
 
@@ -308,7 +310,7 @@ export async function POST(request: Request) {
     }).catch((error) => {
       console.warn("certificate_proof_admin_notification_failed", {
         assignmentId: assignmentId.toString(),
-        error: error instanceof Error ? error.message : String(error)
+        detail: error instanceof Error ? error.message : String(error)
       })
     })
 
@@ -327,9 +329,9 @@ export async function POST(request: Request) {
       }
     })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not submit certificate proof." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not submit certificate proof.", {
+      status: 500,
+      context: "student_certificate_proof_submit_failed"
+    })
   }
 }

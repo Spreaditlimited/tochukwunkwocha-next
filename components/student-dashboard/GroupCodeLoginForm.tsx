@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react"
 import { AlertCircle, ArrowRight, KeyRound, Loader2, UserRound } from "lucide-react"
 
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 type ChallengeState = {
   challenge: string
@@ -60,7 +61,7 @@ export function GroupCodeLoginForm() {
         window.location.href = "/dashboard"
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Could not sign in with group code."
+      const errorMessage = studentSafeErrorMessage(error, "Could not sign in with group code.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Group access failed", message: errorMessage })
     } finally {

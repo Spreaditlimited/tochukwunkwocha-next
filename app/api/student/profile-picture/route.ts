@@ -1,6 +1,8 @@
 import crypto from "crypto"
 import { NextResponse } from "next/server"
 
+import { studentApiErrorResponse } from "@/lib/student-api-error"
+
 import {
   clearStudentProfilePicture,
   detectStudentProfilePictureType,
@@ -33,7 +35,7 @@ function signCloudinary(params: Record<string, string | number>, secret: string)
 
 export async function POST(request: Request) {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
 
   try {
     const formData = await request.formData()
@@ -87,16 +89,13 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ ok: true, profilePictureUrl })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not upload the profile picture." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not upload the profile picture.", { status: 500, context: "student_profile_picture_upload_failed" })
   }
 }
 
 export async function DELETE() {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
 
   try {
     const current = await getStudentProfilePicture(session.account.id)
@@ -120,9 +119,6 @@ export async function DELETE() {
     await clearStudentProfilePicture(session.account.id)
     return NextResponse.json({ ok: true })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not remove the profile picture." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not remove the profile picture.", { status: 500, context: "student_profile_picture_remove_failed" })
   }
 }

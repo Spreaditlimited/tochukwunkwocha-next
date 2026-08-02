@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeftRight } from "lucide-react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { ConvertibleIndividualEnrollment } from "@/lib/group-enrollment-conversion"
 
 const inputClass = "w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
@@ -65,7 +66,7 @@ export function IndividualToGroupConversionPanel({
       })
       window.location.reload()
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Could not move this enrollment to Group Enrollment."
+      const message = studentSafeErrorMessage(caught, "Could not move this enrollment to Group Enrollment.")
       setError(message)
       showStudentToast({ type: "error", title: "Conversion failed", message })
     } finally {
@@ -88,7 +89,11 @@ export function IndividualToGroupConversionPanel({
             </p>
           </div>
         </div>
-        <button type="button" onClick={() => setIsOpen((current) => !current)} className={isOpen ? "btn-secondary" : "btn-primary"}>
+        <button
+          type="button"
+          onClick={() => setIsOpen((current) => !current)}
+          className={isOpen ? "btn-secondary w-full sm:w-auto" : "btn-primary w-full sm:w-auto"}
+        >
           {isOpen ? "Close Panel" : "Move Enrollment"}
         </button>
       </div>

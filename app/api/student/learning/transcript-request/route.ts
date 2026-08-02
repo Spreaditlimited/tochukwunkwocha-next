@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requestTranscriptAccess } from "@/lib/learning-player"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { requireStudent } from "@/lib/student-auth"
 
 export async function POST(request: Request) {
@@ -20,6 +21,6 @@ export async function POST(request: Request) {
       transcript_access: { allowed: false, status: "pending" }
     })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not request transcript access." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not request transcript access.", { status: 400, context: "student_transcript_request_failed" })
   }
 }

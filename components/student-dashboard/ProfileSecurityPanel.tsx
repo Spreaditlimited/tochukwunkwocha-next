@@ -9,6 +9,7 @@ import { Camera, Laptop, Loader2, LockKeyhole, Smartphone, Trash2, UserRound } f
 import { PasswordField } from "@/components/PasswordField"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import { refreshStudentIdentity } from "@/components/student-dashboard/StudentAuthContext"
 import { resolveMediaUrl } from "@/lib/cloudinary/url"
 
@@ -137,7 +138,7 @@ export function ProfileSecurityPanel({
       showStudentToast({ type: "success", title: "Profile updated", message: "Your profile details have been saved." })
       router.refresh()
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Could not update profile"
+      const errorMessage = studentSafeErrorMessage(error, "Could not update profile.")
       setProfileError(errorMessage)
       showStudentToast({ type: "error", title: "Profile update failed", message: errorMessage })
     } finally {
@@ -174,7 +175,7 @@ export function ProfileSecurityPanel({
       showStudentToast({ type: "success", title: "Profile picture updated", message: "Your new profile picture has been saved." })
       router.refresh()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not upload the profile picture."
+      const message = studentSafeErrorMessage(error, "Could not upload the profile picture.")
       setProfilePictureError(message)
       showStudentToast({ type: "error", title: "Upload failed", message })
     } finally {
@@ -194,7 +195,7 @@ export function ProfileSecurityPanel({
       showStudentToast({ type: "success", title: "Profile picture removed", message: "Your profile picture has been removed." })
       router.refresh()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not remove the profile picture."
+      const message = studentSafeErrorMessage(error, "Could not remove the profile picture.")
       setProfilePictureError(message)
       showStudentToast({ type: "error", title: "Removal failed", message })
     } finally {
@@ -220,7 +221,7 @@ export function ProfileSecurityPanel({
       setPasswordMessage(result.message)
       showStudentToast({ type: "success", title: "Password changed", message: result.message })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Could not change password"
+      const errorMessage = studentSafeErrorMessage(error, "Could not change password.")
       setPasswordError(errorMessage)
       showStudentToast({ type: "error", title: "Password change failed", message: errorMessage })
     } finally {
@@ -235,7 +236,7 @@ export function ProfileSecurityPanel({
       showStudentToast({ type: "success", title: "Session security updated", message: sessionUuid ? "The selected session has been revoked." : "Other active sessions have been revoked." })
       router.refresh()
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Could not update sessions"
+      const errorMessage = studentSafeErrorMessage(error, "Could not update sessions.")
       setSecurityError(errorMessage)
       showStudentToast({ type: "error", title: "Session update failed", message: errorMessage })
     }

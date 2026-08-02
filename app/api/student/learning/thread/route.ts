@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createLearningThread } from "@/lib/learning-player"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { requireStudent } from "@/lib/student-auth"
 
 export async function POST(request: Request) {
@@ -20,6 +21,6 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not create thread." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not create discussion.", { status: 400, context: "student_thread_create_failed" })
   }
 }

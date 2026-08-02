@@ -250,8 +250,150 @@ const workbooks = [
       "Preserve useful appointment history",
       "Present a complete scheduling application in a portfolio"
     ]
+  },
+  {
+    sku: "PTP-WB06-DIG",
+    slug: "sales-tracker-workbook",
+    title: "Sales Tracker",
+    subtitle: "Build a complete sales tracking application with AI.",
+    pages: 252,
+    time: "20–25 hours",
+    cover: "/shop/workbooks/sales-tracker-cover.png",
+    shortDescription: "Build a secure Sales Tracker that records sales, calculates totals and helps a business understand its daily, monthly and all-time activity.",
+    seoTitle: "Sales Tracker Workbook for Beginners | Prompt to Profit™",
+    seoDescription: "Build a secure Sales Tracker with calculated totals, sales statistics, search, editing and Supabase security in this 252-page workbook.",
+    chapters: [
+      "Building the Public Website",
+      "Connecting to Supabase",
+      "Building the Complete Authentication System",
+      "Building the Sales Database",
+      "Building the Sales Dashboard",
+      "Viewing Sales",
+      "Searching, Filtering and Sorting Sales",
+      "Editing Sales",
+      "Deleting Sales",
+      "Final Testing and Project Completion"
+    ],
+    capabilities: [
+      "Build a responsive sales software website and protected dashboard",
+      "Create registration, email verification, login and protected sales pages",
+      "Design a secure sales table protected by Row Level Security",
+      "Record sale dates, items, categories, quantities, prices and payment methods",
+      "Calculate each sale total automatically",
+      "Display daily, monthly and all-time sales statistics",
+      "Open a complete sales history and individual sale details",
+      "Search, filter, sort and edit sales records",
+      "Confirm and securely delete unwanted sales",
+      "Test data ownership with two accounts and deploy the completed application"
+    ],
+    outcomes: [
+      "Model useful sales information for a real business workflow",
+      "Build reliable quantity, price and total calculations",
+      "Turn saved sales into clear dashboard statistics",
+      "Protect each user's sales with authenticated ownership",
+      "Present a complete sales application in a software portfolio"
+    ]
+  },
+  {
+    sku: "PTP-WB07-DIG",
+    slug: "supplier-management-system-workbook",
+    title: "Supplier Management System",
+    subtitle: "Build a complete supplier management application with AI.",
+    pages: 319,
+    time: "25–30 hours",
+    cover: "/shop/workbooks/supplier-management-system-cover.png",
+    shortDescription: "Build a secure Supplier Management System for organising supplier details, contact information, categories, payment terms and business activity.",
+    seoTitle: "Supplier Management System Workbook for Beginners",
+    seoDescription: "Build a secure supplier management system with detailed records, statistics, search, contact actions and Supabase security in 319 pages.",
+    chapters: [
+      "Building the Public Website",
+      "Connecting to Supabase",
+      "Building the Complete Authentication System",
+      "Building the Supplier Database",
+      "Building the Supplier Dashboard",
+      "Viewing Suppliers",
+      "Building the Supplier Details Page",
+      "Editing and Deleting Supplier Records",
+      "Making Supplier Management More Powerful",
+      "Final Testing and Project Completion"
+    ],
+    capabilities: [
+      "Build a responsive supplier software website and protected dashboard",
+      "Create registration, email verification, login and protected supplier pages",
+      "Design a secure suppliers table with ownership protection",
+      "Save supplier contacts, addresses, categories, supplied items and payment terms",
+      "Prevent duplicate supplier email addresses and phone numbers",
+      "Display total, daily, monthly and service-supplier statistics",
+      "Open complete supplier details with click-to-call and click-to-email actions",
+      "Search, filter, sort and edit supplier records",
+      "Confirm and securely delete supplier records",
+      "Complete two-account privacy testing and live deployment"
+    ],
+    outcomes: [
+      "Plan a practical supplier data model",
+      "Build a secure create, read, update and delete workflow",
+      "Turn supplier records into useful business statistics",
+      "Create clear contact actions and data-quality checks",
+      "Present a portfolio-ready supplier management application"
+    ]
+  },
+  {
+    sku: "PTP-WB08-DIG",
+    slug: "order-management-system-workbook",
+    title: "Order Management System",
+    subtitle: "Build a complete order management application with AI.",
+    pages: 252,
+    time: "20–25 hours",
+    cover: "/shop/workbooks/order-management-system-cover.png",
+    shortDescription: "Build a secure Order Management System that creates customer orders, calculates totals and tracks each order from pending to completion.",
+    seoTitle: "Order Management System Workbook for Beginners",
+    seoDescription: "Build a secure order management system with calculated totals, status tracking, statistics, search and editing in this 252-page workbook.",
+    chapters: [
+      "Building the Public Website",
+      "Connecting to Supabase",
+      "Building the Complete Authentication System",
+      "Building the Order Database",
+      "Building the Order Dashboard",
+      "Viewing Orders",
+      "Searching, Filtering and Sorting Orders",
+      "Editing Orders",
+      "Deleting Orders",
+      "Final Testing and Project Completion"
+    ],
+    capabilities: [
+      "Build a responsive order software website and protected dashboard",
+      "Create registration, email verification, login and protected order pages",
+      "Design a secure orders table protected by Row Level Security",
+      "Create customer orders with dates, quantities, prices and statuses",
+      "Calculate order totals automatically",
+      "Display total, pending, completed and order-value statistics",
+      "Open a complete orders list and individual order details",
+      "Search, filter, sort, edit and track order status",
+      "Confirm and securely delete unwanted orders",
+      "Test data ownership with two accounts and deploy the completed application"
+    ],
+    outcomes: [
+      "Model customer orders and their progress through a business workflow",
+      "Build reliable quantity, price and total calculations",
+      "Keep order-status choices consistent across forms and the database",
+      "Protect each user's orders with authenticated ownership",
+      "Present a complete order management application in a software portfolio"
+    ]
   }
 ]
+
+const requestedSkus = new Set(
+  String(process.env.SHOP_WORKBOOK_SKUS || "")
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean)
+)
+const selectedWorkbooks = requestedSkus.size
+  ? workbooks.filter((workbook) => requestedSkus.has(workbook.sku))
+  : workbooks
+if (requestedSkus.size !== selectedWorkbooks.length) {
+  throw new Error("SHOP_WORKBOOK_SKUS contains an unknown or duplicate workbook SKU.")
+}
 
 function body(workbook) {
   return `## Build a real business application
@@ -327,7 +469,7 @@ The estimated time is a guide, not a deadline. Complete the lessons in order, te
 }
 
 try {
-  for (const workbook of workbooks) {
+  for (const workbook of selectedWorkbooks) {
     const variant = await prisma.shopProductVariant.findUnique({
       where: { sku: workbook.sku },
       include: { product: true }

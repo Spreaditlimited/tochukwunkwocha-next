@@ -13,6 +13,7 @@ import { PasswordField } from "@/components/PasswordField"
 import { SubmitButton } from "@/components/SubmitButton"
 import { GroupCodeLoginForm } from "@/components/student-dashboard/GroupCodeLoginForm"
 import { StudentActionToaster } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import { studentLoginAction } from "../actions"
 
 export const dynamic = "force-dynamic"
@@ -64,7 +65,7 @@ export default async function StudentLoginPage({
             {params.error ? (
               <div className="flex items-start gap-3 rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p className="font-medium leading-relaxed">{params.error}</p>
+                <p className="font-medium leading-relaxed">{studentSafeErrorMessage(params.error, "Could not sign in. Check your details and try again.")}</p>
               </div>
             ) : null}
 

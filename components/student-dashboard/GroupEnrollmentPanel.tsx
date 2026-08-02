@@ -6,6 +6,7 @@ import Link from "next/link"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { FamilySeatRow, LearningCourseOption } from "@/lib/student-dashboard"
 import { formatDateTimeWAT } from "@/lib/utils"
 
@@ -161,7 +162,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
           setPricingSeatCount(result.seatCount)
         })
         .catch((error) => {
-          if (!cancelled) setPricingError(error instanceof Error ? error.message : "Could not load checkout pricing.")
+          if (!cancelled) setPricingError(studentSafeErrorMessage(error, "Could not load checkout pricing."))
         })
         .finally(() => {
           if (!cancelled) setIsLoadingPricing(false)
@@ -245,7 +246,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       }
       throw new Error("Checkout link was not returned by the server.")
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Could not create group enrollment."
+      const errorMessage = studentSafeErrorMessage(error, "Could not create group enrollment.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Group enrollment failed", message: errorMessage })
     } finally {

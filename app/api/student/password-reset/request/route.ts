@@ -17,7 +17,7 @@ function escapeHtml(value: string) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   const email = clean(body.email, 190).toLowerCase()
   if (!email) return NextResponse.json({ ok: false, error: "Email is required" }, { status: 400 })

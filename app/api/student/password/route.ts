@@ -4,10 +4,10 @@ import { createStudentSessionForAccount, getStudentSession, setStudentPassword, 
 
 export async function POST(request: Request) {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
 
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   const currentPassword = String(body.currentPassword || "")
   const newPassword = String(body.newPassword || "")

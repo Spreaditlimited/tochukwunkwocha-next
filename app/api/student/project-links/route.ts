@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { revalidatePath, revalidateTag } from "next/cache"
 
+import { studentApiErrorResponse } from "@/lib/student-api-error"
+
 import {
   createStudentProjectLink,
   deleteStudentProjectLink,
@@ -19,10 +21,7 @@ export async function GET() {
     const links = await listStudentProjectLinks(session.account.id)
     return NextResponse.json({ ok: true, links })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not load project links." },
-      { status: 500 }
-    )
+    return studentApiErrorResponse(error, "Could not load project links.", { status: 500, context: "student_project_links_load_failed" })
   }
 }
 
@@ -30,7 +29,7 @@ export async function POST(request: Request) {
   try {
     const session = await requireStudent()
     const body = await request.json().catch(() => null)
-    if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 })
+    if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
     const links = await createStudentProjectLink({
       accountId: session.account.id,
@@ -45,10 +44,7 @@ export async function POST(request: Request) {
     revalidatePath("/projects")
     return NextResponse.json({ ok: true, links })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not save project link." },
-      { status: 400 }
-    )
+    return studentApiErrorResponse(error, "Could not save project link.", { status: 400, context: "student_project_link_save_failed" })
   }
 }
 
@@ -56,7 +52,7 @@ export async function PATCH(request: Request) {
   try {
     const session = await requireStudent()
     const body = await request.json().catch(() => null)
-    if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 })
+    if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
     const action = clean(body.action, 40)
     const linkUuid = clean(body.linkUuid || body.link_uuid, 80)
     const links = action === "delete"
@@ -66,9 +62,6 @@ export async function PATCH(request: Request) {
     revalidatePath("/projects")
     return NextResponse.json({ ok: true, links })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not update project link." },
-      { status: 400 }
-    )
+    return studentApiErrorResponse(error, "Could not update project link.", { status: 400, context: "student_project_link_update_failed" })
   }
 }

@@ -41,8 +41,39 @@ const workbooks = [
     slug: "appointment-booking-system",
     path: "deliverables/appointment-booking-system-workbook/Prompt-to-Profit-Workbook-05-Appointment-Booking-System.pdf",
     filename: "Prompt-to-Profit-Workbook-05-Appointment-Booking-System.pdf"
+  },
+  {
+    sku: "PTP-WB06-DIG",
+    slug: "sales-tracker",
+    path: "deliverables/sales-tracker-workbook/Prompt-to-Profit-Workbook-06-Sales-Tracker.pdf",
+    filename: "Prompt-to-Profit-Workbook-06-Sales-Tracker.pdf"
+  },
+  {
+    sku: "PTP-WB07-DIG",
+    slug: "supplier-management-system",
+    path: "deliverables/supplier-management-system-workbook/Prompt-to-Profit-Workbook-07-Supplier-Management-System.pdf",
+    filename: "Prompt-to-Profit-Workbook-07-Supplier-Management-System.pdf"
+  },
+  {
+    sku: "PTP-WB08-DIG",
+    slug: "order-management-system",
+    path: "deliverables/order-management-system-workbook/Prompt-to-Profit-Workbook-08-Order-Management-System.pdf",
+    filename: "Prompt-to-Profit-Workbook-08-Order-Management-System.pdf"
   }
 ]
+
+const requestedSkus = new Set(
+  String(process.env.SHOP_WORKBOOK_SKUS || "")
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean)
+)
+const selectedWorkbooks = requestedSkus.size
+  ? workbooks.filter((workbook) => requestedSkus.has(workbook.sku))
+  : workbooks
+if (requestedSkus.size !== selectedWorkbooks.length) {
+  throw new Error("SHOP_WORKBOOK_SKUS contains an unknown or duplicate workbook SKU.")
+}
 
 async function verifyProtectedAsset(asset) {
   const expiresAt = Math.floor(Date.now() / 1000) + 120
@@ -73,7 +104,7 @@ async function verifyProtectedAsset(asset) {
 }
 
 try {
-  for (const workbook of workbooks) {
+  for (const workbook of selectedWorkbooks) {
     const publicId = `tochukwu-shop/workbooks/${workbook.slug}`
     process.stdout.write(`Uploading ${workbook.sku}... `)
     const result = await cloudinary.uploader.upload(workbook.path, {

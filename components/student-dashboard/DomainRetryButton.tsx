@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Loader2, RefreshCw } from "lucide-react"
 
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 export function DomainRetryButton({ orderUuid }: { orderUuid: string }) {
   const router = useRouter()
@@ -23,7 +24,7 @@ export function DomainRetryButton({ orderUuid }: { orderUuid: string }) {
       showStudentToast({ type: "success", title: "Domain registered", message: "Your paid registration was completed." })
       router.refresh()
     } catch (error) {
-      showStudentToast({ type: "error", title: "Retry failed", message: error instanceof Error ? error.message : "Could not retry registration." })
+      showStudentToast({ type: "error", title: "Retry failed", message: studentSafeErrorMessage(error, "Could not retry registration.") })
     } finally {
       setBusy(false)
     }

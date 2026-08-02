@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { getLearningSupportForStudent } from "@/lib/learning-player"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { requireStudent } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 500) {
@@ -16,9 +17,9 @@ export async function POST(request: Request) {
   const apiKey = clean(process.env.CLOUDINARY_API_KEY, 190)
   const apiSecret = clean(process.env.CLOUDINARY_API_SECRET, 1000)
   if (!cloudName || !apiKey || !apiSecret) {
-    return NextResponse.json({ ok: false, error: "Cloudinary not configured" }, { status: 500 })
+    return NextResponse.json({ ok: false, error: "File uploads are temporarily unavailable." }, { status: 500 })
   }
-  if (!courseSlug) return NextResponse.json({ ok: false, error: "courseSlug is required" }, { status: 400 })
+  if (!courseSlug) return NextResponse.json({ ok: false, error: "Choose a course and try again." }, { status: 400 })
 
   try {
     const support = await getLearningSupportForStudent(session.account.id, session.account.email, courseSlug)
@@ -31,6 +32,6 @@ export async function POST(request: Request) {
     const signature = crypto.createHash("sha1").update(source).digest("hex")
     return NextResponse.json({ ok: true, cloudName, apiKey, timestamp, folder, signature })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not prepare upload." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not prepare the file upload.", { status: 400, context: "student_assignment_upload_failed" })
   }
 }

@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeftRight, CheckCircle2, Loader2 } from "lucide-rea
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 export type BatchSwitchEnrollment = {
   sourceType: string
@@ -114,7 +115,7 @@ export function BatchSwitchPanel({
       showStudentToast({ type: "success", title: "Batch changed", message: "Your course batch has been updated." })
       router.refresh()
     } catch (requestError) {
-      const errorMessage = requestError instanceof Error ? requestError.message : "Could not change batch."
+      const errorMessage = studentSafeErrorMessage(requestError, "Could not change batch.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Batch change failed", message: errorMessage })
     } finally {

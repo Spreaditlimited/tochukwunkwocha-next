@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { loadNetlifyAccess, saveNetlifyAccess } from "@/lib/student-domain-actions"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { requireStudent } from "@/lib/student-auth"
 
 export async function GET(request: Request) {
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
     const result = await loadNetlifyAccess(session.account.id, domainName)
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load Netlify details." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not load Netlify details.", { status: 400, context: "student_netlify_load_failed" })
   }
 }
 
@@ -29,6 +30,6 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not save Netlify details." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not save Netlify details.", { status: 400, context: "student_netlify_save_failed" })
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { savePayoutAccount } from "@/lib/affiliate-payout"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { requireStudent } from "@/lib/student-auth"
 
 export async function POST(request: Request) {
@@ -18,6 +19,6 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ ok: true, result })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not save payout account." }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not save payout account.", { status: 400, context: "student_payout_save_failed" })
   }
 }

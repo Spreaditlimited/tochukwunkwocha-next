@@ -6,6 +6,7 @@ import { AlertTriangle, Award, CheckCircle2, Link2, Loader2, MessageSquareText, 
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 type CourseOption = {
   courseSlug: string
@@ -86,7 +87,7 @@ export function CertificateActionsPanel({
       setProof(nextProof)
       setWebsiteUrl(nextProof && ["needs_revision", "rejected"].includes(nextProof.status) ? nextProof.websiteUrl : "")
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Could not load certificate proof review."
+      const errorMessage = studentSafeErrorMessage(err, "Could not load certificate proof review.")
       setError(errorMessage)
     } finally {
       setProofLoading(false)
@@ -110,7 +111,7 @@ export function CertificateActionsPanel({
       setMessage(successMessage)
       showStudentToast({ type: "success", title: "Certificate name confirmed", message: successMessage })
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Could not confirm certificate name."
+      const errorMessage = studentSafeErrorMessage(err, "Could not confirm certificate name.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Certificate action failed", message: errorMessage })
     } finally {
@@ -140,7 +141,7 @@ export function CertificateActionsPanel({
       showStudentToast({ type: "success", title: json.proof?.resubmitted ? "Revised proof submitted" : "Certificate proof submitted", message: successMessage })
       await loadProof()
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Could not submit certificate proof."
+      const errorMessage = studentSafeErrorMessage(err, "Could not submit certificate proof.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Certificate proof failed", message: errorMessage })
     } finally {
@@ -167,7 +168,7 @@ export function CertificateActionsPanel({
       showStudentToast({ type: "success", title: "Message sent", message: "Learning Support has received your message." })
       await loadProof()
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Could not send your message."
+      const errorMessage = studentSafeErrorMessage(err, "Could not send your message.")
       setError(errorMessage)
       showStudentToast({ type: "error", title: "Message failed", message: errorMessage })
     } finally {

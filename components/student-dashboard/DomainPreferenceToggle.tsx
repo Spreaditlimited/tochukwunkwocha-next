@@ -3,6 +3,9 @@
 import { useState } from "react"
 import { RefreshCw } from "lucide-react"
 
+import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
+
 export function DomainPreferenceToggle({ initialEnabled }: { initialEnabled: boolean }) {
   const [enabled, setEnabled] = useState(initialEnabled)
   const [saving, setSaving] = useState(false)
@@ -22,11 +25,15 @@ export function DomainPreferenceToggle({ initialEnabled }: { initialEnabled: boo
       })
       const json = await response.json().catch(() => null)
       if (!response.ok || !json?.ok) throw new Error(json?.error || "Could not save preference.")
-      setStatus(next ? "Auto-renew enabled for your domain services." : "Auto-renew disabled for your domain services.")
+      const message = next ? "Auto-renew enabled for your domain services." : "Auto-renew disabled for your domain services."
+      setStatus(message)
+      showStudentToast({ type: "success", title: "Domain preference updated", message })
     } catch (reason) {
       setEnabled(!next)
       setError(true)
-      setStatus(reason instanceof Error ? reason.message : "Could not save preference.")
+      const message = studentSafeErrorMessage(reason, "Could not save preference.")
+      setStatus(message)
+      showStudentToast({ type: "error", title: "Preference not saved", message })
     } finally {
       setSaving(false)
     }

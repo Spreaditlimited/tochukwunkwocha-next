@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getStudentSession } from "@/lib/student-auth"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -10,7 +11,7 @@ export async function GET() {
     const session = await getStudentSession()
     if (!session) {
       return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
+        { ok: false, error: "Please sign in to continue." },
         { status: 401, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
       )
     }
@@ -30,9 +31,10 @@ export async function GET() {
     response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate")
     return response
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Unauthorized" },
-      { status: 401, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
-    )
+    return studentApiErrorResponse(error, "Your session could not be verified. Please sign in again.", {
+      status: 401,
+      context: "student_session_load_failed",
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" }
+    })
   }
 }

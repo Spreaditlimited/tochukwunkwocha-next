@@ -55,10 +55,16 @@ export function shopFaqs(value: string | null | undefined) {
   )
 }
 
+function publicShopProductStatus(): Prisma.ShopProductWhereInput {
+  return process.env.NODE_ENV === "development"
+    ? { status: { in: ["published", "draft"] } }
+    : { status: "published" }
+}
+
 export async function listPublishedShopProducts() {
   try {
     return await prisma.shopProduct.findMany({
-      where: { status: "published" },
+      where: publicShopProductStatus(),
       include: {
         variants: {
           where: { active: true },
@@ -77,7 +83,7 @@ export async function listPublishedShopProducts() {
 export async function getPublishedShopProduct(slug: string) {
   try {
     return await prisma.shopProduct.findFirst({
-      where: { slug: clean(slug, 190), status: "published" },
+      where: { slug: clean(slug, 190), ...publicShopProductStatus() },
       include: {
         variants: {
           where: { active: true },

@@ -6,6 +6,7 @@ import { useState } from "react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 type BatchOption = {
   batchKey: string
@@ -49,7 +50,7 @@ export function GroupLearnerBatchPicker({
       showStudentToast({
         type: "error",
         title: "Batch change failed",
-        message: error instanceof Error ? error.message : "Could not change the learner's batch."
+        message: studentSafeErrorMessage(error, "Could not change the learner's batch.")
       })
     } finally {
       setPending(false)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getStudentProfile, getStudentSession, isManagedGroupLearnerAccount, updateStudentProfile } from "@/lib/student-auth"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -8,17 +9,17 @@ function clean(value: unknown, max = 500) {
 
 export async function GET() {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
   const profile = await getStudentProfile(session.account.id)
   return NextResponse.json({ ok: true, profile })
 }
 
 export async function POST(request: Request) {
   const session = await getStudentSession()
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ ok: false, error: "Please sign in to continue." }, { status: 401 })
 
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   try {
     const isManagedGroupLearner = await isManagedGroupLearnerAccount(session.account.id)
@@ -57,9 +58,6 @@ export async function POST(request: Request) {
       }
     })
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not update profile" },
-      { status: 400 }
-    )
+    return studentApiErrorResponse(error, "Could not update profile.", { status: 400, context: "student_profile_update_failed" })
   }
 }
