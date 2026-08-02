@@ -38,6 +38,7 @@ type StudentDashboardShellProps = {
   active: string
   title: string
   eyebrow?: string
+  hideAccountEmail?: boolean
   children: ReactNode
 }
 
@@ -78,6 +79,7 @@ export function StudentDashboardShell({
   active,
   title,
   eyebrow = "Student Workspace",
+  hideAccountEmail = false,
   children
 }: StudentDashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
@@ -187,7 +189,7 @@ export function StudentDashboardShell({
               {!collapsed ? (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-foreground">{account.fullName}</p>
-                  <p className="truncate text-xs font-medium text-muted-foreground">{account.email}</p>
+                  {!hideAccountEmail ? <p className="truncate text-xs font-medium text-muted-foreground">{account.email}</p> : null}
                 </div>
               ) : null}
             </div>
@@ -230,7 +232,7 @@ export function StudentDashboardShell({
                     >
                       <div className="border-b border-border px-3 py-2.5">
                         <p className="truncate text-sm font-bold text-foreground">{account.fullName}</p>
-                        <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+                        {!hideAccountEmail ? <p className="truncate text-xs text-muted-foreground">{account.email}</p> : null}
                       </div>
                       <Link
                         href="/dashboard/profile"

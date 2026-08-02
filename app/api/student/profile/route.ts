@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { getStudentProfile, getStudentSession, updateStudentProfile } from "@/lib/student-auth"
+import { getStudentProfile, getStudentSession, isManagedGroupLearnerAccount, updateStudentProfile } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -21,10 +21,12 @@ export async function POST(request: Request) {
   if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
 
   try {
+    const isManagedGroupLearner = await isManagedGroupLearnerAccount(session.account.id)
+    const currentProfile = isManagedGroupLearner ? await getStudentProfile(session.account.id) : null
     const profile = await updateStudentProfile(session.account.id, {
       fullName: clean(body.fullName, 180),
-      phoneE164: clean(body.phoneE164 || body.phone, 20),
-      whatsappOptedIn: body.whatsappOptedIn === true,
+      phoneE164: currentProfile ? currentProfile.phone : clean(body.phoneE164 || body.phone, 20),
+      whatsappOptedIn: currentProfile ? currentProfile.whatsappOptedIn : body.whatsappOptedIn === true,
       demographicCountry: clean(body.demographicCountry, 120),
       demographicRegion: clean(body.demographicRegion, 120),
       ageBand: clean(body.ageBand, 40),

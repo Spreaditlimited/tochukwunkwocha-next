@@ -75,7 +75,15 @@ function formatDate(value: Date | string | null) {
   return `${Number(part("day"))} ${part("month")} ${part("year")} at ${part("hour")}:${part("minute")}`
 }
 
-export function ProfileSecurityPanel({ profile: initialProfile, security }: { profile: Profile; security: SecurityPayload }) {
+export function ProfileSecurityPanel({
+  profile: initialProfile,
+  security,
+  isManagedGroupLearner = false
+}: {
+  profile: Profile
+  security: SecurityPayload
+  isManagedGroupLearner?: boolean
+}) {
   const router = useRouter()
   const profilePictureInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState(initialProfile)
@@ -316,15 +324,15 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
                     required
                   />
                 </label>
-                <label className="block">
+                {!isManagedGroupLearner ? <label className="block">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email Address</span>
                   <input
                     className="w-full cursor-not-allowed rounded-md border border-input bg-muted/50 px-4 py-3 text-sm font-medium text-muted-foreground outline-none"
                     value={profile.email}
                     readOnly
                   />
-                </label>
-                <label className="block sm:col-span-2">
+                </label> : null}
+                {!isManagedGroupLearner ? <label className="block sm:col-span-2">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">WhatsApp / Phone</span>
                   <input
                     className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
@@ -332,7 +340,7 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
                     onChange={(event) => setProfile((current) => ({ ...current, phone: event.target.value }))}
                     placeholder="+234..."
                   />
-                </label>
+                </label> : null}
               </div>
 
               <div className="rounded-xl border border-border bg-muted/20 p-5">
@@ -391,7 +399,7 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
               </div>
 
               {/* WhatsApp Toggle */}
-              <label className="group relative flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-background p-5 transition-colors hover:border-primary/20 hover:shadow-sm">
+              {!isManagedGroupLearner ? <label className="group relative flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-background p-5 transition-colors hover:border-primary/20 hover:shadow-sm">
                 <div>
                   <span className="block text-sm font-bold text-foreground">WhatsApp Notifications</span>
                   <span className="mt-1 block text-xs font-medium text-muted-foreground">Receive class reminders and updates</span>
@@ -406,7 +414,7 @@ export function ProfileSecurityPanel({ profile: initialProfile, security }: { pr
                   <div className="h-6 w-11 rounded-full bg-muted-foreground/30 transition-colors peer-checked:bg-primary peer-focus:ring-2 peer-focus:ring-primary/30"></div>
                   <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
                 </div>
-              </label>
+              </label> : null}
 
               {/* Certificate Identity Info */}
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-muted/30 p-5 sm:flex-row sm:items-center sm:justify-between">

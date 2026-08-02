@@ -652,6 +652,26 @@ export async function getStudentProfile(accountId: bigint) {
   }
 }
 
+export async function isManagedGroupLearnerAccount(accountId: bigint) {
+  const familyRows = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+    SELECT id
+    FROM family_children
+    WHERE account_id = ${accountId}
+      AND status = 'active'
+    LIMIT 1
+  `).catch(() => [])
+  if (familyRows.length) return true
+
+  const schoolRows = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+    SELECT id
+    FROM school_students
+    WHERE account_id = ${accountId}
+      AND status = 'active'
+    LIMIT 1
+  `).catch(() => [])
+  return schoolRows.length > 0
+}
+
 export async function updateStudentProfile(accountId: bigint, input: {
   fullName: string
   phoneE164?: string

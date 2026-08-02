@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 
 import {
-  assertFamilyLearnersCanEnroll,
   consumeFamilySeatsForChildren,
   hasPurchasedFamilySeats,
   normalizeFamilyChildren,
@@ -102,8 +101,6 @@ export async function POST(request: Request) {
     if (!familyEnrollmentEnabledForCourse(courseSlug)) {
       return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
     }
-    await assertFamilyLearnersCanEnroll(children, courseSlug)
-
     try {
       const consumed = await consumeFamilySeatsForChildren({
         parentAccountId: session.account.id,

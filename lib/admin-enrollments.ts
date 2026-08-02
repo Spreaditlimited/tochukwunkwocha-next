@@ -18,7 +18,7 @@ import { createStudentPasswordResetToken, createStudentTemporaryPassword } from 
 import { sendEmail } from "@/lib/email"
 import { sendManualPaymentMetaPurchase as dispatchManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { addColumnIfMissing } from "@/lib/schema-guards"
-import { assertFamilyLearnersCanEnroll, normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
+import { normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
 import { familyEnrollmentEnabledForCourse } from "@/lib/payments/course-checkout"
 import { ensurePaystackAuditTable } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
@@ -1057,16 +1057,7 @@ export async function addExternalStudentPayment(input: {
   if (groupLearners.length > seatCount) {
     throw new Error(`You can assign no more than ${seatCount} learners from this group purchase.`)
   }
-  const learnerEmails = groupLearners.map((learner) => normalizeEmail(learner.email)).filter(Boolean)
-  if (learnerEmails.includes(email)) {
-    throw new Error("The parent email cannot also be used as a learner email.")
-  }
-  if (new Set(learnerEmails).size !== learnerEmails.length) {
-    throw new Error("Each learner email must be unique.")
-  }
-  if (buyerType === "family") {
-    await assertFamilyLearnersCanEnroll(groupLearners, courseSlug)
-  } else {
+  if (buyerType !== "family") {
     await assertNoActiveIndividualEnrollment({ email, courseSlug })
   }
 

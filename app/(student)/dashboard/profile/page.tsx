@@ -1,6 +1,6 @@
 import { ProfileSecurityPanel } from "@/components/student-dashboard/ProfileSecurityPanel"
 import { StudentDashboardShell } from "@/components/student-dashboard/StudentDashboardShell"
-import { getStudentProfile, listStudentSecurity, requireStudent } from "@/lib/student-auth"
+import { getStudentProfile, isManagedGroupLearnerAccount, listStudentSecurity, requireStudent } from "@/lib/student-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -8,6 +8,7 @@ export default async function StudentProfilePage() {
   const session = await requireStudent()
   const profile = await getStudentProfile(session.account.id)
   const security = await listStudentSecurity(session.account.id, session.token)
+  const isManagedGroupLearner = await isManagedGroupLearnerAccount(session.account.id)
 
   return (
     <StudentDashboardShell 
@@ -15,8 +16,10 @@ export default async function StudentProfilePage() {
       active="profile" 
       title="Profile & Security"
       eyebrow="Account Settings"
+      hideAccountEmail={isManagedGroupLearner}
     >
       <ProfileSecurityPanel
+        isManagedGroupLearner={isManagedGroupLearner}
         profile={{
           fullName: profile.fullName,
           email: profile.email,

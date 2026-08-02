@@ -57,6 +57,12 @@ function addMinutes(value: Date | null, minutes: number) {
   return new Date(value.getTime() + minutes * 60 * 1000)
 }
 
+const LIVE_REMINDER_MAX_CHANNEL_ATTEMPTS = 5
+const LIVE_REMINDER_RETRY_DELAY_MS = 10 * 60 * 1000
+
+type LiveReminderStage = "day_before" | "morning_of"
+type LiveReminderChannel = "email" | "whatsapp"
+
 function resolveRelativeStart(batchStartAt: Date | null, dayOffset: number, timeOfDay: string) {
   if (!batchStartAt) return null
   const time = normalizeTime(timeOfDay)
@@ -157,6 +163,27 @@ export async function ensureCourseLiveSessionTables() {
       UNIQUE KEY uniq_tochukwu_live_reminder_stage (session_uuid, reminder_stage),
       KEY idx_tochukwu_live_reminder_due (reminder_stage, due_at, sent_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_course_live_session_reminder_deliveries (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      session_uuid VARCHAR(64) NOT NULL,
+      reminder_stage VARCHAR(32) NOT NULL,
+      recipient_key VARCHAR(320) NOT NULL,
+      channel VARCHAR(24) NOT NULL,
+      destination VARCHAR(500) NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      attempts INT NOT NULL DEFAULT 0,
+      provider_message_id VARCHAR(500) NULL,
+      last_error VARCHAR(500) NULL,
+      last_attempt_at DATETIME NULL,
+      sent_at DATETIME NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_tochukwu_live_reminder_delivery (session_uuid, reminder_stage, recipient_key, channel),
+      KEY idx_tochukwu_live_reminder_delivery_status (status, last_attempt_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
 }
 
@@ -332,7 +359,9 @@ export async function listStudentLiveSessionsForPairs(pairs: Array<{ courseSlug:
 async function listSessionRecipients(courseSlug: string, batchKey: string) {
   return prisma.$queryRaw<Array<{ email: string; fullName: string | null; phone: string | null }>>(Prisma.sql`
     SELECT DISTINCT email, fullName, phone FROM (
-      SELECT LOWER(o.email) AS email, o.first_name AS fullName, o.phone AS phone
+      SELECT LOWER(o.email) COLLATE utf8mb4_unicode_ci AS email,
+             o.first_name COLLATE utf8mb4_unicode_ci AS fullName,
+             o.phone COLLATE utf8mb4_unicode_ci AS phone
       FROM course_orders o
       WHERE o.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
         AND o.batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
@@ -341,7 +370,9 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
 
       UNION
 
-      SELECT LOWER(m.email) AS email, m.first_name AS fullName, m.phone AS phone
+      SELECT LOWER(m.email) COLLATE utf8mb4_unicode_ci AS email,
+             m.first_name COLLATE utf8mb4_unicode_ci AS fullName,
+             m.phone COLLATE utf8mb4_unicode_ci AS phone
       FROM course_manual_payments m
       WHERE m.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
         AND m.batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
@@ -350,7 +381,9 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
 
       UNION
 
-      SELECT LOWER(c.email) AS email, c.full_name AS fullName, f.parent_phone AS phone
+      SELECT LOWER(f.parent_email) COLLATE utf8mb4_unicode_ci AS email,
+             f.parent_name COLLATE utf8mb4_unicode_ci AS fullName,
+             f.parent_phone COLLATE utf8mb4_unicode_ci AS phone
       FROM family_child_enrollments e
       JOIN family_children c ON c.id = e.child_id
       JOIN family_accounts f ON f.id = e.family_id
@@ -371,7 +404,7 @@ function dashboardUrl() {
 async function sendLiveSessionEmail(input: {
   session: CourseLiveSessionRow
   recipient: { email: string; fullName: string | null; phone?: string | null }
-  stage: "day_before" | "morning_of"
+  stage: LiveReminderStage
 }) {
   const course = courseName(input.session.courseSlug)
   const name = clean(input.recipient.fullName, 160)
@@ -401,7 +434,7 @@ async function sendLiveSessionEmail(input: {
   return sendBrevoTransactionalEmail({ to: input.recipient.email, name, subject, html, text })
 }
 
-function liveReminderDueAt(session: CourseLiveSessionRow, stage: "day_before" | "morning_of") {
+function liveReminderDueAt(session: CourseLiveSessionRow, stage: LiveReminderStage) {
   if (!session.startsAt) return null
   if (stage === "day_before") {
     return new Date(watWallDateTimeMs(session.startsAt) - 24 * 60 * 60 * 1000)
@@ -416,7 +449,7 @@ function liveReminderDueAt(session: CourseLiveSessionRow, stage: "day_before" | 
   ))
 }
 
-async function reminderAlreadySent(sessionUuid: string, stage: "day_before" | "morning_of") {
+async function reminderAlreadySent(sessionUuid: string, stage: LiveReminderStage) {
   const rows = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
     SELECT id
     FROM tochukwu_course_live_session_reminder_log
@@ -428,12 +461,139 @@ async function reminderAlreadySent(sessionUuid: string, stage: "day_before" | "m
   return Boolean(rows[0])
 }
 
+type ReminderDeliveryClaim = {
+  shouldAttempt: boolean
+  terminal: boolean
+  attempts: number
+}
+
+async function claimReminderDelivery(input: {
+  sessionUuid: string
+  stage: LiveReminderStage
+  recipientKey: string
+  channel: LiveReminderChannel
+  destination: string
+}): Promise<ReminderDeliveryClaim> {
+  const now = new Date()
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO tochukwu_course_live_session_reminder_deliveries
+        (session_uuid, reminder_stage, recipient_key, channel, destination, status, attempts, created_at, updated_at)
+      VALUES
+        (${input.sessionUuid}, ${input.stage}, ${input.recipientKey}, ${input.channel}, ${input.destination || null}, 'pending', 0, ${now}, ${now})
+      ON DUPLICATE KEY UPDATE destination = VALUES(destination), updated_at = VALUES(updated_at)
+    `
+    const rows = await tx.$queryRaw<Array<{
+      status: string
+      attempts: number | bigint
+      lastAttemptAt: Date | null
+    }>>(Prisma.sql`
+      SELECT status, attempts, last_attempt_at AS lastAttemptAt
+      FROM tochukwu_course_live_session_reminder_deliveries
+      WHERE session_uuid = ${input.sessionUuid}
+        AND reminder_stage = ${input.stage}
+        AND recipient_key = ${input.recipientKey}
+        AND channel = ${input.channel}
+      LIMIT 1
+      FOR UPDATE
+    `)
+    const row = rows[0]
+    const attempts = Number(row?.attempts || 0)
+    if (["sent", "skipped", "failed_permanent"].includes(clean(row?.status, 32))) {
+      return { shouldAttempt: false, terminal: true, attempts }
+    }
+    if (attempts >= LIVE_REMINDER_MAX_CHANNEL_ATTEMPTS) {
+      await tx.$executeRaw`
+        UPDATE tochukwu_course_live_session_reminder_deliveries
+        SET status = 'failed_permanent', updated_at = ${now}
+        WHERE session_uuid = ${input.sessionUuid}
+          AND reminder_stage = ${input.stage}
+          AND recipient_key = ${input.recipientKey}
+          AND channel = ${input.channel}
+      `
+      return { shouldAttempt: false, terminal: true, attempts }
+    }
+    if (row?.lastAttemptAt && now.getTime() - row.lastAttemptAt.getTime() < LIVE_REMINDER_RETRY_DELAY_MS) {
+      return { shouldAttempt: false, terminal: false, attempts }
+    }
+    const nextAttempts = attempts + 1
+    await tx.$executeRaw`
+      UPDATE tochukwu_course_live_session_reminder_deliveries
+      SET status = 'processing', attempts = ${nextAttempts}, last_attempt_at = ${now}, last_error = NULL, updated_at = ${now}
+      WHERE session_uuid = ${input.sessionUuid}
+        AND reminder_stage = ${input.stage}
+        AND recipient_key = ${input.recipientKey}
+        AND channel = ${input.channel}
+    `
+    return { shouldAttempt: true, terminal: false, attempts: nextAttempts }
+  })
+}
+
+async function finishReminderDelivery(input: {
+  sessionUuid: string
+  stage: LiveReminderStage
+  recipientKey: string
+  channel: LiveReminderChannel
+  status: "sent" | "skipped" | "failed" | "failed_permanent"
+  providerMessageId?: string | null
+  error?: string
+}) {
+  const now = new Date()
+  await prisma.$executeRaw`
+    UPDATE tochukwu_course_live_session_reminder_deliveries
+    SET status = ${input.status},
+        provider_message_id = ${clean(input.providerMessageId, 500) || null},
+        last_error = ${clean(input.error, 500) || null},
+        sent_at = ${input.status === "sent" || input.status === "skipped" ? now : null},
+        updated_at = ${now}
+    WHERE session_uuid = ${input.sessionUuid}
+      AND reminder_stage = ${input.stage}
+      AND recipient_key = ${input.recipientKey}
+      AND channel = ${input.channel}
+  `
+}
+
+async function deliverReminderChannel(input: {
+  sessionUuid: string
+  stage: LiveReminderStage
+  recipientKey: string
+  channel: LiveReminderChannel
+  destination: string
+  send: () => Promise<{ ok: boolean; skipped?: boolean; reason?: string; messageId?: string | null }>
+}) {
+  const claim = await claimReminderDelivery(input)
+  if (!claim.shouldAttempt) return { terminal: claim.terminal, sent: false, error: "" }
+  try {
+    const result = await input.send()
+    if (result.skipped && result.reason !== "missing_phone") {
+      throw new Error(`WhatsApp reminder was not submitted: ${result.reason || "unknown reason"}.`)
+    }
+    const status = result.skipped ? "skipped" : "sent"
+    await finishReminderDelivery({
+      ...input,
+      status,
+      providerMessageId: result.messageId
+    })
+    return { terminal: true, sent: status === "sent", error: "" }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const terminal = claim.attempts >= LIVE_REMINDER_MAX_CHANNEL_ATTEMPTS
+    await finishReminderDelivery({
+      ...input,
+      status: terminal ? "failed_permanent" : "failed",
+      error: message
+    })
+    return { terminal, sent: false, error: message }
+  }
+}
+
 async function recordReminderStage(input: {
   sessionUuid: string
-  stage: "day_before" | "morning_of"
+  stage: LiveReminderStage
   dueAt: Date
   recipientCount: number
   sentCount: number
+  completed: boolean
   lastError?: string
 }) {
   const now = new Date()
@@ -441,7 +601,7 @@ async function recordReminderStage(input: {
     INSERT INTO tochukwu_course_live_session_reminder_log
       (session_uuid, reminder_stage, due_at, recipient_count, sent_count, last_error, created_at, sent_at)
     VALUES
-      (${input.sessionUuid}, ${input.stage}, ${input.dueAt}, ${input.recipientCount}, ${input.sentCount}, ${clean(input.lastError, 500) || null}, ${now}, ${now})
+      (${input.sessionUuid}, ${input.stage}, ${input.dueAt}, ${input.recipientCount}, ${input.sentCount}, ${clean(input.lastError, 500) || null}, ${now}, ${input.completed ? now : null})
     ON DUPLICATE KEY UPDATE
       due_at = VALUES(due_at),
       recipient_count = VALUES(recipient_count),
@@ -467,10 +627,11 @@ export async function sendDueLiveSessionReminders() {
   `)
   const now = Date.now()
   let sent = 0
+  let whatsappSent = 0
   let attemptedSessions = 0
   let attemptedStages = 0
   for (const session of sessions) {
-    const stages: Array<"day_before" | "morning_of"> = ["day_before", "morning_of"]
+    const stages: LiveReminderStage[] = ["day_before", "morning_of"]
     let sessionAttempted = false
     for (const stage of stages) {
       const dueAt = liveReminderDueAt(session, stage)
@@ -478,33 +639,58 @@ export async function sendDueLiveSessionReminders() {
       attemptedStages += 1
       sessionAttempted = true
       const recipients = await listSessionRecipients(normalizeSlug(session.courseSlug), normalizeBatchKey(session.batchKey))
-      let stageSent = 0
-      let lastError = ""
+      const errors: string[] = []
+      let allTerminal = true
       for (const recipient of recipients) {
-        try {
-          await sendLiveSessionEmail({ session, recipient, stage })
-          await sendLiveClassReminderWhatsApp({
+        const recipientKey = clean(recipient.email, 320).toLowerCase()
+        const emailResult = await deliverReminderChannel({
+          sessionUuid: session.sessionUuid,
+          stage,
+          recipientKey,
+          channel: "email",
+          destination: recipient.email,
+          send: () => sendLiveSessionEmail({ session, recipient, stage })
+        })
+        const whatsappResult = await deliverReminderChannel({
+          sessionUuid: session.sessionUuid,
+          stage,
+          recipientKey,
+          channel: "whatsapp",
+          destination: clean(recipient.phone, 80),
+          send: () => sendLiveClassReminderWhatsApp({
             phone: recipient.phone,
             fullName: recipient.fullName,
             courseSlug: session.courseSlug,
             sessionTitle: session.sessionTitle
-          }).catch(() => null)
-          stageSent += 1
+          })
+        })
+        if (emailResult.sent) {
           sent += 1
-        } catch (error) {
-          lastError = error instanceof Error ? error.message : String(error)
         }
+        if (whatsappResult.sent) whatsappSent += 1
+        allTerminal = allTerminal && emailResult.terminal && whatsappResult.terminal
+        if (emailResult.error) errors.push(`Email ${recipient.email}: ${emailResult.error}`)
+        if (whatsappResult.error) errors.push(`WhatsApp ${recipient.email}: ${whatsappResult.error}`)
       }
+      const deliveryCounts = await prisma.$queryRaw<Array<{ emailSent: number | bigint }>>(Prisma.sql`
+        SELECT COUNT(*) AS emailSent
+        FROM tochukwu_course_live_session_reminder_deliveries
+        WHERE session_uuid = ${session.sessionUuid}
+          AND reminder_stage = ${stage}
+          AND channel = 'email'
+          AND status = 'sent'
+      `)
       await recordReminderStage({
         sessionUuid: session.sessionUuid,
         stage,
         dueAt,
         recipientCount: recipients.length,
-        sentCount: stageSent,
-        lastError
+        sentCount: Number(deliveryCounts[0]?.emailSent || 0),
+        completed: allTerminal,
+        lastError: errors.join(" | ") || (allTerminal ? "" : "One or more reminder channels are awaiting retry.")
       })
     }
     if (sessionAttempted) attemptedSessions += 1
   }
-  return { ok: true, attemptedSessions, attemptedStages, sent }
+  return { ok: true, attemptedSessions, attemptedStages, sent, whatsappSent }
 }

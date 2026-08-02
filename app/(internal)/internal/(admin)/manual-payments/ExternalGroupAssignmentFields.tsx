@@ -7,7 +7,6 @@ import { PremiumPicker } from "@/components/PremiumPicker"
 
 type LearnerRow = {
   fullName: string
-  email: string
   age: string
   classLevel: string
 }
@@ -17,7 +16,7 @@ const inputClass =
 const labelClass = "mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
 
 function emptyLearner(): LearnerRow {
-  return { fullName: "", email: "", age: "", classLevel: "" }
+  return { fullName: "", age: "", classLevel: "" }
 }
 
 export function ExternalGroupAssignmentFields() {
@@ -131,14 +130,10 @@ export function ExternalGroupAssignmentFields() {
                       </button>
                     ) : null}
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <label>
                       <span className={labelClass}>Full name</span>
                       <input value={learner.fullName} onChange={(event) => updateLearner(index, "fullName", event.target.value)} className={inputClass} required={assignNow} />
-                    </label>
-                    <label>
-                      <span className={labelClass}>Email address</span>
-                      <input value={learner.email} onChange={(event) => updateLearner(index, "email", event.target.value)} type="email" className={inputClass} placeholder="Optional" />
                     </label>
                     <label>
                       <span className={labelClass}>Age</span>

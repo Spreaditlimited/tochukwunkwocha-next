@@ -66,12 +66,21 @@ async function sendTransactionalWhatsApp(payload: TransactionalWhatsAppPayload) 
     signal: AbortSignal.timeout(8_000)
   })
 
+  const responseText = await response.text().catch(() => "")
   if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    throw new Error(body || `Transactional WhatsApp webhook failed (${response.status})`)
+    throw new Error(responseText || `Transactional WhatsApp webhook failed (${response.status})`)
   }
-
-  return { ok: true }
+  const responseBody = (() => {
+    try {
+      return responseText ? JSON.parse(responseText) as Record<string, unknown> : null
+    } catch {
+      return null
+    }
+  })()
+  const messages = Array.isArray(responseBody?.messages) ? responseBody.messages : []
+  const firstMessage = messages[0] && typeof messages[0] === "object" ? messages[0] as Record<string, unknown> : null
+  const messageId = clean(responseBody?.messageId || responseBody?.message_id || firstMessage?.id, 500)
+  return { ok: true, messageId: messageId || null }
 }
 
 export function sendManualPaymentSubmittedWhatsApp(input: {

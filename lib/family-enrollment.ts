@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client"
 
 import {
   CourseEnrollmentConflictError,
-  assertNoActiveIndividualEnrollment,
   claimIndividualCourseEnrollment,
   ensureEnrollmentClaimTable
 } from "@/lib/enrollment-guard"
@@ -20,7 +19,6 @@ export type FamilyChildInput = {
   fullName: string
   age?: string
   classLevel?: string
-  email?: string
   batchKey?: string
   batchLabel?: string
 }
@@ -103,26 +101,12 @@ export function normalizeFamilyChildren(input: unknown): FamilyChildInput[] {
         fullName: clean(child.fullName || child.full_name || child.name, 180),
         age: clean(child.age, 40),
         classLevel: clean(child.classLevel || child.class_level || child.className, 80),
-        email: normalizeEmail(child.email),
         batchKey: clean(child.batchKey || child.batch_key, 64),
         batchLabel: clean(child.batchLabel || child.batch_label, 120)
       }
     })
     .filter((child) => Boolean(child.fullName))
     .slice(0, MAX_CHILDREN)
-}
-
-export async function assertFamilyLearnersCanEnroll(childrenInput: unknown, courseSlugInput: string) {
-  const courseSlug = clean(courseSlugInput, 120).toLowerCase()
-  const children = normalizeFamilyChildren(childrenInput)
-  const emails = children.map((child) => normalizeEmail(child.email)).filter(Boolean)
-  if (new Set(emails).size !== emails.length) {
-    throw new Error("Each learner email must be unique.")
-  }
-  for (const email of emails) {
-    await assertNoActiveIndividualEnrollment({ email, courseSlug })
-  }
-  return true
 }
 
 export async function hasPurchasedFamilySeats(parentAccountId: bigint | number) {
@@ -589,7 +573,7 @@ export async function savePendingFamilyChildren(input: {
       INSERT INTO family_children
         (child_uuid, full_name, age, class_level, email, status, source_type, source_uuid, created_at, updated_at)
       VALUES
-        (${childUuid}, ${child.fullName}, ${child.age || null}, ${child.classLevel || null}, ${child.email || null},
+        (${childUuid}, ${child.fullName}, ${child.age || null}, ${child.classLevel || null}, NULL,
          'pending_payment', ${sourceType}, ${sourceUuid}, ${timestamp}, ${timestamp})
     `
     const rows = await prisma.$queryRaw<{ id: bigint }[]>`
@@ -729,7 +713,7 @@ export async function consumeFamilySeatsForChildren(input: {
     for (const child of assignedChildren) {
       const account = await findOrCreateStudentAccount({
         fullName: child.fullName,
-        email: child.email || syntheticChildEmail()
+        email: syntheticChildEmail()
       })
       const sourceUuid = `seat_${crypto.randomUUID().replace(/-/g, "")}`
       const childUuid = `fch_${crypto.randomUUID().replace(/-/g, "")}`
@@ -738,7 +722,7 @@ export async function consumeFamilySeatsForChildren(input: {
           (child_uuid, family_id, parent_account_id, account_id, full_name, age, class_level, email, status, source_type, source_uuid, created_at, updated_at)
         VALUES
           (${childUuid}, ${family.id}, ${BigInt(input.parentAccountId)}, ${account.id}, ${child.fullName}, ${child.age || null},
-           ${child.classLevel || null}, ${child.email || null}, 'active', 'family_seat', ${sourceUuid}, ${timestamp}, ${timestamp})
+           ${child.classLevel || null}, NULL, 'active', 'family_seat', ${sourceUuid}, ${timestamp}, ${timestamp})
       `
       const childRows = await tx.$queryRaw<{ id: bigint }[]>`
         SELECT id
