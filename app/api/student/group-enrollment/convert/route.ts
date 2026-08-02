@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 
 import { convertIndividualEnrollmentToGroup } from "@/lib/group-enrollment-conversion"
 import { getStudentSession, verifyStudentPassword } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
+}
+
+function isPrismaError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError
+    || error instanceof Prisma.PrismaClientUnknownRequestError
+    || error instanceof Prisma.PrismaClientRustPanicError
+    || error instanceof Prisma.PrismaClientInitializationError
+    || error instanceof Prisma.PrismaClientValidationError
 }
 
 export async function POST(request: Request) {
@@ -46,7 +55,19 @@ export async function POST(request: Request) {
         : "Enrollment moved to Group Enrollment successfully."
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not move this enrollment to Group Enrollment."
-    return NextResponse.json({ ok: false, error: message }, { status: /does not belong|password/i.test(message) ? 403 : 400 })
+    const databaseError = isPrismaError(error)
+    const internalMessage = error instanceof Error ? error.message : String(error)
+    console.error("individual_to_group_conversion_failed", {
+      accountId: session.account.id.toString(),
+      sourceType,
+      sourceUuid,
+      databaseError,
+      error: internalMessage
+    })
+    const message = databaseError
+      ? "The enrollment move could not be completed. Please try again."
+      : internalMessage || "Could not move this enrollment to Group Enrollment."
+    const status = databaseError ? 500 : /does not belong|password/i.test(message) ? 403 : 400
+    return NextResponse.json({ ok: false, error: message }, { status })
   }
 }

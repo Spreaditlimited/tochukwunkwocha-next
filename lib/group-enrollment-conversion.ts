@@ -7,6 +7,9 @@ import { assignFamilyChildCode } from "@/lib/family-enrollment"
 import { familyEnrollmentEnabledForCourse, normalizeEmail } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
 
+const CONVERSION_TRANSACTION_MAX_WAIT_MS = 10_000
+const CONVERSION_TRANSACTION_TIMEOUT_MS = 30_000
+
 export type ConvertibleIndividualEnrollment = {
   sourceType: "course_order" | "manual_payment"
   sourceUuid: string
@@ -318,6 +321,10 @@ export async function convertIndividualEnrollmentToGroup(input: {
   const sourceUuid = clean(input.sourceUuid, 80)
   if (!parentEmail || !childName || !sourceUuid) throw new Error("Enrollment conversion details are incomplete.")
 
+  // Password derivation is deliberately completed before opening the interactive
+  // transaction so CPU work does not consume the database transaction window.
+  const managedPassword = managedAccountPassword()
+
   const tables = await existingTables([
     "tochukwu_learning_lesson_progress",
     "tochukwu_learning_assignments",
@@ -398,14 +405,13 @@ export async function convertIndividualEnrollmentToGroup(input: {
     if (!familyId) throw new Error("Could not create the group account.")
 
     const childEmail = syntheticChildEmail()
-    const password = managedAccountPassword()
     const childAccount = await tx.studentAccount.create({
       data: {
         accountUuid: `sa_${crypto.randomUUID().replace(/-/g, "")}`,
         fullName: childName,
         email: childEmail,
-        passwordHash: password.hash,
-        passwordSalt: password.salt,
+        passwordHash: managedPassword.hash,
+        passwordSalt: managedPassword.salt,
         mustResetPassword: false,
         phoneE164: null,
         whatsappOptedIn: false,
@@ -531,6 +537,9 @@ export async function convertIndividualEnrollmentToGroup(input: {
       batchLabel,
       alreadyConverted: false
     }
+  }, {
+    maxWait: CONVERSION_TRANSACTION_MAX_WAIT_MS,
+    timeout: CONVERSION_TRANSACTION_TIMEOUT_MS
   })
 
   await reconcileFamilyOwnerBrevoLists({
