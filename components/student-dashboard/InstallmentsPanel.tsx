@@ -10,6 +10,7 @@ import { showStudentToast } from "@/components/student-dashboard/StudentActionTo
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { LearningCourseOption } from "@/lib/student-dashboard"
 import type { StudentInstallmentPlan } from "@/lib/student-installments"
+import { formatBatchPickerLabel } from "@/lib/utils"
 
 type Props = {
   account: {
@@ -73,7 +74,7 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
     if (!batches.length) return [{ value: "", label: "No open batch available", disabled: true }]
     return batches.map((batch) => ({
       value: batch.batchKey,
-      label: `${batch.batchLabel}${courseSlug === "prompt-to-profit-holiday" || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
+      label: `${formatBatchPickerLabel(batch.batchLabel, batch.batchStartAt)}${courseSlug === "prompt-to-profit-holiday" || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
     }))
   }, [courseSlug, selectedCourse])
   const provider = isNigeria(country) ? "paystack" : "stripe"

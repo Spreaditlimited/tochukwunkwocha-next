@@ -8,7 +8,7 @@ import { familyEnrollmentEnabledForCourse, normalizeEmail } from "@/lib/payments
 import { prisma } from "@/lib/prisma"
 
 const CONVERSION_TRANSACTION_MAX_WAIT_MS = 10_000
-const CONVERSION_TRANSACTION_TIMEOUT_MS = 30_000
+const CONVERSION_TRANSACTION_TIMEOUT_MS = 90_000
 
 export type ConvertibleIndividualEnrollment = {
   sourceType: "course_order" | "manual_payment"
@@ -17,6 +17,7 @@ export type ConvertibleIndividualEnrollment = {
   courseName: string
   batchKey: string
   batchLabel: string
+  batchStartAt: Date | string | null
   paidAt: Date | string | null
 }
 
@@ -26,6 +27,7 @@ type ConversionSourceRow = {
   courseSlug: string
   batchKey: string | null
   batchLabel: string | null
+  batchStartAt: Date | null
   email: string
   fullName: string | null
   phone: string | null
@@ -115,6 +117,10 @@ export async function listConvertibleIndividualEnrollments(input: {
            LOWER(o.course_slug) COLLATE utf8mb4_unicode_ci AS courseSlug,
            o.batch_key COLLATE utf8mb4_unicode_ci AS batchKey,
            o.batch_label COLLATE utf8mb4_unicode_ci AS batchLabel,
+           (SELECT batch.batch_start_at FROM course_batches batch
+            WHERE batch.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
+              AND batch.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
+            LIMIT 1) AS batchStartAt,
            LOWER(o.email) COLLATE utf8mb4_unicode_ci AS email,
            o.first_name COLLATE utf8mb4_unicode_ci AS fullName,
            o.phone COLLATE utf8mb4_unicode_ci AS phone,
@@ -139,6 +145,10 @@ export async function listConvertibleIndividualEnrollments(input: {
            LOWER(m.course_slug) COLLATE utf8mb4_unicode_ci AS courseSlug,
            m.batch_key COLLATE utf8mb4_unicode_ci AS batchKey,
            m.batch_label COLLATE utf8mb4_unicode_ci AS batchLabel,
+           (SELECT batch.batch_start_at FROM course_batches batch
+            WHERE batch.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
+              AND batch.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
+            LIMIT 1) AS batchStartAt,
            LOWER(m.email) COLLATE utf8mb4_unicode_ci AS email,
            m.first_name COLLATE utf8mb4_unicode_ci AS fullName,
            m.phone COLLATE utf8mb4_unicode_ci AS phone,
@@ -183,6 +193,7 @@ export async function listConvertibleIndividualEnrollments(input: {
       courseName: courseName(row.courseSlug),
       batchKey: clean(row.batchKey, 64),
       batchLabel: clean(row.batchLabel, 120) || "Immediate access",
+      batchStartAt: row.batchStartAt,
       paidAt: row.paidAt
     }))
 }
@@ -194,7 +205,7 @@ async function findLockedSource(
   if (input.sourceType === "course_order") {
     const rows = await tx.$queryRaw<ConversionSourceRow[]>(Prisma.sql`
       SELECT 'course_order' AS sourceType, order_uuid AS sourceUuid, LOWER(course_slug) AS courseSlug,
-             batch_key AS batchKey, batch_label AS batchLabel, LOWER(email) AS email,
+             batch_key AS batchKey, batch_label AS batchLabel, NULL AS batchStartAt, LOWER(email) AS email,
              first_name AS fullName, phone, status, buyer_type AS buyerType,
              COALESCE(paid_at, updated_at, created_at) AS paidAt
       FROM course_orders
@@ -206,7 +217,7 @@ async function findLockedSource(
   }
   const rows = await tx.$queryRaw<ConversionSourceRow[]>(Prisma.sql`
     SELECT 'manual_payment' AS sourceType, payment_uuid AS sourceUuid, LOWER(course_slug) AS courseSlug,
-           batch_key AS batchKey, batch_label AS batchLabel, LOWER(email) AS email,
+           batch_key AS batchKey, batch_label AS batchLabel, NULL AS batchStartAt, LOWER(email) AS email,
            first_name AS fullName, phone, status, buyer_type AS buyerType,
            COALESCE(reviewed_at, updated_at, created_at) AS paidAt
     FROM course_manual_payments
@@ -312,6 +323,7 @@ export async function convertIndividualEnrollmentToGroup(input: {
   childName: string
   childAge?: string
   childClassLevel?: string
+  administrativeTargetBatchKey?: string
 }) {
   await Promise.all([ensureIndividualGroupConversionTable(), ensureEnrollmentClaimTable()])
   const parentEmail = normalizeEmail(input.parentEmail)
@@ -366,9 +378,34 @@ export async function convertIndividualEnrollmentToGroup(input: {
       throw new Error("Only an active paid individual enrollment can be converted.")
     }
     const courseSlug = clean(source.courseSlug, 120).toLowerCase()
-    const batchKey = clean(source.batchKey, 64)
-    const batchLabel = clean(source.batchLabel, 120)
+    const originalBatchKey = clean(source.batchKey, 64)
+    const originalBatchLabel = clean(source.batchLabel, 120)
+    let batchKey = originalBatchKey
+    let batchLabel = originalBatchLabel
     if (!familyEnrollmentEnabledForCourse(courseSlug)) throw new Error("Group enrollment is not available for this course.")
+
+    const administrativeTargetBatchKey = clean(input.administrativeTargetBatchKey, 64)
+    if (administrativeTargetBatchKey && administrativeTargetBatchKey !== originalBatchKey) {
+      const targetRows = await tx.$queryRaw<Array<{
+        batchKey: string
+        batchLabel: string | null
+        status: string | null
+        isActive: number | bigint | boolean | null
+      }>>(Prisma.sql`
+        SELECT batch_key AS batchKey, batch_label AS batchLabel, status, is_active AS isActive
+        FROM course_batches
+        WHERE course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
+          AND batch_key COLLATE utf8mb4_unicode_ci = ${administrativeTargetBatchKey} COLLATE utf8mb4_unicode_ci
+        LIMIT 1
+        FOR UPDATE
+      `)
+      const target = targetRows[0]
+      if (!target) throw new Error("The administrative target batch does not belong to this course.")
+      const targetOpen = Boolean(Number(target.isActive || 0)) || clean(target.status, 40).toLowerCase() === "open"
+      if (!targetOpen) throw new Error("The administrative target batch is closed.")
+      batchKey = clean(target.batchKey, 64)
+      batchLabel = clean(target.batchLabel, 120) || batchKey
+    }
 
     if (tables.has("student_certificates")) {
       const certificates = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
@@ -486,12 +523,14 @@ export async function convertIndividualEnrollmentToGroup(input: {
 
     if (input.sourceType === "course_order") {
       await tx.$executeRaw`
-        UPDATE course_orders SET buyer_type = 'family', seat_count = 1, family_account_id = ${familyId}, updated_at = ${timestamp}
+        UPDATE course_orders SET buyer_type = 'family', seat_count = 1, family_account_id = ${familyId},
+          batch_key = ${batchKey || null}, batch_label = ${batchLabel || null}, updated_at = ${timestamp}
         WHERE order_uuid = ${sourceUuid} AND status = 'paid' LIMIT 1
       `
     } else {
       await tx.$executeRaw`
-        UPDATE course_manual_payments SET buyer_type = 'family', seat_count = 1, family_account_id = ${familyId}, updated_at = ${timestamp}
+        UPDATE course_manual_payments SET buyer_type = 'family', seat_count = 1, family_account_id = ${familyId},
+          batch_key = ${batchKey || null}, batch_label = ${batchLabel || null}, updated_at = ${timestamp}
         WHERE payment_uuid = ${sourceUuid} AND status = 'approved' LIMIT 1
       `
     }
@@ -525,7 +564,12 @@ export async function convertIndividualEnrollmentToGroup(input: {
       VALUES
         (${conversionUuid}, ${input.parentAccountId}, ${childAccount.id}, ${familyId}, ${childId}, ${enrollmentId},
          ${input.sourceType}, ${sourceUuid}, ${courseSlug}, ${batchKey || null}, ${batchLabel || null}, ${childName},
-         ${JSON.stringify({ converted_by: "account_owner", progress_transferred: true })}, ${timestamp})
+         ${JSON.stringify({
+           converted_by: administrativeTargetBatchKey ? "administrator" : "account_owner",
+           progress_transferred: true,
+           original_batch_key: originalBatchKey || null,
+           original_batch_label: originalBatchLabel || null
+         })}, ${timestamp})
     `
     return {
       conversionUuid,

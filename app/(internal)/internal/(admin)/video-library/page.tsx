@@ -13,7 +13,7 @@ import {
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { listVideoLibrary } from "@/lib/admin-video-library"
-import { formatDateTimeWAT } from "@/lib/utils"
+import { formatBatchPickerLabel, formatDateTimeWAT } from "@/lib/utils"
 import {
   activateCourseBatchAction,
   cloneVideoLibraryModuleAction,
@@ -210,7 +210,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
     ...filterBatches.map((batch) => ({
       key: `${batch.courseSlug}-${batch.batchKey}`,
       value: batch.batchKey,
-      label: batch.batchLabel || batch.batchKey
+      label: formatBatchPickerLabel(batch.batchLabel || batch.batchKey, batch.batchStartAt)
     }))
   ]
   const courseBatchManager = (

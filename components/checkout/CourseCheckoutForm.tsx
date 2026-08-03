@@ -818,7 +818,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                         onChange={(event) => setBatchKey(event.target.value)}
                         options={batches.map((batch) => ({
                           value: batch.batchKey,
-                          label: `${batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
+                          label: `${formatBatchStart(batch.batchStartAt) ? `${batch.batchLabel} · Starts ${formatBatchStart(batch.batchStartAt)}` : batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
                         }))}
                       />
                       {selectedBatchStart ? (

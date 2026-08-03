@@ -7,6 +7,7 @@ import { PremiumPicker } from "@/components/PremiumPicker"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { ConvertibleIndividualEnrollment } from "@/lib/group-enrollment-conversion"
+import { formatBatchPickerLabel } from "@/lib/utils"
 
 const inputClass = "w-full rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary"
 const labelClass = "mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
@@ -30,7 +31,7 @@ export function IndividualToGroupConversionPanel({
   const selected = enrollments.find((item) => `${item.sourceType}:${item.sourceUuid}` === sourceKey) || enrollments[0]
   const enrollmentOptions = enrollments.map((item) => ({
     value: `${item.sourceType}:${item.sourceUuid}`,
-    label: `${item.courseName} · ${item.batchLabel}`
+    label: `${item.courseName} · ${formatBatchPickerLabel(item.batchLabel, item.batchStartAt)}`
   }))
 
   async function submit(event: FormEvent<HTMLFormElement>) {

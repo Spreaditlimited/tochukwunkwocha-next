@@ -3,6 +3,7 @@
 import { useState } from "react"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { formatBatchPickerLabel } from "@/lib/utils"
 
 type BatchOption = {
   batchKey: string
@@ -59,7 +60,7 @@ export function ModuleBatchRulesClient({
     { value: "", label: "Select batch" },
     ...batches.map((batch) => ({
       value: batch.batchKey,
-      label: batch.batchLabel || batch.batchKey
+      label: formatBatchPickerLabel(batch.batchLabel || batch.batchKey, batch.batchStartAt)
     }))
   ]
 

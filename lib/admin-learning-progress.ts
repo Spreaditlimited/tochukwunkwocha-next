@@ -1,5 +1,6 @@
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
+import { formatBatchPickerLabel } from "@/lib/utils"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -428,18 +429,26 @@ export async function listStudentsProgressByCourse(input?: {
     })
   }
 
-  const batchRows = await prisma.$queryRawUnsafe<Array<{ batch_key: string | null; batch_label: string | null }>>(`
-    SELECT DISTINCT batch_key, batch_label
+  const batchRows = await prisma.$queryRawUnsafe<Array<{ batch_key: string | null; batch_label: string | null; batch_start_at: Date | null }>>(`
+    SELECT DISTINCT batch_key, batch_label, batch_start_at
     FROM (
       SELECT LOWER(COALESCE(batch_key, '')) COLLATE utf8mb4_general_ci AS batch_key,
-        COALESCE(batch_label, 'Unspecified Batch') COLLATE utf8mb4_general_ci AS batch_label
+        COALESCE(batch_label, 'Unspecified Batch') COLLATE utf8mb4_general_ci AS batch_label,
+        (SELECT cb.batch_start_at FROM course_batches cb
+         WHERE LOWER(cb.course_slug) = LOWER(course_orders.course_slug)
+           AND LOWER(cb.batch_key) = LOWER(course_orders.batch_key)
+         LIMIT 1) AS batch_start_at
       FROM course_orders
       WHERE course_slug ${courseSlugWhereSql}
         AND status = 'paid'
         AND COALESCE(buyer_type, 'student') <> 'family'
       UNION
       SELECT LOWER(COALESCE(batch_key, '')) COLLATE utf8mb4_general_ci AS batch_key,
-        COALESCE(batch_label, 'Unspecified Batch') COLLATE utf8mb4_general_ci AS batch_label
+        COALESCE(batch_label, 'Unspecified Batch') COLLATE utf8mb4_general_ci AS batch_label,
+        (SELECT cb.batch_start_at FROM course_batches cb
+         WHERE LOWER(cb.course_slug) = LOWER(course_manual_payments.course_slug)
+           AND LOWER(cb.batch_key) = LOWER(course_manual_payments.batch_key)
+         LIMIT 1) AS batch_start_at
       FROM course_manual_payments
       WHERE course_slug ${courseSlugWhereSql}
         AND status = 'approved'
@@ -462,7 +471,10 @@ export async function listStudentsProgressByCourse(input?: {
   for (const row of batchRows) {
     const key = clean(row.batch_key, 120).toLowerCase() || "unspecified"
     if (key === "all" || availableBatches.some((item) => item.key === key)) continue
-    availableBatches.push({ key, label: clean(row.batch_label, 120) || "Unspecified Batch" })
+    availableBatches.push({
+      key,
+      label: formatBatchPickerLabel(clean(row.batch_label, 120) || "Unspecified Batch", row.batch_start_at)
+    })
   }
   if (Number(schoolRows[0]?.total || 0) > 0) availableBatches.push({ key: "school", label: "School Registration" })
 

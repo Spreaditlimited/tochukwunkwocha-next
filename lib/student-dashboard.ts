@@ -4,6 +4,7 @@ import { randomUUID } from "crypto"
 import { ensureAffiliateAlignment, matureAffiliateCommissions } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
+import { listCheckoutBatches } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -897,90 +898,22 @@ export async function listActiveLearningCourseOptions(): Promise<LearningCourseO
 
   if (!courses.length) return []
 
-  const batchRows = await prisma.$queryRaw<
-    Array<{
-      courseSlug: string
-      batchKey: string
-      batchLabel: string
-      batchStartAt: Date | string | null
-      seatLimit: number | bigint | null
-      isActive: number | bigint | boolean | null
-      enrolledCount: number | bigint | null
-    }>
-  >(Prisma.sql`
-    SELECT
-      b.course_slug AS courseSlug,
-      b.batch_key AS batchKey,
-      b.batch_label AS batchLabel,
-      b.batch_start_at AS batchStartAt,
-      b.seat_limit AS seatLimit,
-      b.is_active AS isActive,
-      (
-        COALESCE((
-          SELECT COUNT(*)
-          FROM course_orders
-          WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
-            AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
-            AND status = 'paid'
-            AND COALESCE(buyer_type, 'student') <> 'family'
-        ), 0)
-        +
-        COALESCE((
-          SELECT COUNT(*)
-          FROM course_manual_payments
-          WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
-            AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
-            AND status = 'approved'
-            AND COALESCE(buyer_type, 'student') <> 'family'
-        ), 0)
-        +
-        COALESCE((
-          SELECT COUNT(*)
-          FROM family_child_enrollments
-          WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
-            AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
-            AND status = 'active'
-        ), 0)
-        +
-        COALESCE((
-          SELECT SUM(GREATEST(0, seats_purchased - seats_consumed))
-          FROM family_seat_balances
-          WHERE course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
-            AND batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
-        ), 0)
-      ) AS enrolledCount
-    FROM course_batches b
-    WHERE (
-      b.is_active = 1
-      OR (b.course_slug COLLATE utf8mb4_unicode_ci = 'prompt-to-profit-holiday' COLLATE utf8mb4_unicode_ci AND b.status = 'open')
-    )
-      AND b.batch_start_at IS NOT NULL
-      AND DATE(b.batch_start_at) > DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))
-    ORDER BY b.course_slug ASC, b.is_active DESC, b.batch_start_at IS NULL ASC, b.batch_start_at ASC, b.created_at DESC
-  `)
-
-  const batchesByCourse = new Map<string, LearningCourseBatchOption[]>()
-  const courseSlugSet = new Set(courses.map((course) => course.courseSlug))
-  batchRows.forEach((row) => {
-    const courseSlug = cleanText(row.courseSlug, 120)
-    if (!courseSlugSet.has(courseSlug)) return
-    if (batchlessLearningCourseSlugs.has(courseSlug)) return
-    const seatLimit = row.seatLimit === null || row.seatLimit === undefined ? null : Number(row.seatLimit)
-    const enrolledCount = Number(row.enrolledCount || 0)
-    const batch: LearningCourseBatchOption = {
-      batchKey: cleanText(row.batchKey, 64),
-      batchLabel: cleanText(row.batchLabel, 120) || cleanText(row.batchKey, 64),
-      batchStartAt: row.batchStartAt instanceof Date
-        ? row.batchStartAt.toISOString()
-        : cleanText(row.batchStartAt, 40) || null,
-      remainingSeats: seatLimit === null ? null : Math.max(0, seatLimit - enrolledCount),
-      isActive: Boolean(Number(row.isActive || 0))
+  const batchEntries = await Promise.all(courses.map(async (course): Promise<[string, LearningCourseBatchOption[]]> => {
+    if (batchlessLearningCourseSlugs.has(course.courseSlug)) {
+      return [course.courseSlug, []]
     }
-    if (!batch.batchKey) return
-    const existing = batchesByCourse.get(courseSlug) || []
-    existing.push(batch)
-    batchesByCourse.set(courseSlug, existing)
-  })
+    const batches = await listCheckoutBatches(course.courseSlug)
+    return [course.courseSlug, batches
+      .filter((batch) => batch.status.toLowerCase() === "open")
+      .map((batch): LearningCourseBatchOption => ({
+        batchKey: batch.batchKey,
+        batchLabel: batch.batchLabel,
+        batchStartAt: batch.batchStartAt,
+        remainingSeats: batch.remainingSeats,
+        isActive: batch.isActive
+      }))]
+  }))
+  const batchesByCourse = new Map<string, LearningCourseBatchOption[]>(batchEntries)
 
   return courses.map((course) => ({
     ...course,

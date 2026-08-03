@@ -33,7 +33,7 @@ import {
 } from "@/lib/admin-enrollments"
 import { listEligibleAffiliateOptions } from "@/lib/admin-affiliates"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
-import { formatDate } from "@/lib/utils"
+import { formatBatchPickerLabel, formatDate } from "@/lib/utils"
 import {
   completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
@@ -144,7 +144,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     ...summaryBatches.map((batch) => ({
       key: `summary-${batch.courseSlug}-${batch.batchKey}`,
       value: batch.batchKey,
-      label: batch.batchLabel
+      label: formatBatchPickerLabel(batch.batchLabel, batch.batchStartAt)
     }))
   ]
   const ledgerBatchOptions = [
@@ -152,7 +152,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     ...batchesForSelected.map((batch) => ({
       key: `ledger-${batch.courseSlug}-${batch.batchKey}`,
       value: batch.batchKey,
-      label: batch.batchLabel
+      label: formatBatchPickerLabel(batch.batchLabel, batch.batchStartAt)
     }))
   ]
   const activationBatchOptions = batchesForSelected
@@ -160,7 +160,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     .map((batch) => ({
       key: `activation-${batch.courseSlug}-${batch.batchKey}`,
       value: batch.batchKey,
-      label: batch.batchLabel
+      label: formatBatchPickerLabel(batch.batchLabel, batch.batchStartAt)
     }))
   const activationDefaultBatch = batchKey !== "all" ? batchKey : activationBatchOptions[0]?.value || ""
   const activationDefaultSubject = activationDefaultBatch

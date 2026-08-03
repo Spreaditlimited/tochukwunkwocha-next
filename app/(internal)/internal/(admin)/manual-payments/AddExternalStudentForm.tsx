@@ -7,7 +7,7 @@ import { PremiumPicker } from "@/components/PremiumPicker"
 import { showInternalToast } from "@/components/internal/InternalActionToaster"
 import type { AffiliateAdminOption } from "@/lib/admin-affiliates"
 import type { EnrollmentBatchOption, EnrollmentCourseOption } from "@/lib/admin-enrollments"
-import { batchHasNotStarted } from "@/lib/utils"
+import { batchHasNotStarted, formatBatchPickerLabel } from "@/lib/utils"
 import {
   addExternalStudentPaymentAction,
   type ExternalStudentPaymentActionState
@@ -53,7 +53,7 @@ export function AddExternalStudentForm({
       .map((batch) => ({
         key: `${batch.courseSlug}-${batch.batchKey}`,
         value: batch.batchKey,
-        label: `${batch.batchLabel}${batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
+        label: `${formatBatchPickerLabel(batch.batchLabel, batch.batchStartAt)}${batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
       })),
     [batches, courseSlug]
   )

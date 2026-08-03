@@ -78,6 +78,15 @@ export function formatDateTimeWAT(value: Date | string | null | undefined) {
   }).format(date)} WAT`
 }
 
+export function formatBatchPickerLabel(
+  batchLabel: string | null | undefined,
+  batchStartAt: Date | string | null | undefined
+) {
+  const label = String(batchLabel || "").trim() || "Batch"
+  const start = formatDateTimeWAT(batchStartAt)
+  return `${label}${start ? ` · Starts ${start}` : ""}`
+}
+
 export function watWallDateTimeMs(value: Date | string | null | undefined) {
   if (!value) return NaN
   if (value instanceof Date) {
