@@ -6,7 +6,7 @@ import {
   sendBatchSwitchConfirmationEmail
 } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
-import { watWallDateTimeMs } from "@/lib/utils"
+import { batchHasNotStarted } from "@/lib/utils"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -57,8 +57,7 @@ function displayBatchDate(value: Date | string | null) {
 }
 
 function isFuture(value: Date | string | null) {
-  const ms = watWallDateTimeMs(value)
-  return Number.isFinite(ms) && ms > Date.now()
+  return batchHasNotStarted(value)
 }
 
 type SwitchItem = {
@@ -296,7 +295,7 @@ async function targetOptionsForEnrollment(item: SwitchItem) {
       AND COALESCE(TRIM(batch_key), '') <> ''
       AND batch_key COLLATE utf8mb4_unicode_ci <> ${item.batchKey} COLLATE utf8mb4_unicode_ci
       AND batch_start_at IS NOT NULL
-      AND batch_start_at > NOW()
+      AND DATE(batch_start_at) > DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))
     ORDER BY batch_start_at ASC, batch_label ASC
   `)
 

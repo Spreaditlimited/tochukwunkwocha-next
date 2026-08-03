@@ -112,6 +112,40 @@ export function batchHasNotStarted(
   batchStartAt: Date | string | null | undefined,
   currentTimeMs = Date.now()
 ) {
-  const startTimeMs = watWallDateTimeMs(batchStartAt)
-  return Number.isFinite(startTimeMs) && startTimeMs > currentTimeMs
+  if (!batchStartAt || !Number.isFinite(currentTimeMs)) return false
+
+  const batchDateKey = (() => {
+    if (batchStartAt instanceof Date) {
+      if (!Number.isFinite(batchStartAt.getTime())) return ""
+      return [
+        batchStartAt.getUTCFullYear(),
+        String(batchStartAt.getUTCMonth() + 1).padStart(2, "0"),
+        String(batchStartAt.getUTCDate()).padStart(2, "0")
+      ].join("-")
+    }
+    const raw = String(batchStartAt).trim()
+    const wallDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (wallDate) return `${wallDate[1]}-${wallDate[2]}-${wallDate[3]}`
+    const parsed = new Date(raw)
+    if (!Number.isFinite(parsed.getTime())) return ""
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Lagos",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(parsed)
+    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || ""
+    return `${value("year")}-${value("month")}-${value("day")}`
+  })()
+
+  const currentParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(currentTimeMs))
+  const currentValue = (type: Intl.DateTimeFormatPartTypes) => currentParts.find((part) => part.type === type)?.value || ""
+  const currentDateKey = `${currentValue("year")}-${currentValue("month")}-${currentValue("day")}`
+
+  return Boolean(batchDateKey) && batchDateKey > currentDateKey
 }

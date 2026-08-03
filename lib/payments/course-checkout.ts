@@ -310,7 +310,7 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
     WHERE cb.course_slug = ${courseSlug}
       AND (cb.is_active = 1 OR (${courseSlug} = ${HOLIDAY_COURSE_SLUG} AND cb.status = 'open'))
       AND cb.batch_start_at IS NOT NULL
-      AND cb.batch_start_at > DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR)
+      AND DATE(cb.batch_start_at) > DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))
     ORDER BY cb.is_active DESC, cb.batch_start_at IS NULL ASC, cb.batch_start_at ASC, cb.created_at DESC
   `
 

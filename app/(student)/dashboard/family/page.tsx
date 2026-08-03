@@ -17,7 +17,7 @@ import { courseName, getFamilyDashboard, hasPendingGroupManualPayment, listActiv
 import { requireStudent } from "@/lib/student-auth"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import { getLearningCourseForStudent } from "@/lib/learning-player"
-import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
+import { batchHasNotStarted, formatDateTimeWAT } from "@/lib/utils"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { listConvertibleIndividualEnrollments } from "@/lib/group-enrollment-conversion"
 
@@ -266,11 +266,11 @@ export default async function StudentFamilyPage({
                   }
                   const childCourse = courses.find((course) => course.courseSlug === child.courseSlug)
                   const currentBatch = childCourse?.batches.find((batch) => batch.batchKey === child.batchKey)
-                  const currentBatchIsFuture = Number.isFinite(watWallDateTimeMs(currentBatch?.batchStartAt || null)) && watWallDateTimeMs(currentBatch?.batchStartAt || null) > Date.now()
+                  const currentBatchIsFuture = batchHasNotStarted(currentBatch?.batchStartAt || null)
                   const learnerBatchOptions = currentBatchIsFuture
                     ? (childCourse?.batches || [])
                         .filter((batch) => batch.batchKey !== child.batchKey)
-                        .filter((batch) => Number.isFinite(watWallDateTimeMs(batch.batchStartAt)) && watWallDateTimeMs(batch.batchStartAt) > Date.now())
+                        .filter((batch) => batchHasNotStarted(batch.batchStartAt))
                         .filter((batch) => batch.remainingSeats === null || batch.remainingSeats > 0)
                         .map((batch) => ({
                           batchKey: batch.batchKey,

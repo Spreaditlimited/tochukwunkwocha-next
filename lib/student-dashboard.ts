@@ -955,7 +955,7 @@ export async function listActiveLearningCourseOptions(): Promise<LearningCourseO
       OR (b.course_slug COLLATE utf8mb4_unicode_ci = 'prompt-to-profit-holiday' COLLATE utf8mb4_unicode_ci AND b.status = 'open')
     )
       AND b.batch_start_at IS NOT NULL
-      AND b.batch_start_at > DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR)
+      AND DATE(b.batch_start_at) > DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))
     ORDER BY b.course_slug ASC, b.is_active DESC, b.batch_start_at IS NULL ASC, b.batch_start_at ASC, b.created_at DESC
   `)
 

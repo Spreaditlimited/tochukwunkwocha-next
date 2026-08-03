@@ -404,7 +404,7 @@ export async function PromptToProfitCoursePage({
                   <ul className="grid gap-3 sm:grid-cols-2">
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <Calendar className="h-4 w-4 text-primary" />
-                      {courseSettings?.enrollmentMode === "batch" ? "Batch-based" : courseSettings?.enrollmentMode || "Enrollment mode not set"}
+                      {courseSettings?.enrollmentMode === "batch" ? "5 Days of Learning" : courseSettings?.enrollmentMode || "Enrollment mode not set"}
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <CreditCard className="h-4 w-4 text-primary" />
@@ -412,11 +412,11 @@ export async function PromptToProfitCoursePage({
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <MonitorPlay className="h-4 w-4 text-primary" />
-                      Recorded Lessons
+                      32 Recorded Lessons
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <Video className="h-4 w-4 text-primary" />
-                      Live Zoom Support
+                      2 Live Zoom Sessions
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <ShieldCheck className="h-4 w-4 text-primary" />

@@ -9,7 +9,7 @@ import {
 import { reconcileFamilyOwnerBrevoLists, sendBatchSwitchConfirmationEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
 import { courseUsesImmediateAccess, findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
-import { watWallDateTimeMs } from "@/lib/utils"
+import { batchHasNotStarted } from "@/lib/utils"
 
 const FAMILY_CODE_LENGTH = 10
 const FAMILY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -209,7 +209,7 @@ async function validatedFamilyLearnerBatches(
     if (!batch) throw new Error("The selected batch does not belong to this course.")
     const open = Boolean(Number(batch.isActive || 0)) || clean(batch.status, 40).toLowerCase() === "open"
     if (!open) throw new Error(`${batch.batchLabel || batchKey} is not open for learner assignment.`)
-    if (!Number.isFinite(watWallDateTimeMs(batch.batchStartAt)) || watWallDateTimeMs(batch.batchStartAt) <= Date.now()) {
+    if (!batchHasNotStarted(batch.batchStartAt)) {
       throw new Error(`${batch.batchLabel || batchKey} has already started and is no longer available for enrollment.`)
     }
     requestedByBatch.set(batchKey, (requestedByBatch.get(batchKey) || 0) + 1)
@@ -408,7 +408,7 @@ export async function moveFamilyLearnerBatch(input: {
     `)
     const learner = rows[0]
     if (!learner) throw new Error("Learner enrollment not found.")
-    if (!learner.oldBatchKey || !Number.isFinite(watWallDateTimeMs(learner.oldBatchStartAt)) || watWallDateTimeMs(learner.oldBatchStartAt) <= Date.now()) {
+    if (!learner.oldBatchKey || !batchHasNotStarted(learner.oldBatchStartAt)) {
       throw new Error("This learner's current batch has already started and cannot be changed.")
     }
     if (learner.oldBatchKey === targetBatchKey) throw new Error("Choose a different batch.")
@@ -434,7 +434,7 @@ export async function moveFamilyLearnerBatch(input: {
     if (!target) throw new Error("The selected batch does not belong to this learner's course.")
     const targetOpen = Boolean(Number(target.isActive || 0)) || clean(target.status, 40).toLowerCase() === "open"
     if (!targetOpen) throw new Error("The selected batch is not open.")
-    if (!Number.isFinite(watWallDateTimeMs(target.batchStartAt)) || watWallDateTimeMs(target.batchStartAt) <= Date.now()) {
+    if (!batchHasNotStarted(target.batchStartAt)) {
       throw new Error("The selected batch has already started.")
     }
 
