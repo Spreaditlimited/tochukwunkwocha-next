@@ -102,6 +102,39 @@ export async function PromptToProfitCoursePage({
     "Simple Client Portals"
   ]
 
+  const softwareWorkbooks = [
+    {
+      number: "01",
+      title: "Expense Tracker",
+      description: "Build a secure application for recording expenses, calculating totals, and understanding spending.",
+      cover: "/shop/workbooks/expense-tracker-cover.png"
+    },
+    {
+      number: "02",
+      title: "Customer Record Management System",
+      description: "Create a practical system for organising, updating, and securely managing customer information.",
+      cover: "/shop/workbooks/customer-record-management-system-cover.png"
+    },
+    {
+      number: "03",
+      title: "Professional Quotation Generator",
+      description: "Develop a business tool for creating, saving, editing, and printing professional quotations.",
+      cover: "/shop/workbooks/professional-quotation-generator-cover.png"
+    },
+    {
+      number: "04",
+      title: "Professional Invoice Generator",
+      description: "Build a secure application that calculates, stores, and prints professional business invoices.",
+      cover: "/shop/workbooks/professional-invoice-generator-cover.png"
+    },
+    {
+      number: "05",
+      title: "Appointment Booking System",
+      description: "Create a complete booking workflow that helps a business receive and manage appointments.",
+      cover: "/shop/workbooks/appointment-booking-system-cover.png"
+    }
+  ]
+
   const programmeSteps = [
     {
       day: "Day 1",
@@ -419,6 +452,14 @@ export async function PromptToProfitCoursePage({
                       2 Live Zoom Sessions
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <Code2 className="h-4 w-4 text-primary" />
+                      5 Software Workbooks
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <Users className="h-4 w-4 text-primary" />
+                      A Growing Community
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <ShieldCheck className="h-4 w-4 text-primary" />
                       One-Year Access
                     </li>
@@ -572,6 +613,64 @@ export async function PromptToProfitCoursePage({
         </div>
       </section>
 
+      <section className="bg-background py-20 lg:py-28">
+        <div className={sectionContainer}>
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-primary">
+              <CheckCircle2 className="h-4 w-4" /> Included with your enrolment
+            </div>
+            <p className="eyebrow mt-6">Included Project Library</p>
+            <h2 className="mt-3 font-heading text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+              Five Software Workbooks. Five More Systems You Can Build.
+            </h2>
+            <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-muted-foreground">
+              The five-day programme gives you the foundation. Your included software workbook library helps you keep practising with complete, practical projects that solve real business problems.
+            </p>
+          </div>
+
+          <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {softwareWorkbooks.map((workbook) => (
+              <article key={workbook.number} className="surface-raised group flex h-full flex-col overflow-hidden bg-card p-0">
+                <div className="relative overflow-hidden border-b border-border bg-muted/30">
+                  <Image
+                    src={workbook.cover}
+                    alt={`${workbook.title} software workbook cover`}
+                    width={1130}
+                    height={1600}
+                    sizes="(min-width: 1280px) 220px, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 90vw"
+                    className="aspect-[113/160] w-full object-cover transition-transform duration-500 group-hover:scale-[1.025]"
+                  />
+                  <span className="absolute left-4 top-4 rounded-full border border-white/20 bg-brand-ink/90 px-3 py-1 font-mono text-[0.65rem] font-black uppercase tracking-widest text-sky-300 shadow-lg backdrop-blur">
+                    Workbook {workbook.number}
+                  </span>
+                </div>
+                <div className="flex flex-1 flex-col p-5">
+                  <h3 className="font-heading text-lg font-black leading-tight text-foreground">{workbook.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{workbook.description}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mx-auto mt-20 min-h-[260px] max-w-5xl rounded-3xl border border-white/10 bg-brand-ink p-8 text-white shadow-2xl sm:p-12 lg:mt-28">
+            <div className="flex h-full flex-col items-center gap-8 text-center md:flex-row md:text-left">
+              <div className="flex-1">
+              <p className="eyebrow text-sky-400">Keep building after Day 5</p>
+              <h3 className="mt-2 font-heading text-2xl font-black sm:text-3xl">Your learning journey continues beyond the live programme.</h3>
+              <p className="mt-4 text-base leading-relaxed text-slate-400">
+                Work through the projects at your own pace, strengthen your understanding, and grow a portfolio of useful software you can confidently demonstrate.
+              </p>
+              </div>
+              <div className="shrink-0">
+                <Link href={course.checkoutHref} className="btn-primary flex w-full items-center justify-center px-8 py-4 text-base sm:w-auto">
+                  Enroll and Get the Workbooks <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="student-websites" className="relative scroll-mt-24 overflow-hidden bg-brand-ink py-20 text-white lg:py-32">
         <div className="pointer-events-none absolute left-1/2 top-[30%] z-0 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-600/10 blur-[120px]" />
         <div className="pointer-events-none absolute bottom-0 right-0 z-0 h-[600px] w-[600px] rounded-full bg-primary/5 blur-[100px]" />
@@ -629,8 +728,8 @@ export async function PromptToProfitCoursePage({
             ))}
           </div>
 
-          <div className="mx-auto mt-20 max-w-5xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-md sm:p-12 lg:mt-32">
-            <div className="flex flex-col items-center gap-8 text-center md:flex-row md:text-left">
+          <div className="mx-auto mt-20 min-h-[260px] max-w-5xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-md sm:p-12 lg:mt-32">
+            <div className="flex h-full flex-col items-center gap-8 text-center md:flex-row md:text-left">
               <div className="flex-1">
                 <p className="eyebrow text-sky-400">The Gallery</p>
                 <h3 className="mt-2 font-heading text-2xl font-black tracking-tight text-white sm:text-3xl">
@@ -641,7 +740,7 @@ export async function PromptToProfitCoursePage({
                 </p>
               </div>
               <div className="shrink-0">
-                <Link href="/projects?from=prompt-to-profit" className="btn-primary flex w-full items-center justify-center bg-white px-8 py-4 text-base text-brand-ink hover:bg-slate-100 sm:w-auto">
+                <Link href="/projects?from=prompt-to-profit" className="btn-primary flex w-full items-center justify-center px-8 py-4 text-base sm:w-auto">
                   View Project Gallery
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
