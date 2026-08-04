@@ -166,7 +166,9 @@ async function backfillExistingAttempts() {
     FROM course_orders co
     WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
       AND COALESCE(co.order_uuid, '') <> ''
-      AND LOWER(COALESCE(co.status, 'pending')) NOT IN ('paid', 'duplicate_payment_review')
+      AND LOWER(COALESCE(co.status, 'pending')) NOT IN (
+        'paid', 'duplicate_payment_review', 'cancelled', 'canceled', 'abandoned', 'failed', 'reversed', 'expired'
+      )
   `
 }
 
@@ -323,7 +325,13 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
           continue
         }
       }
-      if (clean(attempt.status, 40).toLowerCase() === "paid" || await matchingPaidOrderExists(attempt)) {
+      const attemptStatus = clean(attempt.status, 40).toLowerCase()
+      if (["cancelled", "canceled", "abandoned", "failed", "reversed", "expired"].includes(attemptStatus)) {
+        await stopFollowup(row.id, "order_not_payable")
+        stopped += 1
+        continue
+      }
+      if (attemptStatus === "paid" || await matchingPaidOrderExists(attempt)) {
         await stopFollowup(row.id, "payment_confirmed")
         stopped += 1
         continue

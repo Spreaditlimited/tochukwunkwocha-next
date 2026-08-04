@@ -122,6 +122,23 @@ export async function hasPurchasedFamilySeats(parentAccountId: bigint | number) 
   return Number(rows[0]?.total || 0) > 0
 }
 
+export async function availableFamilySeatsForCourse(
+  parentAccountId: bigint | number,
+  courseSlugInput: string
+) {
+  const accountId = BigInt(parentAccountId)
+  const courseSlug = clean(courseSlugInput, 120).toLowerCase()
+  if (accountId <= BigInt(0) || !courseSlug) return 0
+  const rows = await prisma.$queryRaw<Array<{ total: number | bigint | null }>>(Prisma.sql`
+    SELECT COALESCE(SUM(GREATEST(0, b.seats_purchased - b.seats_consumed)), 0) AS total
+    FROM family_seat_balances b
+    JOIN family_accounts f ON f.id = b.family_id
+    WHERE f.parent_account_id = ${accountId}
+      AND b.course_slug = ${courseSlug}
+  `)
+  return Math.max(0, Number(rows[0]?.total || 0))
+}
+
 async function familyCourseSeatRows(
   client: Prisma.TransactionClient | typeof prisma,
   familyId: bigint,
@@ -130,7 +147,7 @@ async function familyCourseSeatRows(
   lock = false
 ) {
   const query = Prisma.sql`
-    SELECT id, seats_purchased AS seatsPurchased, seats_consumed AS seatsConsumed
+    SELECT id, batch_key AS batchKey, seats_purchased AS seatsPurchased, seats_consumed AS seatsConsumed
     FROM family_seat_balances
     WHERE family_id = ${familyId}
       AND course_slug = ${courseSlug}
@@ -138,12 +155,12 @@ async function familyCourseSeatRows(
     ORDER BY id ASC
     ${lock ? Prisma.sql`FOR UPDATE` : Prisma.empty}
   `
-  return client.$queryRaw<Array<{ id: bigint; seatsPurchased: number | bigint | null; seatsConsumed: number | bigint | null }>>(query)
+  return client.$queryRaw<Array<{ id: bigint; batchKey: string | null; seatsPurchased: number | bigint | null; seatsConsumed: number | bigint | null }>>(query)
 }
 
 async function consumeCourseSeatPool(
   tx: Prisma.TransactionClient,
-  rows: Array<{ id: bigint; seatsPurchased: number | bigint | null; seatsConsumed: number | bigint | null }>,
+  rows: Array<{ id: bigint; batchKey: string | null; seatsPurchased: number | bigint | null; seatsConsumed: number | bigint | null }>,
   quantity: number,
   timestamp: Date
 ) {
@@ -169,7 +186,8 @@ async function validatedFamilyLearnerBatches(
   childrenInput: unknown,
   courseSlugInput: string,
   lock = false,
-  checkCapacity = true
+  checkCapacity = true,
+  capacityCreditsByBatch = new Map<string, number>()
 ) {
   const courseSlug = clean(courseSlugInput, 120).toLowerCase()
   const children = normalizeFamilyChildren(childrenInput)
@@ -234,7 +252,9 @@ async function validatedFamilyLearnerBatches(
       ) AS total
     `)
     const remaining = Math.max(0, Number(batch.seatLimit || 0) - Number(counts[0]?.total || 0))
-    if (requested > remaining) throw new Error(`Only ${remaining} learner seat${remaining === 1 ? "" : "s"} remain in ${batch.batchLabel || batchKey}.`)
+    const alreadyReserved = Math.min(requested, Math.max(0, capacityCreditsByBatch.get(batchKey) || 0))
+    const additionalCapacityRequired = Math.max(0, requested - alreadyReserved)
+    if (additionalCapacityRequired > remaining) throw new Error(`Only ${remaining + alreadyReserved} learner seat${remaining + alreadyReserved === 1 ? "" : "s"} remain in ${batch.batchLabel || batchKey}.`)
   }
 
   return children.map((child) => {
@@ -697,7 +717,7 @@ export async function consumeFamilySeatsForChildren(input: {
 
   await ensureEnrollmentClaimTable()
   const consumed = await prisma.$transaction(async (tx) => {
-    const balances = await familyCourseSeatRows(tx, family.id, courseSlug, batchKey, true)
+    const balances = await familyCourseSeatRows(tx, family.id, courseSlug, undefined, true)
     const seatsPurchased = balances.reduce((total, row) => total + Number(row.seatsPurchased || 0), 0)
     const seatsConsumed = balances.reduce((total, row) => total + Number(row.seatsConsumed || 0), 0)
     const available = Math.max(0, seatsPurchased - seatsConsumed)
@@ -705,12 +725,25 @@ export async function consumeFamilySeatsForChildren(input: {
       throw new Error(`Only ${available} purchased seat${available === 1 ? "" : "s"} available for this programme.`)
     }
 
+    const capacityCreditsByBatch = new Map<string, number>()
+    balances.forEach((row) => {
+      const balanceBatchKey = clean(row.batchKey, 64)
+      const balanceAvailable = Math.max(0, Number(row.seatsPurchased || 0) - Number(row.seatsConsumed || 0))
+      if (balanceBatchKey && balanceAvailable > 0) {
+        capacityCreditsByBatch.set(
+          balanceBatchKey,
+          (capacityCreditsByBatch.get(balanceBatchKey) || 0) + balanceAvailable
+        )
+      }
+    })
+
     const assignedChildren = await validatedFamilyLearnerBatches(
       tx,
       children.map((child) => ({ ...child, batchKey })),
       courseSlug,
       true,
-      false
+      true,
+      capacityCreditsByBatch
     )
 
     const timestamp = now()
@@ -759,7 +792,12 @@ export async function consumeFamilySeatsForChildren(input: {
       await assignFamilyChildCode(child.childId, tx)
     }
 
-    await consumeCourseSeatPool(tx, balances, created.length, timestamp)
+    const balancesForConsumption = [...balances].sort((left, right) => {
+      const leftMatchesTarget = clean(left.batchKey, 64) === batchKey ? 0 : 1
+      const rightMatchesTarget = clean(right.batchKey, 64) === batchKey ? 0 : 1
+      return leftMatchesTarget - rightMatchesTarget
+    })
+    await consumeCourseSeatPool(tx, balancesForConsumption, created.length, timestamp)
     const ledgerUuid = `consume_${crypto.randomUUID().replace(/-/g, "")}`
     await tx.$executeRaw`
       INSERT INTO family_seat_ledger

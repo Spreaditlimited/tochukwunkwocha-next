@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import {
+  availableFamilySeatsForCourse,
   consumeFamilySeatsForChildren,
   hasPurchasedFamilySeats,
   normalizeFamilyChildren,
@@ -47,6 +48,13 @@ export async function PUT(request: Request) {
     const provider = providerForCountry(country, body.provider)
     if (!familyEnrollmentEnabledForCourse(courseSlug)) {
       return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
+    }
+    const availableSeats = await availableFamilySeatsForCourse(session.account.id, courseSlug)
+    if (availableSeats > 0) {
+      return NextResponse.json(
+        { ok: false, error: "Assign your available learner seats before purchasing another seat." },
+        { status: 409 }
+      )
     }
     const purchase = await groupPurchaseSeatCount(session.account.id, Number(body.seatCount || 1))
     const context = await checkoutContext({
@@ -102,7 +110,17 @@ export async function POST(request: Request) {
     if (!familyEnrollmentEnabledForCourse(courseSlug)) {
       return NextResponse.json({ ok: false, error: "Group enrollment is not available for this course." }, { status: 400 })
     }
-    try {
+    const availableSeats = await availableFamilySeatsForCourse(session.account.id, courseSlug)
+    if (availableSeats > 0) {
+      if (children.length > availableSeats) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `You have ${availableSeats} available seat${availableSeats === 1 ? "" : "s"}. Assign those seats before purchasing another seat.`
+          },
+          { status: 409 }
+        )
+      }
       const consumed = await consumeFamilySeatsForChildren({
         parentAccountId: session.account.id,
         parentName: session.account.fullName,
@@ -121,9 +139,6 @@ export async function POST(request: Request) {
           available: Math.max(0, consumed.seatsPurchased - consumed.seatsUsed)
         }
       })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : ""
-      if (!message.includes("purchased seat")) throw error
     }
 
     const assignments = await prepareFamilyLearnerAssignments(children, courseSlug)

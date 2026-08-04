@@ -90,9 +90,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
   const batchOptions = useMemo(() => {
     const map = new Map<string, { value: string; label: string; batchLabel: string }>()
     selectedCourse?.batches.filter((batch) => (
-      batch.remainingSeats === null || batch.remainingSeats > 0 || seats.some((seat) => (
-        seat.courseSlug === courseSlug && seat.batchKey === batch.batchKey && seat.seatsAvailable > 0
-      ))
+      batch.remainingSeats === null || batch.remainingSeats > 0
     )).forEach((batch) => {
       const startLabel = formatDateTimeWAT(batch.batchStartAt)
       map.set(batch.batchKey, {
@@ -109,15 +107,16 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       return [{ value: "", label: "No open batch available", batchLabel: "" }]
     }
     return mapped
-  }, [courseSlug, seats, selectedCourse])
+  }, [selectedCourse])
 
-  const selectedSeat = seats.find((seat) => seat.courseSlug === courseSlug && String(seat.batchKey || "") === batchKey)
-  const availableSeats = selectedSeat?.seatsAvailable || 0
-  const purchasedSeats = selectedSeat?.seatsPurchased || 0
-  const hasPurchasedSeatsForSelection = Boolean(selectedSeat && availableSeats > 0)
-  const hasUsedUpPurchasedSeatsForSelection = Boolean(selectedSeat && purchasedSeats > 0 && availableSeats <= 0)
+  const courseSeatPool = seats.filter((seat) => seat.courseSlug === courseSlug)
+  const availableSeats = courseSeatPool.reduce((total, seat) => total + seat.seatsAvailable, 0)
+  const purchasedSeats = courseSeatPool.reduce((total, seat) => total + seat.seatsPurchased, 0)
+  const hasPurchasedSeatsForSelection = availableSeats > 0
+  const hasUsedUpPurchasedSeatsForSelection = purchasedSeats > 0 && availableSeats <= 0
   const learnerCount = learners.length
-  const willUseExistingSeats = availableSeats >= learnerCount
+  const hasAvailableSeat = availableSeats > 0
+  const willUseExistingSeats = hasAvailableSeat && availableSeats >= learnerCount
   const hasPurchasedGroupSeats = seats.some((seat) => seat.seatsPurchased > 0)
   const purchaseSeatCount = hasPurchasedGroupSeats ? learnerCount : Math.max(2, learnerCount)
   const isImmediateAccess = selectedCourse?.enrollmentMode === "immediate"
@@ -136,7 +135,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
   }, [batchKey, batchOptions, courseSlug, isImmediateAccess, seats])
 
   useEffect(() => {
-    if (!isOpen || willUseExistingSeats || !courseSlug || !hasOpenBatch) {
+    if (!isOpen || hasAvailableSeat || !courseSlug || !hasOpenBatch) {
       setPricing(null)
       setPricingProvider("")
       setPricingError("")
@@ -172,13 +171,21 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [batchKey, country, courseSlug, hasOpenBatch, isOpen, purchaseSeatCount, willUseExistingSeats])
+  }, [batchKey, country, courseSlug, hasAvailableSeat, hasOpenBatch, isOpen, purchaseSeatCount])
 
   function updateLearner(index: number, key: keyof LearnerRow, value: string) {
     setLearners((current) => current.map((learner, idx) => (idx === index ? { ...learner, [key]: value } : learner)))
   }
 
   function addLearner() {
+    if (hasAvailableSeat && learners.length >= availableSeats) {
+      showStudentToast({
+        type: "info",
+        title: "All available seats selected",
+        message: `Assign these ${availableSeats} seat${availableSeats === 1 ? "" : "s"} before adding another seat.`
+      })
+      return
+    }
     setLearners((current) => [...current, emptyLearner()].slice(0, 500))
   }
 
@@ -223,6 +230,12 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
       showStudentToast({ type: "error", title: "Batch assignment incomplete", message: errorMessage })
       return
     }
+    if (hasAvailableSeat && children.length > availableSeats) {
+      const errorMessage = `You have ${availableSeats} available seat${availableSeats === 1 ? "" : "s"}. Assign those seats before adding another seat.`
+      setError(errorMessage)
+      showStudentToast({ type: "error", title: "Assign available seats first", message: errorMessage })
+      return
+    }
 
     setIsSubmitting(true)
     try {
@@ -262,7 +275,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
           <p className="eyebrow text-primary">Assign Learners</p>
           <h2 className="mt-1 font-heading text-xl font-bold text-foreground sm:text-2xl">Group Enrollment</h2>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Buy seats for multiple learners or assign learners to seats you have already purchased. Existing open seats are used first; otherwise, checkout opens for the selected learners.
+            Assign learners to seats you already own. When no unused seats remain, you can add another learner seat.
           </p>
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
@@ -287,19 +300,21 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
         <form onSubmit={submit} className="grid gap-8">
           
           {/* Program Configuration */}
-          <div className="grid gap-6 rounded-xl border border-border bg-background/50 p-5 sm:p-6 md:grid-cols-3">
+          <div className={`grid gap-6 rounded-xl border border-border bg-background/50 p-5 sm:p-6 ${hasAvailableSeat ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
             <label className="block">
               <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme</span>
               <div className="mt-1">
                 <PremiumPicker value={courseSlug} options={courseOptions} onChange={(event) => setCourseSlug(event.target.value)} />
               </div>
             </label>
-            <label className="block">
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Billing Region</span>
-              <div className="mt-1">
-                <PremiumPicker value={country} options={countryOptions} onChange={(event) => setCountry(event.target.value)} />
-              </div>
-            </label>
+            {!hasAvailableSeat ? (
+              <label className="block">
+                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Billing Region</span>
+                <div className="mt-1">
+                  <PremiumPicker value={country} options={countryOptions} onChange={(event) => setCountry(event.target.value)} />
+                </div>
+              </label>
+            ) : null}
             {!isImmediateAccess ? (
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch for all learners</span>
@@ -331,7 +346,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
               </p>
               <p className="mt-1 text-sm font-medium opacity-90">
                 {willUseExistingSeats
-                  ? "This assignment will use your existing purchased seats. No additional payment is required."
+                  ? `You can assign up to ${availableSeats} learner${availableSeats === 1 ? "" : "s"} from this balance.`
                   : hasUsedUpPurchasedSeatsForSelection
                     ? "You can continue to checkout to buy additional group seats for these learners."
                   : hasPurchasedSeatsForSelection
@@ -341,14 +356,12 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
             </div>
           </div>
 
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
+          {!hasAvailableSeat ? <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Checkout Summary</p>
                 <p className="mt-2 font-heading text-lg font-black text-foreground">
-                  {willUseExistingSeats
-                    ? "No additional payment required"
-                    : isLoadingPricing
+                  {isLoadingPricing
                       ? "Loading checkout total..."
                       : pricing
                         ? `${pricingSeatCount} seat${pricingSeatCount === 1 ? "" : "s"} · ${pricing.label}`
@@ -356,10 +369,10 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                 </p>
               </div>
               <p className="text-xs font-bold uppercase tracking-widest text-primary">
-                Payment method: {willUseExistingSeats ? "Existing seats" : !pricingProvider ? "Loading..." : pricingProvider === "stripe" ? "Stripe" : "Paystack"}
+                Payment method: {!pricingProvider ? "Loading..." : pricingProvider === "stripe" ? "Stripe" : "Paystack"}
               </p>
             </div>
-            {!willUseExistingSeats && !hasPurchasedGroupSeats && learnerCount === 1 ? (
+            {!hasPurchasedGroupSeats && learnerCount === 1 ? (
               <p className="mt-3 text-sm font-medium text-muted-foreground">The initial group purchase has a minimum of 2 seats.</p>
             ) : null}
             {pricing?.groupDiscountMinor ? (
@@ -367,7 +380,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
                 Group discount applied: {pricing.groupUnitLabel || "discounted rate"} per seat. You save {pricing.groupDiscountLabel}.
               </p>
             ) : null}
-          </div>
+          </div> : null}
 
           {/* Learner Roster */}
           <div className="grid gap-6">
@@ -452,6 +465,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
               type="button" 
               onClick={addLearner} 
               className="btn-secondary flex w-full items-center justify-center sm:w-auto"
+              disabled={hasAvailableSeat && learners.length >= availableSeats}
             >
               <Plus className="mr-2 h-4 w-4 text-muted-foreground" />
               Add Another Learner
@@ -459,7 +473,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
             <button 
               type="submit" 
               className="btn-primary flex w-full items-center justify-center shadow-sm sm:w-auto" 
-              disabled={isSubmitting || !courseSlug || !hasOpenBatch || (!willUseExistingSeats && (!pricing || Boolean(pricingError)))}
+              disabled={isSubmitting || !courseSlug || !hasOpenBatch || (hasAvailableSeat ? !willUseExistingSeats : (!pricing || Boolean(pricingError)))}
             >
               {isSubmitting 
                 ? "Processing..." 

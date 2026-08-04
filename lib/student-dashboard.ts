@@ -820,8 +820,8 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
   const seats = await prisma.$queryRaw<FamilySeatRow[]>(Prisma.sql`
     SELECT
       COALESCE(course_slug, '') AS courseSlug,
-      batch_key AS batchKey,
-      batch_label AS batchLabel,
+      NULL AS batchKey,
+      'Course-level seat pool' AS batchLabel,
       CAST(COALESCE(SUM(seats_purchased), 0) AS SIGNED) AS seatsPurchased,
       CAST(COALESCE(SUM(seats_consumed), 0) AS SIGNED) AS seatsUsed,
       CAST(GREATEST(0, COALESCE(SUM(seats_purchased), 0) - COALESCE(SUM(seats_consumed), 0)) AS SIGNED) AS seatsAvailable,
@@ -829,8 +829,8 @@ export async function getFamilyDashboard(parentAccountId: bigint): Promise<Famil
       '' AS paymentCurrency
     FROM family_seat_balances
     WHERE family_id = ${family.id}
-    GROUP BY course_slug, batch_key, batch_label
-    ORDER BY course_slug ASC, batch_label ASC
+    GROUP BY course_slug
+    ORDER BY course_slug ASC
   `)
 
   return {
