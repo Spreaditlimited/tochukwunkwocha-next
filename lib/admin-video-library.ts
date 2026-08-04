@@ -1718,7 +1718,7 @@ export async function saveVideoLibraryModule(input: {
     `
     await upsertCourseModuleMapping({ moduleId, courseSlug, sortOrder, isActive, dripEnabled, primaryBatchKey, primaryDripAt, dripOffsetSeconds })
     await replaceModuleBatchDrips(moduleId, dripEnabled ? schedules : [])
-    return
+    return { moduleId, created: false }
   }
   await prisma.$executeRaw`
     INSERT INTO tochukwu_learning_modules
@@ -1742,6 +1742,7 @@ export async function saveVideoLibraryModule(input: {
     await upsertCourseModuleMapping({ moduleId: savedModuleId, courseSlug, sortOrder, isActive, dripEnabled, primaryBatchKey, primaryDripAt, dripOffsetSeconds })
     await replaceModuleBatchDrips(savedModuleId, dripEnabled ? schedules : [])
   }
+  return { moduleId: savedModuleId, created: true }
 }
 
 export async function saveVideoLibraryLesson(input: {

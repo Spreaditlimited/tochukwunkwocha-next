@@ -66,7 +66,7 @@ export function formatDateTimeWAT(value: Date | string | null | undefined) {
     ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5])))
     : new Date(raw)
   if (!Number.isFinite(date.getTime())) return ""
-  return `${new Intl.DateTimeFormat("en-GB", {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
     timeZone: match ? "UTC" : "Africa/Lagos",
     weekday: "short",
     day: "2-digit",
@@ -75,7 +75,17 @@ export function formatDateTimeWAT(value: Date | string | null | undefined) {
     hour: "numeric",
     minute: "2-digit",
     hour12: true
-  }).format(date)} WAT`
+  })
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  )
+  const clock = parts.hour && parts.minute
+    ? `${parts.hour}:${parts.minute}${parts.dayPeriod ? ` ${parts.dayPeriod.toLowerCase()}` : ""}`
+    : ""
+  const calendarDate = [parts.day, parts.month, parts.year].filter(Boolean).join(" ")
+  return `${parts.weekday ? `${parts.weekday}, ` : ""}${calendarDate}${clock ? `, ${clock}` : ""} WAT`
 }
 
 export function formatBatchPickerLabel(

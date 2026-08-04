@@ -86,7 +86,13 @@ export function ModuleBatchRulesClient({
           />
           Batch access control
         </label>
-        {disabled ? <span className="text-xs font-bold text-muted-foreground">Immediate-access course: all active modules/lessons are accessible.</span> : null}
+        {disabled ? (
+          <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">
+            Unavailable for immediate-access courses. All active modules and lessons are accessible immediately.
+          </span>
+        ) : (
+          <span className="text-xs font-semibold text-muted-foreground">Turn this on to set access separately for each batch.</span>
+        )}
       </div>
 
       {enabled && !disabled ? (

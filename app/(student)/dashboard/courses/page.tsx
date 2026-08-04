@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import {
   CheckCircle2,
   Clock3, 
@@ -13,7 +14,9 @@ import {
   StudentDashboardShell
 } from "@/components/student-dashboard/StudentDashboardShell"
 import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/student-dashboard/BatchSwitchPanel"
+import { CourseWorkbookDownloadLink } from "@/components/student-dashboard/CourseWorkbookDownloadLink"
 import { TrademarkText } from "@/components/TrademarkText"
+import { listIncludedPromptToProfitWorkbooks } from "@/lib/course-workbooks"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { getLearningCourseForStudent } from "@/lib/learning-player"
 import {
@@ -43,6 +46,12 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
   const session = await requireStudent()
   const params = searchParams ? await searchParams : {}
   const courses = await listStudentCourses(session.account.email, session.account.id)
+  const includedWorkbooks = await listIncludedPromptToProfitWorkbooks({
+    accountId: session.account.id,
+    email: session.account.email
+  })
+  const workbooksUnlocked = includedWorkbooks.some((workbook) => workbook.batchStarted)
+  const workbookBatchStartAt = includedWorkbooks.find((workbook) => workbook.batchStartAt)?.batchStartAt || null
   const progressEntries = await Promise.all(courses.map(async (course) => {
     if (!course.isActive) return [course.courseSlug, { completedLessons: 0, totalLessons: 0, completionPercent: 0 }] as const
     const result = await getLearningCourseForStudent({
@@ -335,6 +344,61 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
           />
         )}
       </div>
+
+      {includedWorkbooks.length ? (
+        <StudentDashboardCard className="mt-8 overflow-hidden p-0">
+          <div className="border-b border-border bg-gradient-to-br from-primary/10 via-card to-sky-500/10 p-6 sm:p-8">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+              <div className="max-w-2xl">
+                <p className="eyebrow text-primary">Included with your enrollment</p>
+                <h2 className="mt-2 font-heading text-2xl font-black tracking-tight text-foreground sm:text-3xl">
+                  Your 5 Software Workbooks
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  {workbooksUnlocked
+                    ? "These PDF workbooks are free with your completed Prompt to Profit enrollment. Download them and keep building after Day 5."
+                    : `These five PDF workbooks are included with your completed enrollment and will unlock when your assigned batch starts${workbookBatchStartAt ? ` on ${formatDateTimeWAT(workbookBatchStartAt)}` : ""}.`}
+                </p>
+              </div>
+              <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-widest ${workbooksUnlocked ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+                {workbooksUnlocked ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+                {workbooksUnlocked ? "Included" : "Included · Unlocks at batch start"}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-5 p-6 sm:grid-cols-2 sm:p-8 xl:grid-cols-5">
+            {includedWorkbooks.map((workbook) => (
+              <article key={workbook.sku} className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div className="relative overflow-hidden border-b border-border bg-muted/30">
+                  <Image
+                    src={workbook.coverImageUrl}
+                    alt={`${workbook.title} workbook cover`}
+                    width={1130}
+                    height={1600}
+                    sizes="(min-width: 1280px) 220px, (min-width: 640px) 45vw, 90vw"
+                    className="aspect-[113/160] w-full object-cover"
+                  />
+                  <span className="absolute left-3 top-3 rounded-full border border-white/20 bg-brand-ink/90 px-3 py-1 font-mono text-[0.65rem] font-black uppercase tracking-widest text-sky-300 shadow-lg">
+                    Workbook {workbook.number}
+                  </span>
+                </div>
+                <div className="flex flex-1 flex-col p-5">
+                  <h3 className="font-heading text-base font-black leading-tight text-foreground">{workbook.title}</h3>
+                  <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">{workbook.description}</p>
+                  {workbook.available ? (
+                    <CourseWorkbookDownloadLink href={workbook.downloadHref} title={workbook.title} />
+                  ) : (
+                    <button type="button" disabled className="btn-secondary mt-5 w-full cursor-not-allowed opacity-60">
+                      {workbook.batchStarted ? "PDF coming soon" : "Available when batch starts"}
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </StudentDashboardCard>
+      ) : null}
     </StudentDashboardShell>
   )
 }

@@ -34,26 +34,6 @@ type Course = NonNullable<ReturnType<typeof getCourse>>
 
 const sectionContainer = "site-container"
 
-function formatMinorAmount(minor: number | null, currency: string) {
-  if (!minor) return null
-  const locale = currency === "NGN" ? "en-NG" : currency === "GBP" ? "en-GB" : currency === "EUR" ? "en-IE" : "en-US"
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency,
-    maximumFractionDigits: currency === "NGN" ? 0 : 2
-  }).format(minor / 100)
-}
-
-function formatCoursePrice(settings: PublicCourseSettings | null) {
-  if (!settings) return null
-  return (
-    formatMinorAmount(settings.priceNgnMinor, "NGN") ||
-    formatMinorAmount(settings.priceGbpMinor, "GBP") ||
-    formatMinorAmount(settings.priceUsdMinor, "USD") ||
-    formatMinorAmount(settings.priceEurMinor, "EUR")
-  )
-}
-
 function batchSequence(value: string) {
   const match = value.match(/\bbatch[\s_-]*(\d+)\b/i)
   return match ? Number(match[1]) : Number.POSITIVE_INFINITY
@@ -74,7 +54,6 @@ export async function PromptToProfitCoursePage({
     if (sequenceDifference) return sequenceDifference
     return (left.batchStartAt || "").localeCompare(right.batchStartAt || "")
   })
-  const displayedPrice = formatCoursePrice(courseSettings)
   const enrollmentStatus = courseSettings
     ? courseSettings.isEnrollmentLocked
       ? "Enrollment locked"
@@ -381,7 +360,7 @@ export async function PromptToProfitCoursePage({
                     />
                   ))}
                 </div>
-                <div>
+                <div className="w-full text-left sm:w-auto">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-white">Join 700+ builders</p>
                   <p className="mt-1 text-sm font-medium text-slate-400">Learning to build practical websites and digital tools with AI.</p>
                 </div>
@@ -440,10 +419,6 @@ export async function PromptToProfitCoursePage({
                       {courseSettings?.enrollmentMode === "batch" ? "5 Days of Learning" : courseSettings?.enrollmentMode || "Enrollment mode not set"}
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                      <CreditCard className="h-4 w-4 text-primary" />
-                      {displayedPrice || "Price not configured"}
-                    </li>
-                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <MonitorPlay className="h-4 w-4 text-primary" />
                       32 Recorded Lessons
                     </li>
@@ -466,6 +441,10 @@ export async function PromptToProfitCoursePage({
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <Award className="h-4 w-4 text-primary" />
                       Project Certificate
+                    </li>
+                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <CreditCard className="h-4 w-4 text-primary" />
+                      For N10,000 only
                     </li>
                   </ul>
                 </div>
@@ -624,7 +603,7 @@ export async function PromptToProfitCoursePage({
               Five Software Workbooks. Five More Systems You Can Build.
             </h2>
             <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-muted-foreground">
-              The five-day programme gives you the foundation. Your included software workbook library helps you keep practising with complete, practical projects that solve real business problems.
+              The five-day programme gives you the foundation. Your included software workbook library helps you keep practising with complete, practical projects that solve real business problems. All five PDF workbooks are free with a completed enrollment and become available securely in your student dashboard.
             </p>
           </div>
 

@@ -30,7 +30,8 @@ import {
 import { AccessibilityGenerateButton } from "./AccessibilityGenerateButton"
 import { CloudflareProgressPanel } from "./CloudflareProgressPanel"
 import { LessonMapperClient } from "./LessonMapperClient"
-import { ModuleBatchRulesClient } from "./ModuleBatchRulesClient"
+import { ModuleBuilderSelector } from "./ModuleBuilderSelector"
+import { ModuleBatchAccessFields, ModuleCoursePicker } from "./ModuleCourseAccessFields"
 import { ModuleDescriptionField } from "./ModuleDescriptionField"
 import { VideoLibraryScrollRestorer } from "./VideoLibraryScrollRestorer"
 
@@ -128,14 +129,18 @@ function videoLibraryHref(params: Record<string, string | number | bigint | null
 
 export default async function InternalVideoLibraryPage({ searchParams }: PageProps) {
   const params = await searchParams || {}
-  const selectedModuleId = BigInt(Number(param(params, "moduleId") || 0))
+  const selectedModuleIdValue = param(params, "moduleId")
+  const selectedModuleId = /^\d+$/.test(selectedModuleIdValue) ? BigInt(selectedModuleIdValue) : BigInt(0)
+  const creatingModule = param(params, "moduleMode") === "new"
   const selectedCourseSlug = param(params, "course") || ""
   const selectedModuleCourseSlug = param(params, "moduleCourse") || ""
   const selectedModuleTableCourseSlug = param(params, "moduleTableCourse") || ""
   const selectedModuleTableBatchKey = param(params, "moduleTableBatch") || ""
   const { courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots, liveSessions } = await listVideoLibrary()
 
-  const selectedModule = selectedModuleId > BigInt(0)
+  const selectedModule = creatingModule
+    ? null
+    : selectedModuleId > BigInt(0)
     ? modules.find((module) => module.id === selectedModuleId && (!selectedModuleCourseSlug || module.courseSlug === selectedModuleCourseSlug)) || modules.find((module) => module.id === selectedModuleId) || null
     : modules.find((module) => selectedCourseSlug && module.courseSlug === selectedCourseSlug) || modules[0] || null
   const activeModuleId = selectedModule?.id || BigInt(0)
@@ -182,7 +187,6 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
   const selectedSchedules = activeModuleId > BigInt(0)
     ? moduleDripSchedules.filter((schedule) => schedule.moduleId === activeModuleId)
     : []
-  const immediateCourse = activeCourse?.enrollmentMode === "immediate"
   const courseOptions = courses.map((course) => ({ value: course.courseSlug, label: course.courseTitle }))
   const courseOptionsWithAll = [{ value: "", label: "All courses" }, ...courseOptions]
   const batchStatusOptions = [
@@ -205,6 +209,20 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
       label: `[${module.courseSlug}] ${module.moduleTitle}`
     }))
   ]
+  const moduleBuilderOptions = modules.map((module) => ({
+    id: String(module.id),
+    courseSlug: module.courseSlug,
+    label: `[${courses.find((course) => course.courseSlug === module.courseSlug)?.courseTitle || module.courseSlug}] ${module.moduleTitle}`
+  }))
+  const moduleBuilderCourses = courses.map((course) => ({
+    courseSlug: course.courseSlug,
+    courseTitle: course.courseTitle,
+    enrollmentMode: course.enrollmentMode || "batch",
+    batches: moduleBatchRuleProps(
+      batches.filter((batch) => batch.courseSlug === course.courseSlug),
+      []
+    ).batches
+  }))
   const moduleTableBatchOptions = [
     { value: "", label: "All batches" },
     ...filterBatches.map((batch) => ({
@@ -518,14 +536,27 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
         <div className="space-y-6">
           <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <div className="border-b border-border bg-muted/20 p-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="font-heading text-xl font-black text-foreground">Modules</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Quickly publish/unpublish modules or open one to edit lessons.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Create a module, open one to edit its lessons, or quickly change its publishing status.</p>
                 </div>
-                <span className="inline-flex w-fit rounded-md border border-border bg-background px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                  Showing {visibleModules.length} of {modules.length}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex w-fit rounded-md border border-border bg-background px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    Showing {visibleModules.length} of {modules.length}
+                  </span>
+                  <Link
+                    href={videoLibraryHref({
+                      course: selectedCourseSlug || activeCourse?.courseSlug,
+                      moduleTableCourse: selectedModuleTableCourseSlug,
+                      moduleTableBatch: effectiveModuleTableBatchKey,
+                      moduleMode: "new"
+                    }) + "#module-builder"}
+                    className="btn-primary h-10 px-4 text-xs"
+                  >
+                    Create New Module
+                  </Link>
+                </div>
               </div>
               <form className="mt-5 grid gap-4 lg:grid-cols-[minmax(14rem,20rem)_minmax(10rem,14rem)_auto] lg:items-end">
                 {selectedCourseSlug ? <input type="hidden" name="course" value={selectedCourseSlug} /> : null}
@@ -652,16 +683,18 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] xl:items-start">
-          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <section id="module-builder" className="scroll-mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <div className="border-b border-border bg-muted/20 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="eyebrow text-primary">Module Builder</p>
                   <h2 className="mt-1 font-heading text-xl font-black text-foreground">
-                    {selectedModule ? selectedModule.moduleTitle : "Create module"}
+                    {selectedModule ? selectedModule.moduleTitle : "Create New Module"}
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    New lessons are accessible when this module is active and its batch access rule allows the learner’s batch.
+                    {selectedModule
+                      ? "Edit this module, then use the Lesson Mapper to manage its lessons."
+                      : "Choose the course, give the module a title, set its access, and save it. You can add lessons immediately afterwards."}
                   </p>
                 </div>
                 {selectedModule ? (
@@ -679,6 +712,18 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
 
             <form action={saveVideoLibraryModuleAction} className="grid gap-4 p-5 md:grid-cols-2">
               <input type="hidden" name="moduleId" value={selectedModule ? String(selectedModule.id) : ""} />
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 md:col-span-2">
+                <label className="block">
+                  <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-primary">Select Existing Module</span>
+                  <ModuleBuilderSelector
+                    value={selectedModule ? `${selectedModule.courseSlug}:${String(selectedModule.id)}` : "new"}
+                    modules={moduleBuilderOptions}
+                  />
+                </label>
+                <p className="mt-2 text-xs font-semibold text-muted-foreground">
+                  Select “Create new module” for a blank builder, or choose an existing module to edit it.
+                </p>
+              </div>
               <div className="rounded-xl border border-border bg-background p-4 md:col-span-2">
                 <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
                   <label className="block min-w-0 flex-1">
@@ -699,10 +744,10 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                   </button>
                 </div>
               </div>
-              <label className="block">
-                <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Course</span>
-                <PremiumPicker name="courseSlug" defaultValue={selectedModule?.courseSlug || activeCourse?.courseSlug || ""} options={[{ value: "", label: "Select course" }, ...courseOptions]} />
-              </label>
+              <ModuleCoursePicker
+                courses={moduleBuilderCourses}
+                initialCourseSlug={selectedModule?.courseSlug || activeCourse?.courseSlug || ""}
+              />
               <label className="block">
                 <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sort Order</span>
                 <input name="sortOrder" type="number" defaultValue={selectedModule ? String(selectedModule.sortOrder || 0) : "0"} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
@@ -718,15 +763,16 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                   Active module
                 </label>
               </div>
-              <ModuleBatchRulesClient
-                {...moduleBatchRuleProps(selectedBatches, selectedSchedules)}
+              <ModuleBatchAccessFields
+                courses={moduleBuilderCourses}
+                initialCourseSlug={selectedModule?.courseSlug || activeCourse?.courseSlug || ""}
+                schedules={moduleBatchRuleProps([], selectedSchedules).schedules}
                 initialEnabled={Boolean(selectedSchedules.length || Number(selectedModule?.dripEnabled || 0) === 1)}
-                disabled={immediateCourse}
               />
               <div className="flex flex-col gap-3 md:col-span-2 sm:flex-row sm:justify-end">
                 <button className="btn-primary justify-center" type="submit" data-toast="Saving module">
                   <Save className="h-4 w-4" />
-                  Save Module
+                  {selectedModule ? "Save Module" : "Create Module"}
                 </button>
               </div>
             </form>

@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 
 import { requireAdmin } from "@/lib/auth"
 import { deleteCourseLiveSession, saveCourseLiveSession } from "@/lib/course-live-sessions"
@@ -94,7 +95,7 @@ export async function saveVideoLibraryModuleAction(formData: FormData) {
     dripAt: dripDates[index] || ""
   }))
   const isActive = formData.get("isActive") === "on"
-  await saveVideoLibraryModule({
+  const saved = await saveVideoLibraryModule({
     moduleId: String(formData.get("moduleId") || ""),
     courseSlug: String(formData.get("courseSlug") || ""),
     moduleSlug: String(formData.get("moduleSlug") || ""),
@@ -105,9 +106,16 @@ export async function saveVideoLibraryModuleAction(formData: FormData) {
     dripEnabled: formData.get("dripEnabled") === "on",
     dripSchedules
   })
-  await setInternalToast(moduleToast({ intent: String(formData.get("actionIntent") || ""), isActive }))
+  const creating = !String(formData.get("moduleId") || "").trim()
+  await setInternalToast(creating
+    ? { title: "Module created", message: "Your new module is ready. You can add and map its lessons now." }
+    : moduleToast({ intent: String(formData.get("actionIntent") || ""), isActive }))
   revalidatePath(PATH)
   revalidatePath("/internal/learning")
+  if (creating && saved.moduleId > BigInt(0)) {
+    const courseSlug = String(formData.get("courseSlug") || "")
+    redirect(`${PATH}?course=${encodeURIComponent(courseSlug)}&moduleCourse=${encodeURIComponent(courseSlug)}&moduleId=${String(saved.moduleId)}#module-builder`)
+  }
 }
 
 export async function saveVideoLibraryLessonAction(formData: FormData) {
