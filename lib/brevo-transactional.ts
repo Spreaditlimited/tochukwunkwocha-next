@@ -65,6 +65,8 @@ export async function sendBrevoTransactionalEmail(input: {
   subject: string
   html: string
   text?: string
+  tags?: string[]
+  headers?: Record<string, string>
 }) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
@@ -85,8 +87,11 @@ export async function sendBrevoTransactionalEmail(input: {
       to: [{ email: to, name: clean(input.name, 160) || undefined }],
       subject,
       htmlContent: brandedBrevoEmail({ subject, html: input.html }),
-      textContent: clean(input.text, 200000) || undefined
-    })
+      textContent: clean(input.text, 200000) || undefined,
+      tags: (input.tags || []).map((tag) => clean(tag, 80)).filter(Boolean).slice(0, 10),
+      headers: Object.fromEntries(Object.entries(input.headers || {}).map(([key, value]) => [clean(key, 100), clean(value, 500)]).filter(([key, value]) => key && value))
+    }),
+    signal: AbortSignal.timeout(12_000)
   })
 
   const body = await response.json().catch(() => null)

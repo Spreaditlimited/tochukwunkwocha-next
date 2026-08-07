@@ -435,8 +435,8 @@ export async function listStudentsProgressByCourse(input?: {
       SELECT LOWER(COALESCE(batch_key, '')) COLLATE utf8mb4_general_ci AS batch_key,
         COALESCE(batch_label, 'Unspecified Batch') COLLATE utf8mb4_general_ci AS batch_label,
         (SELECT cb.batch_start_at FROM course_batches cb
-         WHERE LOWER(cb.course_slug) = LOWER(course_orders.course_slug)
-           AND LOWER(cb.batch_key) = LOWER(course_orders.batch_key)
+         WHERE LOWER(cb.course_slug) COLLATE utf8mb4_unicode_ci = LOWER(course_orders.course_slug) COLLATE utf8mb4_unicode_ci
+           AND LOWER(cb.batch_key) COLLATE utf8mb4_unicode_ci = LOWER(course_orders.batch_key) COLLATE utf8mb4_unicode_ci
          LIMIT 1) AS batch_start_at
       FROM course_orders
       WHERE course_slug ${courseSlugWhereSql}
@@ -446,8 +446,8 @@ export async function listStudentsProgressByCourse(input?: {
       SELECT LOWER(COALESCE(batch_key, '')) COLLATE utf8mb4_general_ci AS batch_key,
         COALESCE(batch_label, 'Unspecified Batch') COLLATE utf8mb4_general_ci AS batch_label,
         (SELECT cb.batch_start_at FROM course_batches cb
-         WHERE LOWER(cb.course_slug) = LOWER(course_manual_payments.course_slug)
-           AND LOWER(cb.batch_key) = LOWER(course_manual_payments.batch_key)
+         WHERE LOWER(cb.course_slug) COLLATE utf8mb4_unicode_ci = LOWER(course_manual_payments.course_slug) COLLATE utf8mb4_unicode_ci
+           AND LOWER(cb.batch_key) COLLATE utf8mb4_unicode_ci = LOWER(course_manual_payments.batch_key) COLLATE utf8mb4_unicode_ci
          LIMIT 1) AS batch_start_at
       FROM course_manual_payments
       WHERE course_slug ${courseSlugWhereSql}

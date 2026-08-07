@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client"
 
 import { getLearningCourseForStudent } from "@/lib/learning-player"
+import {
+  buildLearnerProgressSnapshots,
+  listStartedBatchLearnerEnrollments
+} from "@/lib/learning-progress-snapshots"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
@@ -127,6 +131,19 @@ export async function getCertificateCourseCompletion(
   email: string,
   courseSlug: string
 ) {
+  const batchEnrollments = (await listStartedBatchLearnerEnrollments())
+    .filter((row) => row.accountId === accountId && row.courseSlug === courseSlug)
+    .sort((left, right) => (right.enrolledAt?.getTime() || 0) - (left.enrolledAt?.getTime() || 0))
+  if (batchEnrollments.length) {
+    const snapshots = await buildLearnerProgressSnapshots([batchEnrollments[0]])
+    const snapshot = snapshots[0]
+    if (snapshot) {
+      return {
+        totalLessons: snapshot.totalLessons,
+        completedLessons: snapshot.completedLessons
+      }
+    }
+  }
   const result = await getLearningCourseForStudent({
     accountId,
     email,

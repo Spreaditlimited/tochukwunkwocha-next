@@ -9,6 +9,17 @@ import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { LearningCoursePayload, LearningLesson } from "@/lib/learning-player"
 import { cn } from "@/lib/utils"
 
+type CloudflareStreamPlayer = {
+  addEventListener: (event: string, listener: () => void) => void
+  removeEventListener: (event: string, listener: () => void) => void
+}
+
+declare global {
+  interface Window {
+    Stream?: (iframe: HTMLIFrameElement) => CloudflareStreamPlayer
+  }
+}
+
 type CoursePlayerProps = {
   course: LearningCoursePayload
   initialLessonId?: number
@@ -339,6 +350,9 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   const [discussionBusy, setDiscussionBusy] = useState(false)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playerRef = useRef<HTMLDivElement | null>(null)
+  const streamIframeRef = useRef<HTMLIFrameElement | null>(null)
+  const playbackActiveRef = useRef(false)
+  const activityStartedForLessonRef = useRef(0)
 
   const activeLesson = lessons.find((lesson) => lesson.id === activeLessonId) || null
   const activeModule = activeLesson
@@ -408,10 +422,65 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   }, [activeLesson])
 
   useEffect(() => {
+    if (!activeLessonId || !playbackUrl || !streamIframeRef.current) return
+    let cancelled = false
+    let streamPlayer: CloudflareStreamPlayer | null = null
+    const iframe = streamIframeRef.current
+    playbackActiveRef.current = false
+
+    const recordPlaybackStarted = () => {
+      playbackActiveRef.current = true
+      if (activityStartedForLessonRef.current === activeLessonId) return
+      activityStartedForLessonRef.current = activeLessonId
+      fetch("/api/student/learning/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonId: activeLessonId, watchSeconds: 1 }),
+        keepalive: true
+      }).catch(() => null)
+    }
+    const recordPlaybackStopped = () => {
+      playbackActiveRef.current = false
+    }
+    const attach = () => {
+      if (cancelled || !window.Stream) return
+      streamPlayer = window.Stream(iframe)
+      streamPlayer.addEventListener("playing", recordPlaybackStarted)
+      streamPlayer.addEventListener("play", recordPlaybackStarted)
+      for (const event of ["pause", "ended", "waiting", "stalled", "error", "abort"]) {
+        streamPlayer.addEventListener(event, recordPlaybackStopped)
+      }
+    }
+    if (window.Stream) {
+      attach()
+    } else {
+      const existing = document.querySelector<HTMLScriptElement>('script[data-cloudflare-stream-sdk="true"]')
+      const script = existing || document.createElement("script")
+      if (!existing) {
+        script.src = "https://embed.cloudflarestream.com/embed/sdk.latest.js"
+        script.async = true
+        script.dataset.cloudflareStreamSdk = "true"
+        document.head.appendChild(script)
+      }
+      script.addEventListener("load", attach, { once: true })
+    }
+    return () => {
+      cancelled = true
+      playbackActiveRef.current = false
+      if (!streamPlayer) return
+      streamPlayer.removeEventListener("playing", recordPlaybackStarted)
+      streamPlayer.removeEventListener("play", recordPlaybackStarted)
+      for (const event of ["pause", "ended", "waiting", "stalled", "error", "abort"]) {
+        streamPlayer.removeEventListener(event, recordPlaybackStopped)
+      }
+    }
+  }, [activeLessonId, playbackUrl])
+
+  useEffect(() => {
     if (!activeLessonId || !playbackUrl) return
     if (heartbeatRef.current) clearInterval(heartbeatRef.current)
     heartbeatRef.current = setInterval(() => {
-      if (document.visibilityState !== "visible") return
+      if (document.visibilityState !== "visible" || !playbackActiveRef.current) return
       fetch("/api/student/learning/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -798,6 +867,7 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
               ) : playbackUrl ? (
                 <>
                   <iframe
+                    ref={streamIframeRef}
                     title={activeLesson.title}
                     src={playbackUrl}
                     className="h-full w-full"

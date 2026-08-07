@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { 
   ArrowLeft,
+  BellRing,
   BookOpen, 
   CheckCircle2,
   Clock, 
@@ -9,6 +10,8 @@ import {
   GraduationCap, 
   PlaySquare, 
   Search, 
+  Send,
+  ShieldCheck,
   User, 
   UsersRound 
 } from "lucide-react"
@@ -20,9 +23,18 @@ import {
   listLearningProgressCourseOptions,
   listStudentsProgressByCourse
 } from "@/lib/admin-learning-progress"
+import { listLearningFollowupAdminData } from "@/lib/learning-inactivity-followups"
 import { formatDate } from "@/lib/utils"
+import {
+  configureLearningFollowupWebhookAction,
+  previewLearningFollowupsAction,
+  retryLearningFollowupCampaignAction,
+  saveLearningFollowupSettingsAction,
+  setLearningFollowupCampaignPausedAction
+} from "./actions"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 300
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -55,10 +67,14 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
   const search = param(params, "search", "")
   const detailAccount = param(params, "account", "")
   const detailEmail = param(params, "email", "")
+  const followupStatus = param(params, "followupStatus", "all")
+  const followupCourse = param(params, "followupCourse", "all")
+  const followupSearch = param(params, "followupSearch", "")
 
-  const [courses, progress] = await Promise.all([
+  const [courses, progress, followups] = await Promise.all([
     listLearningProgressCourseOptions(),
-    listStudentsProgressByCourse({ courseSlug, enrollmentType, batchKey, search })
+    listStudentsProgressByCourse({ courseSlug, enrollmentType, batchKey, search }),
+    listLearningFollowupAdminData({ status: followupStatus, courseSlug: followupCourse, search: followupSearch })
   ])
   
   const detail = detailAccount || detailEmail
@@ -108,6 +124,164 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
             icon={<BookOpen className="h-5 w-5" />} iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="truncate text-2xl" />
         </section>
       </DashboardStatsVisibility>
+
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:p-8 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><BellRing className="h-5 w-5" /></div>
+              <div>
+                <h2 className="font-heading text-xl font-black text-foreground">Weekly Learning Follow-ups</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Behaviour-based Brevo reminders for learners inactive for a full week.</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
+              <span className={`rounded-md border px-2.5 py-1 ${followups.config.enabled ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600" : "border-border bg-muted text-muted-foreground"}`}>{followups.config.enabled ? "Automation enabled" : "Automation disabled"}</span>
+              <span className={`rounded-md border px-2.5 py-1 ${followups.config.dryRun ? "border-amber-500/20 bg-amber-500/10 text-amber-600" : "border-primary/20 bg-primary/10 text-primary"}`}>{followups.config.dryRun ? "Dry run only" : "Live delivery"}</span>
+              <span className={`rounded-md border px-2.5 py-1 ${followups.config.webhookConfigured ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600" : "border-amber-500/20 bg-amber-500/10 text-amber-600"}`}>{followups.config.webhookConfigured ? "Brevo events secured" : "Brevo webhook secret missing"}</span>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">Brevo event URL: <code>/api/webhooks/brevo/learning-followups</code> · authenticate with the <code>x-learning-followup-secret</code> header.</p>
+          </div>
+          <form action={previewLearningFollowupsAction}>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" className="btn-secondary w-full justify-center lg:w-auto"><ShieldCheck className="mr-2 h-4 w-4" />Run Safe Preview</button>
+              <button formAction={configureLearningFollowupWebhookAction} type="submit" className="btn-secondary w-full justify-center lg:w-auto"><BellRing className="mr-2 h-4 w-4" />Configure Brevo Events</button>
+            </div>
+          </form>
+        </div>
+
+        <div className="grid gap-4 border-b border-border p-6 sm:grid-cols-3 sm:p-8 xl:grid-cols-6">
+          {[
+            ["Due now", followups.stats.due], ["Active", followups.stats.active], ["Paused", followups.stats.paused],
+            ["Sent", followups.stats.sent], ["Delivered", followups.stats.delivered], ["Resumed", followups.stats.resumed],
+            ["Clicked", followups.stats.clicked], ["Finished after reminder", followups.stats.completedAfterReminder],
+            ["Projects after reminder", followups.stats.projectsAfterReminder], ["Certificates after reminder", followups.stats.certificatesAfterReminder]
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-xl border border-border bg-background p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+              <p className="mt-2 font-heading text-3xl font-black text-foreground">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        <form action={saveLearningFollowupSettingsAction} className="grid gap-4 border-b border-border bg-background p-6 sm:grid-cols-2 sm:p-8 xl:grid-cols-7">
+          <label className="flex items-center gap-3 rounded-lg border border-border px-4 py-3">
+            <input name="enabled" type="checkbox" defaultChecked={followups.config.enabled} className="h-4 w-4 rounded" />
+            <span className="text-xs font-bold">Enable automation</span>
+          </label>
+          <label className="flex items-center gap-3 rounded-lg border border-border px-4 py-3">
+            <input name="dryRun" type="checkbox" defaultChecked={followups.config.dryRun} className="h-4 w-4 rounded" />
+            <span className="text-xs font-bold">Dry-run mode</span>
+          </label>
+          {[
+            ["inactivityDays", "Inactive days", followups.config.inactivityDays],
+            ["campaignMonths", "Campaign months", followups.config.campaignMonths],
+            ["maxReminders", "Maximum emails", followups.config.maxReminders],
+            ["runLimit", "Recipients/run", followups.config.runLimit]
+          ].map(([name, label, value]) => (
+            <label key={String(name)} className="block">
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+              <input name={String(name)} type="number" min="1" defaultValue={String(value)} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-bold" />
+            </label>
+          ))}
+          <button type="submit" className="btn-primary self-end justify-center"><Send className="mr-2 h-4 w-4" />Save Controls</button>
+          <label className="block sm:col-span-2 xl:col-span-7">
+            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course allowlist (comma-separated; blank means all batch courses)</span>
+            <input name="courseAllowlist" defaultValue={followups.config.courseAllowlist.join(", ")} placeholder="prompt-to-profit, prompt-to-profit-holiday" className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm" />
+          </label>
+        </form>
+
+        {followups.emailPreview ? (
+          <details className="border-b border-border bg-muted/10 p-6 sm:p-8">
+            <summary className="cursor-pointer text-sm font-black text-foreground">Inspect the next exact personalised email</summary>
+            <div className="mt-4 rounded-xl border border-border bg-background p-5">
+              <p className="text-xs text-muted-foreground">Recipient: {followups.emailPreview.recipientEmail}</p>
+              <p className="mt-2 font-bold text-foreground">Subject: {followups.emailPreview.subject}</p>
+              <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-6 text-muted-foreground">{followups.emailPreview.text}</pre>
+            </div>
+          </details>
+        ) : null}
+
+        <form className="grid gap-4 border-b border-border bg-background p-6 sm:grid-cols-2 sm:p-8 lg:grid-cols-[1fr_1fr_2fr_auto] lg:items-end">
+          <input type="hidden" name="course" value={progress.courseSlug} />
+          <label className="block">
+            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Follow-up status</span>
+            <PremiumPicker name="followupStatus" defaultValue={followupStatus} options={[
+              { value: "all", label: "All statuses" }, { value: "active", label: "Active" },
+              { value: "paused", label: "Paused" }, { value: "waiting", label: "Waiting for release" },
+              { value: "completed", label: "Completed" }, { value: "expired", label: "Expired" },
+              { value: "stopped", label: "Stopped" }
+            ]} />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Programme</span>
+            <PremiumPicker name="followupCourse" defaultValue={followupCourse} options={[
+              { value: "all", label: "All programmes" },
+              ...courses.map((course, index) => ({ key: `followup-${course.courseSlug}-${index}`, value: course.courseSlug, label: course.courseTitle || course.courseSlug }))
+            ]} />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Learner or recipient</span>
+            <input name="followupSearch" defaultValue={followupSearch} placeholder="Search name or email" className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm" />
+          </label>
+          <button className="btn-secondary h-[42px] justify-center" type="submit"><Search className="mr-2 h-4 w-4" />Filter</button>
+        </form>
+
+        <div className="max-h-[520px] overflow-auto bg-background">
+          <table className="w-full min-w-[72rem] text-left text-sm">
+            <thead className="sticky top-0 z-10 border-b border-border bg-card/95 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <tr><th className="px-6 py-4">Learner</th><th className="px-6 py-4">Programme</th><th className="px-6 py-4">Progress</th><th className="px-6 py-4">Last activity</th><th className="px-6 py-4">Next check</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Control</th></tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {followups.campaigns.length ? followups.campaigns.map((campaign) => (
+                <tr key={campaign.campaignUuid} className="hover:bg-muted/10">
+                  <td className="px-6 py-4"><p className="font-bold text-foreground">{campaign.learnerName}</p><p className="mt-1 text-xs text-muted-foreground">{campaign.recipientEmail}</p></td>
+                  <td className="px-6 py-4"><p className="font-semibold">{campaign.courseSlug}</p><p className="mt-1 text-xs text-muted-foreground">{campaign.batchLabel}</p></td>
+                  <td className="px-6 py-4"><p className="font-black">{campaign.completedLessons}/{campaign.totalLessons}</p><p className="mt-1 text-xs text-muted-foreground">{campaign.remainingLessons} remaining · {campaign.reminderCount} sent</p></td>
+                  <td className="px-6 py-4"><p className="max-w-[220px] truncate font-semibold">{campaign.lastLessonTitle || "Not started"}</p><p className="mt-1 text-xs text-muted-foreground">{campaign.lastActivityAt ? formatDate(campaign.lastActivityAt) : "Never"}</p></td>
+                  <td className="px-6 py-4 text-xs text-muted-foreground">{campaign.nextReminderAt ? formatDate(campaign.nextReminderAt) : "—"}</td>
+                  <td className="px-6 py-4"><span className="rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest">{campaign.status.replace(/_/g, " ")}</span>{campaign.stoppedReason ? <p className="mt-2 text-[10px] text-muted-foreground">{campaign.stoppedReason.replace(/_/g, " ")}</p> : null}</td>
+                  <td className="px-6 py-4 text-right">
+                    {campaign.status === "stopped" && campaign.stoppedReason === "delivery_failed" ? (
+                      <form action={retryLearningFollowupCampaignAction}>
+                        <input type="hidden" name="campaignUuid" value={campaign.campaignUuid} />
+                        <button type="submit" className="btn-secondary px-3 py-2 text-xs">Retry</button>
+                      </form>
+                    ) : !["completed", "expired", "stopped"].includes(campaign.status) ? (
+                      <form action={setLearningFollowupCampaignPausedAction}>
+                        <input type="hidden" name="campaignUuid" value={campaign.campaignUuid} />
+                        <input type="hidden" name="paused" value={campaign.status === "paused" ? "false" : "true"} />
+                        <button type="submit" className="btn-secondary px-3 py-2 text-xs">{campaign.status === "paused" ? "Resume" : "Pause"}</button>
+                      </form>
+                    ) : null}
+                  </td>
+                </tr>
+              )) : <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-muted-foreground">Run a safe preview to create and inspect eligible campaign records. No email will be sent.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-border bg-muted/10 p-6 sm:p-8">
+          <h3 className="font-heading text-lg font-black text-foreground">Delivery Audit</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Brevo submission, click, resumption, retry, and failure records.</p>
+          <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-border bg-background">
+            <table className="w-full min-w-[64rem] text-left text-sm">
+              <thead className="sticky top-0 border-b border-border bg-card text-[10px] font-bold uppercase tracking-widest text-muted-foreground"><tr><th className="px-4 py-3">Learner</th><th className="px-4 py-3">Recipient</th><th className="px-4 py-3">Subject</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Outcome</th><th className="px-4 py-3">Provider</th></tr></thead>
+              <tbody className="divide-y divide-border">
+                {followups.deliveries.length ? followups.deliveries.map((delivery) => (
+                  <tr key={delivery.deliveryUuid}>
+                    <td className="px-4 py-3 font-semibold">{delivery.learnerName || "Learner"}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{delivery.recipientEmail}</td>
+                    <td className="max-w-[260px] truncate px-4 py-3" title={delivery.subject}>{delivery.subject || "Pending render"}</td>
+                    <td className="px-4 py-3"><span className="rounded border border-border bg-muted/40 px-2 py-1 text-[10px] font-black uppercase">{delivery.status.replace(/_/g, " ")}</span><p className="mt-1 text-[10px] text-muted-foreground">{delivery.attempts} attempt{delivery.attempts === 1 ? "" : "s"}</p>{delivery.lastError ? <p className="mt-1 max-w-[260px] truncate text-[10px] text-destructive" title={delivery.lastError}>{delivery.lastError}</p> : null}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{delivery.bouncedAt ? `Bounced ${formatDate(delivery.bouncedAt)}` : delivery.resumedAt ? `Resumed ${formatDate(delivery.resumedAt)}` : delivery.clickedAt ? `Clicked ${formatDate(delivery.clickedAt)}` : delivery.deliveredAt ? `Delivered ${formatDate(delivery.deliveredAt)}` : delivery.sentAt ? `Sent ${formatDate(delivery.sentAt)}` : "Not sent"}{delivery.providerEvent ? <p className="mt-1 text-[10px] uppercase">Brevo: {delivery.providerEvent.replace(/_/g, " ")}</p> : null}</td>
+                    <td className="max-w-[180px] truncate px-4 py-3 font-mono text-[10px] text-muted-foreground" title={delivery.providerMessageId}>{delivery.providerMessageId || "—"}</td>
+                  </tr>
+                )) : <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No delivery attempts recorded.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       {/* Main Ledger / Directory */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

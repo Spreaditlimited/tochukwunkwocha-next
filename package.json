@@ -33,6 +33,9 @@
     "smoke:group-order-reconciliation": "node scripts/smoke-group-order-reconciliation.mjs",
     "smoke:manual-payment-toasts": "node scripts/smoke-manual-payment-toast-completion.mjs",
     "smoke:abandoned-enrollment-followups": "node scripts/smoke-abandoned-enrollment-followups.mjs",
+    "smoke:learning-inactivity-followups": "node scripts/smoke-learning-inactivity-followups.mjs",
+    "smoke:learning-inactivity-followups-db": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-db.mjs",
+    "smoke:learning-inactivity-followups-live": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-live.mjs",
     "smoke:google-analytics": "node scripts/smoke-google-analytics.mjs"
   },
   "dependencies": {
