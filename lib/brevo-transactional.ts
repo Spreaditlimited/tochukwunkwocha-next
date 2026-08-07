@@ -75,6 +75,21 @@ export async function sendBrevoTransactionalEmail(input: {
   const subject = clean(input.subject, 255)
   if (!to || !subject || !input.html) throw new Error("Recipient, subject, and HTML body are required.")
 
+  const headers = Object.fromEntries(
+    Object.entries(input.headers || {})
+      .map(([key, value]) => [clean(key, 100), clean(value, 500)])
+      .filter(([key, value]) => key && value)
+  )
+  const payload = {
+    sender: sender(),
+    to: [{ email: to, name: clean(input.name, 160) || undefined }],
+    subject,
+    htmlContent: brandedBrevoEmail({ subject, html: input.html }),
+    textContent: clean(input.text, 200000) || undefined,
+    tags: (input.tags || []).map((tag) => clean(tag, 80)).filter(Boolean).slice(0, 10),
+    ...(Object.keys(headers).length ? { headers } : {})
+  }
+
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
@@ -82,15 +97,7 @@ export async function sendBrevoTransactionalEmail(input: {
       "content-type": "application/json",
       accept: "application/json"
     },
-    body: JSON.stringify({
-      sender: sender(),
-      to: [{ email: to, name: clean(input.name, 160) || undefined }],
-      subject,
-      htmlContent: brandedBrevoEmail({ subject, html: input.html }),
-      textContent: clean(input.text, 200000) || undefined,
-      tags: (input.tags || []).map((tag) => clean(tag, 80)).filter(Boolean).slice(0, 10),
-      headers: Object.fromEntries(Object.entries(input.headers || {}).map(([key, value]) => [clean(key, 100), clean(value, 500)]).filter(([key, value]) => key && value))
-    }),
+    body: JSON.stringify(payload),
     signal: AbortSignal.timeout(12_000)
   })
 

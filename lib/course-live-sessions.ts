@@ -457,6 +457,20 @@ function dashboardUrl() {
   return publicAbsoluteUrl("/dashboard/courses")
 }
 
+function safeZoomJoinUrl(value: unknown) {
+  const raw = clean(value, 1200)
+  if (!raw) return ""
+  try {
+    const url = new URL(raw)
+    const hostname = url.hostname.toLowerCase()
+    return url.protocol === "https:" && (hostname === "zoom.us" || hostname.endsWith(".zoom.us"))
+      ? url.toString()
+      : ""
+  } catch {
+    return ""
+  }
+}
+
 async function sendLiveSessionEmail(input: {
   session: CourseLiveSessionRow
   recipient: { email: string; fullName: string | null; phone?: string | null }
@@ -466,6 +480,8 @@ async function sendLiveSessionEmail(input: {
   const name = clean(input.recipient.fullName, 160)
   const { sessionTime, accessTime } = liveSessionReminderTimes(input.session)
   const isTomorrow = input.stage === "day_before"
+  const zoomJoinUrl = safeZoomJoinUrl(input.session.zoomJoinUrl)
+  if (!isTomorrow && !zoomJoinUrl) throw new Error("A valid HTTPS Zoom join link is required for the access-open email.")
   const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : "access is open"}`
   const html = [
     `<p>Hello${name ? ` ${escapeHtml(name.split(" ")[0])}` : ""},</p>`,
@@ -474,7 +490,10 @@ async function sendLiveSessionEmail(input: {
       : `<p>Your <strong>${escapeHtml(input.session.sessionTitle)}</strong> for <strong>${escapeHtml(course)}</strong> starts today at ${escapeHtml(sessionTime)}.</p>`,
     isTomorrow
       ? `<p>Your live-class access link will become available in your dashboard 30 minutes before the session, at ${escapeHtml(accessTime)}.</p>`
-      : `<p>Your live-class access link is now available. Please log in to your dashboard, go to Courses, and use the live-class access button on your course card.</p>`,
+      : `<p>Your live-class access is now open. Join the class directly using the Zoom button below.</p>`,
+    !isTomorrow && zoomJoinUrl
+      ? `<p><a href="${escapeHtml(zoomJoinUrl)}" style="display:inline-block;background:#0a54dc;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Join the live class on Zoom</a></p>`
+      : "",
     `<p><a href="${escapeHtml(dashboardUrl())}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Open student dashboard</a></p>`,
     `<p>Tochukwu Tech and AI Academy</p>`
   ].filter(Boolean).join("")
@@ -487,13 +506,66 @@ async function sendLiveSessionEmail(input: {
     "",
     isTomorrow
       ? `Your live-class access link will become available in your dashboard 30 minutes before the session, at ${accessTime}.`
-      : "Your live-class access link is now available. Please log in to your dashboard, go to Courses, and use the live-class access button on your course card.",
+      : "Your live-class access is now open.",
+    ...(!isTomorrow && zoomJoinUrl ? ["", `Join Zoom: ${zoomJoinUrl}`] : []),
     "",
     `Dashboard: ${dashboardUrl()}`,
     "",
     "Tochukwu Tech and AI Academy"
   ].join("\n")
+  if (/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\.local(?:\/|:|$))/i.test(`${html}\n${text}`)) {
+    throw new Error("Live-class email contains a local URL and was blocked.")
+  }
   return sendBrevoTransactionalEmail({ to: input.recipient.email, name, subject, html, text })
+}
+
+export async function retryLiveSessionReminderEmails(input: { sessionUuid: string; stage?: LiveReminderStage }) {
+  await ensureCourseLiveSessionTables()
+  const sessionUuid = clean(input.sessionUuid, 64)
+  const stage = input.stage || "access_open"
+  const sessions = await prisma.$queryRaw<CourseLiveSessionRow[]>(Prisma.sql`
+    SELECT id, session_uuid AS sessionUuid, course_slug AS courseSlug, batch_key AS batchKey, batch_label AS batchLabel,
+      session_title AS sessionTitle, day_offset AS dayOffset, time_of_day AS timeOfDay, starts_at AS startsAt,
+      zoom_meeting_id AS zoomMeetingId, zoom_join_url AS zoomJoinUrl, zoom_start_url AS zoomStartUrl,
+      is_visible AS isVisible, reminder_enabled AS reminderEnabled, reminder_minutes_before AS reminderMinutesBefore,
+      reminder_send_at AS reminderSendAt, reminder_sent_at AS reminderSentAt, reminder_last_error AS reminderLastError
+    FROM tochukwu_course_batch_live_sessions
+    WHERE session_uuid = ${sessionUuid}
+    LIMIT 1
+  `)
+  const session = sessions[0]
+  if (!session) throw new Error("Live session not found.")
+  if (stage === "access_open" && !safeZoomJoinUrl(session.zoomJoinUrl)) {
+    throw new Error("A valid HTTPS Zoom join link is required before retrying access-open emails.")
+  }
+  const recipients = await listSessionRecipients(normalizeSlug(session.courseSlug), normalizeBatchKey(session.batchKey))
+  let sent = 0
+  const errors: string[] = []
+  for (const recipient of recipients) {
+    const result = await deliverReminderChannel({
+      sessionUuid: session.sessionUuid,
+      stage,
+      recipientKey: clean(recipient.email, 320).toLowerCase(),
+      channel: "email",
+      destination: recipient.email,
+      send: () => sendLiveSessionEmail({ session, recipient, stage })
+    })
+    if (result.sent) sent += 1
+    if (result.error) errors.push(`${recipient.email}: ${result.error}`)
+  }
+  const dueAt = liveReminderDueAt(session, stage)
+  if (dueAt) {
+    await recordReminderStage({
+      sessionUuid: session.sessionUuid,
+      stage,
+      dueAt,
+      recipientCount: recipients.length,
+      sentCount: sent,
+      completed: errors.length === 0,
+      lastError: errors.join(" | ")
+    })
+  }
+  return { ok: errors.length === 0, recipients: recipients.length, sent, errors }
 }
 
 function liveReminderDueAt(session: CourseLiveSessionRow, stage: LiveReminderStage) {
