@@ -2,7 +2,7 @@ import crypto from "crypto"
 import { Prisma } from "@prisma/client"
 
 import { applyAdminSettingsToProcessEnv, getAdminSettingValues, upsertAdminSettings } from "@/lib/admin-settings"
-import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
+import { brandedBrevoEmail, sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import {
   LearnerProgressSnapshot,
   listStartedLearnerProgressSnapshots
@@ -363,22 +363,29 @@ function verifiedPayload(token: unknown) {
 }
 
 export function learningFollowupPauseUrl(email: string, courseSlug: string) {
-  const token = signedPayload({ action: "pause", email, courseSlug, exp: Date.now() + 180 * DAY_MS })
+  const token = signedPayload({ v: 2, action: "pause", email, courseSlug, exp: Date.now() + 180 * DAY_MS })
   return publicAbsoluteUrl(`/api/learning-follow-up/pause?token=${encodeURIComponent(token)}`)
 }
 
 export function learningFollowupClickUrl(deliveryGroupUuid: string, path: string) {
-  const token = signedPayload({ action: "click", deliveryGroupUuid, path, exp: Date.now() + 120 * DAY_MS })
+  const token = signedPayload({ v: 2, action: "click", deliveryGroupUuid, path, exp: Date.now() + 120 * DAY_MS })
   return publicAbsoluteUrl(`/api/learning-follow-up/click?token=${encodeURIComponent(token)}`)
+}
+
+export function learningFollowupPauseRequestFromToken(token: unknown) {
+  const payload = verifiedPayload(token)
+  if (Number(payload?.v || 0) !== 2 || payload?.action !== "pause") return null
+  const email = clean(payload.email, 220).toLowerCase()
+  const courseSlug = clean(payload.courseSlug, 120).toLowerCase()
+  if (!email || !courseSlug) return null
+  return { email, courseSlug }
 }
 
 export async function pauseLearningFollowupsFromToken(token: unknown) {
   await ensureLearningFollowupTables()
-  const payload = verifiedPayload(token)
-  if (payload?.action !== "pause") return false
-  const email = clean(payload.email, 220).toLowerCase()
-  const courseSlug = clean(payload.courseSlug, 120).toLowerCase()
-  if (!email || !courseSlug) return false
+  const request = learningFollowupPauseRequestFromToken(token)
+  if (!request) return false
+  const { email, courseSlug } = request
   const now = new Date()
   await prisma.$transaction([
     prisma.$executeRaw`
@@ -401,7 +408,7 @@ export async function recordLearningFollowupClick(token: unknown) {
   const payload = verifiedPayload(token)
   const path = clean(payload?.path, 1500)
   const deliveryGroupUuid = clean(payload?.deliveryGroupUuid, 64)
-  if (payload?.action !== "click" || !deliveryGroupUuid || !path.startsWith("/dashboard/")) return null
+  if (Number(payload?.v || 0) !== 2 || payload?.action !== "click" || !deliveryGroupUuid || !path.startsWith("/dashboard/")) return null
   await prisma.$executeRaw`
     UPDATE tochukwu_learning_followup_deliveries
     SET clicked_at = COALESCE(clicked_at, ${new Date()}), updated_at = ${new Date()}
@@ -415,7 +422,10 @@ export async function learningFollowupWebhookSecret() {
   return clean(values.BREVO_WEBHOOK_SECRET || process.env.BREVO_WEBHOOK_SECRET, 1000)
 }
 
-export async function configureBrevoLearningFollowupWebhook(actorEmail: string) {
+export async function configureBrevoLearningFollowupWebhook(
+  actorEmail: string,
+  options?: { localValidationBaseUrl?: string }
+) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
   if (!apiKey) throw new Error("Brevo API access is not configured.")
@@ -423,6 +433,38 @@ export async function configureBrevoLearningFollowupWebhook(actorEmail: string) 
   if (!secret) {
     secret = crypto.randomBytes(32).toString("base64url")
     await upsertAdminSettings([{ key: "BREVO_WEBHOOK_SECRET", value: secret }], clean(actorEmail, 220))
+  }
+  const localValidationBaseUrl = clean(options?.localValidationBaseUrl, 1000)
+  if (localValidationBaseUrl) {
+    const accountResponse = await fetch("https://api.brevo.com/v3/account", {
+      headers: { "api-key": apiKey, accept: "application/json" },
+      signal: AbortSignal.timeout(12_000)
+    })
+    if (!accountResponse.ok) {
+      const body = await accountResponse.json().catch(() => null)
+      throw new Error(clean(body?.message, 500) || `Brevo credential validation failed (${accountResponse.status}).`)
+    }
+    const url = new URL("/api/webhooks/brevo/learning-followups", localValidationBaseUrl).toString()
+    const selfTestResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-learning-followup-secret": secret
+      },
+      body: JSON.stringify({
+        event: "delivered",
+        email: "learning-followup-local-test@example.invalid",
+        "message-id": `local-test-${crypto.randomUUID()}`,
+        ts_event: Math.floor(Date.now() / 1000),
+        tags: ["learning-inactivity-followup-local-test"]
+      }),
+      signal: AbortSignal.timeout(12_000)
+    })
+    const selfTestBody = await selfTestResponse.json().catch(() => null)
+    if (!selfTestResponse.ok || selfTestBody?.ok !== true || Number(selfTestBody?.matched || 0) !== 0) {
+      throw new Error("The local Brevo webhook endpoint did not pass its authenticated self-test.")
+    }
+    return { created: false, webhookId: "", url, localValidation: true }
   }
   const url = publicAbsoluteUrl("/api/webhooks/brevo/learning-followups")
   const apiHeaders = { "api-key": apiKey, accept: "application/json", "content-type": "application/json" }
@@ -483,7 +525,7 @@ export async function configureBrevoLearningFollowupWebhook(actorEmail: string) 
   const webhookId = clean(existing?.id || body?.id, 80)
   if (!webhookId) throw new Error("Brevo did not return a webhook identifier.")
   await upsertAdminSettings([{ key: "BREVO_LEARNING_FOLLOWUP_WEBHOOK_ID", value: webhookId }], clean(actorEmail, 220))
-  return { created, webhookId, url }
+  return { created, webhookId, url, localValidation: false }
 }
 
 function brevoEventAt(payload: Record<string, unknown>) {
@@ -559,9 +601,9 @@ function subjectFor(snapshots: LearnerProgressSnapshot[], reminderNumber: number
   return `Continue from ${snapshot.lastLessonTitle || snapshot.resumeLessonTitle} — ${snapshot.remainingLessons} lessons to go`
 }
 
-function learnerEmailSection(snapshot: LearnerProgressSnapshot, deliveryGroupUuid: string) {
+function learnerEmailSection(snapshot: LearnerProgressSnapshot, deliveryGroupUuid: string, preview: boolean) {
   const resumePath = `/dashboard/courses/player?course=${encodeURIComponent(snapshot.courseSlug)}${snapshot.resumeLessonId ? `&lesson=${snapshot.resumeLessonId}` : ""}`
-  const resumeUrl = learningFollowupClickUrl(deliveryGroupUuid, resumePath)
+  const resumeUrl = preview ? "#continue-course-preview" : learningFollowupClickUrl(deliveryGroupUuid, resumePath)
   const neverStarted = !snapshot.lastActivityAt
   const proofPending = ["submitted", "pending", "in_review", "approved"].includes(snapshot.proofStatus)
   return {
@@ -599,13 +641,15 @@ export function renderLearningFollowupEmail(input: {
   snapshots: LearnerProgressSnapshot[]
   reminderNumber: number
   deliveryGroupUuid: string
+  preview?: boolean
 }) {
   const recipientName = input.snapshots[0]?.recipientName || input.snapshots[0]?.learnerName || "Student"
   const subject = subjectFor(input.snapshots, input.reminderNumber)
-  const sections = input.snapshots.map((snapshot) => learnerEmailSection(snapshot, input.deliveryGroupUuid))
+  const preview = input.preview === true
+  const sections = input.snapshots.map((snapshot) => learnerEmailSection(snapshot, input.deliveryGroupUuid, preview))
   const pauseLinks = Array.from(new Map(input.snapshots.map((snapshot) => [
     snapshot.courseSlug,
-    learningFollowupPauseUrl(snapshot.recipientEmail, snapshot.courseSlug)
+    preview ? "#pause-reminders-preview" : learningFollowupPauseUrl(snapshot.recipientEmail, snapshot.courseSlug)
   ])).entries())
   const html = [
     `<p>Hello ${escapeHtml(firstName(recipientName))},</p>`,
@@ -937,15 +981,23 @@ export async function listLearningFollowupAdminData(input?: {
       .map((row) => snapshotByKey.get(`${row.accountId.toString()}::${row.courseSlug}::${row.batchKey}`))
       .filter((value): value is LearnerProgressSnapshot => Boolean(value))
     : []
-  let emailPreview: { recipientEmail: string; subject: string; text: string } | null = null
+  let emailPreview: { recipientEmail: string; courseSlug: string; subject: string; text: string; html: string } | null = null
   if (previewRecipient && previewSnapshots.length) {
     try {
       const email = renderLearningFollowupEmail({
         snapshots: previewSnapshots,
         reminderNumber: Math.max(...dueCampaigns.filter((row) => row.recipientEmail === previewRecipient).map((row) => Number(row.reminderCount || 0) + 1)),
-        deliveryGroupUuid: "lfg_admin_preview"
+        deliveryGroupUuid: "lfg_admin_preview",
+        preview: true
       })
-      emailPreview = { recipientEmail: previewRecipient, subject: email.subject, text: email.text }
+      const inertHtml = email.html.replace(/\shref=("[^"]*"|'[^']*')/gi, ' aria-disabled="true"')
+      emailPreview = {
+        recipientEmail: previewRecipient,
+        courseSlug: previewSnapshots[0]?.courseSlug || "",
+        subject: email.subject,
+        text: email.text,
+        html: brandedBrevoEmail({ subject: email.subject, html: inertHtml })
+      }
     } catch {
       emailPreview = null
     }

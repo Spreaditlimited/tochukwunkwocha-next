@@ -34,10 +34,18 @@ assert.match(playerSource, /addEventListener\("playing"/)
 assert.match(cronSource, /CRON_SECRET/)
 assert.match(cronSource, /Learning follow-up processing failed\./)
 assert.match(pauseSource, /Course reminders paused/)
+assert.match(pauseSource, /export async function GET/)
+assert.match(pauseSource, /export async function POST/)
+assert.match(pauseSource, /Nothing has been paused yet/)
+assert.match(pauseSource, /CONFIRMATION_COOKIE/)
+assert.match(pauseSource, /preview.*isLocalhost/)
+assert.match(engineSource, /v: 2/)
+assert.match(engineSource, /aria-disabled="true"/)
 assert.match(clickSource, /recordLearningFollowupClick/)
 assert.match(webhookSource, /x-learning-followup-secret/)
 assert.match(engineSource, /recipient_suppressed/)
 assert.match(engineSource, /configureBrevoLearningFollowupWebhook/)
+assert.match(engineSource, /learning-followup-local-test@example\.invalid/)
 assert.match(engineSource, /hardBounce/)
 assert.match(migration, /UNIQUE KEY `uniq_learning_followup_campaign_cycle`/)
 assert.match(vercel, /\/api\/cron\/learning-inactivity-followups/)
@@ -109,5 +117,16 @@ assert.match(rendered.html, /Olamiposi &lt;script&gt;/)
 assert.doesNotMatch(rendered.html, /localhost/)
 assert.match(rendered.text, /Pause prompt-to-profit-holiday progress reminders/)
 assert.match(rendered.text, /certificate is backed by what you built/)
+
+const previewRendered = renderLearningFollowupEmail({
+  snapshots: [snapshot],
+  reminderNumber: 2,
+  deliveryGroupUuid: "lfg_admin_preview",
+  preview: true
+})
+assert.match(previewRendered.html, /#continue-course-preview/)
+assert.match(previewRendered.html, /#pause-reminders-preview/)
+assert.doesNotMatch(previewRendered.html, /token=/)
+assert.doesNotMatch(previewRendered.text, /token=/)
 
 console.log("Learning inactivity follow-up smoke test passed.")

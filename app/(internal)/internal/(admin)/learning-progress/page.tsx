@@ -70,6 +70,10 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
   const followupStatus = param(params, "followupStatus", "all")
   const followupCourse = param(params, "followupCourse", "all")
   const followupSearch = param(params, "followupSearch", "")
+  const previewState = param(params, "previewState", "")
+  const previewDue = Math.max(0, Number(param(params, "previewDue", "0")) || 0)
+  const previewAt = param(params, "previewAt", "")
+  const brevoState = param(params, "brevoState", "")
 
   const [courses, progress, followups] = await Promise.all([
     listLearningProgressCourseOptions(),
@@ -113,6 +117,42 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
         </div>
       </div>
 
+      {previewState === "success" ? (
+        <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-emerald-950 dark:text-emerald-100" role="status">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div>
+              <h2 className="font-heading text-base font-black">Safe preview completed</h2>
+              <p className="mt-1 text-sm font-semibold">{previewDue} recipient{previewDue === 1 ? " is" : "s are"} currently due. No email was sent.</p>
+              <p className="mt-1 text-xs opacity-75">The selected recipient, subject, and complete email are open below.</p>
+              {previewAt ? <p className="mt-1 text-xs opacity-75">Completed {formatDate(previewAt)}</p> : null}
+            </div>
+          </div>
+        </section>
+      ) : previewState === "error" ? (
+        <section className="rounded-2xl border border-destructive/30 bg-destructive/10 p-5 text-destructive" role="alert">
+          <h2 className="font-heading text-base font-black">Safe preview could not finish</h2>
+          <p className="mt-1 text-sm font-semibold">No email was sent. Check the server log for the internal error and try again.</p>
+        </section>
+      ) : null}
+
+      {brevoState === "local-ready" ? (
+        <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-emerald-950 dark:text-emerald-100" role="status">
+          <h2 className="font-heading text-base font-black">Local Brevo self-test passed</h2>
+          <p className="mt-1 text-sm font-semibold">The Brevo credentials, secure webhook authentication, Brevo event payload handling, and local route all responded correctly. No email was sent and no production registration was changed.</p>
+        </section>
+      ) : brevoState === "connected" ? (
+        <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-emerald-950 dark:text-emerald-100" role="status">
+          <h2 className="font-heading text-base font-black">Brevo events connected</h2>
+          <p className="mt-1 text-sm font-semibold">The deployed webhook is registered for delivery, engagement, bounce, complaint, and unsubscribe events.</p>
+        </section>
+      ) : brevoState === "error" ? (
+        <section className="rounded-2xl border border-destructive/30 bg-destructive/10 p-5 text-destructive" role="alert">
+          <h2 className="font-heading text-base font-black">Brevo validation did not finish</h2>
+          <p className="mt-1 text-sm font-semibold">Nothing was sent or activated. Check the server log for the internal error and try again.</p>
+        </section>
+      ) : null}
+
       {/* Primary Metrics Grid */}
       <DashboardStatsVisibility storageKey="tochukwu-internal-learning-progress-stats">
         <section className="grid gap-4 sm:grid-cols-3">
@@ -138,13 +178,13 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
             <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
               <span className={`rounded-md border px-2.5 py-1 ${followups.config.enabled ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600" : "border-border bg-muted text-muted-foreground"}`}>{followups.config.enabled ? "Automation enabled" : "Automation disabled"}</span>
               <span className={`rounded-md border px-2.5 py-1 ${followups.config.dryRun ? "border-amber-500/20 bg-amber-500/10 text-amber-600" : "border-primary/20 bg-primary/10 text-primary"}`}>{followups.config.dryRun ? "Dry run only" : "Live delivery"}</span>
-              <span className={`rounded-md border px-2.5 py-1 ${followups.config.webhookConfigured ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600" : "border-amber-500/20 bg-amber-500/10 text-amber-600"}`}>{followups.config.webhookConfigured ? "Brevo events secured" : "Brevo webhook secret missing"}</span>
+              <span className={`rounded-md border px-2.5 py-1 ${followups.config.webhookConfigured ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600" : "border-amber-500/20 bg-amber-500/10 text-amber-600"}`}>{followups.config.webhookConfigured ? "Brevo events secured" : "Production webhook not registered"}</span>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">Brevo event URL: <code>/api/webhooks/brevo/learning-followups</code> · authenticate with the <code>x-learning-followup-secret</code> header.</p>
           </div>
           <form action={previewLearningFollowupsAction}>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className="btn-secondary w-full justify-center lg:w-auto"><ShieldCheck className="mr-2 h-4 w-4" />Run Safe Preview</button>
+              <button type="submit" data-toast-long="true" data-toast="Running safe preview" className="btn-secondary w-full justify-center lg:w-auto"><ShieldCheck className="mr-2 h-4 w-4" />Run Safe Preview</button>
               <button formAction={configureLearningFollowupWebhookAction} type="submit" className="btn-secondary w-full justify-center lg:w-auto"><BellRing className="mr-2 h-4 w-4" />Configure Brevo Events</button>
             </div>
           </form>
@@ -184,7 +224,7 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
               <input name={String(name)} type="number" min="1" defaultValue={String(value)} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-bold" />
             </label>
           ))}
-          <button type="submit" className="btn-primary self-end justify-center"><Send className="mr-2 h-4 w-4" />Save Controls</button>
+          <button type="submit" className="btn-primary min-h-[42px] w-full justify-center whitespace-nowrap sm:col-span-2 xl:col-span-1 xl:self-end"><Send className="mr-2 h-4 w-4" />Save Controls</button>
           <label className="block sm:col-span-2 xl:col-span-7">
             <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course allowlist (comma-separated; blank means all batch courses)</span>
             <input name="courseAllowlist" defaultValue={followups.config.courseAllowlist.join(", ")} placeholder="prompt-to-profit, prompt-to-profit-holiday" className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm" />
@@ -192,12 +232,30 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
         </form>
 
         {followups.emailPreview ? (
-          <details className="border-b border-border bg-muted/10 p-6 sm:p-8">
-            <summary className="cursor-pointer text-sm font-black text-foreground">Inspect the next exact personalised email</summary>
+          <details id="learning-followup-email-preview" open={previewState === "success"} className="scroll-mt-6 border-b border-border bg-muted/10 p-6 sm:p-8">
+            <summary className="cursor-pointer text-sm font-black text-foreground">Exact email selected by the safe preview</summary>
             <div className="mt-4 rounded-xl border border-border bg-background p-5">
               <p className="text-xs text-muted-foreground">Recipient: {followups.emailPreview.recipientEmail}</p>
               <p className="mt-2 font-bold text-foreground">Subject: {followups.emailPreview.subject}</p>
-              <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-6 text-muted-foreground">{followups.emailPreview.text}</pre>
+              <p className="mt-2 text-xs text-muted-foreground">Links are visually accurate but disabled in this preview.</p>
+              <a
+                href={`/api/learning-follow-up/pause?preview=1&course=${encodeURIComponent(followups.emailPreview.courseSlug)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary mt-4 w-full justify-center sm:w-auto"
+              >
+                Preview pause confirmation page
+              </a>
+              <iframe
+                title="Learning follow-up email preview"
+                srcDoc={followups.emailPreview.html}
+                sandbox=""
+                className="mt-4 h-[760px] w-full rounded-xl border border-border bg-white"
+              />
+              <details className="mt-4 rounded-lg border border-border p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-wider text-muted-foreground">Plain-text fallback</summary>
+                <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-6 text-muted-foreground">{followups.emailPreview.text}</pre>
+              </details>
             </div>
           </details>
         ) : null}
