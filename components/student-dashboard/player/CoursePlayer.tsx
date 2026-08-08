@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { BookOpen, Captions, CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, Pencil, Play, RefreshCw, Search, ScrollText, Trash2, Upload, X } from "lucide-react"
+import { BookOpen, Captions, CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, MessageSquareText, Pencil, Play, RefreshCw, Search, ScrollText, Send, Trash2, Upload, X } from "lucide-react"
 
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
@@ -44,6 +44,7 @@ type SupportData = {
     status: string
     adminFeedback: string
     attachments: { kind: string; url: string; sortOrder: number }[]
+    messages: { id: number; messageUuid: string; authorType: "student" | "admin" | "system"; authorName: string; body: string; createdAt: string | null }[]
     createdAt: string | null
   }[]
   threads: {
@@ -339,6 +340,8 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
   const [assignmentText, setAssignmentText] = useState("")
   const [assignmentLink, setAssignmentLink] = useState("")
   const [assignmentFiles, setAssignmentFiles] = useState<File[]>([])
+  const [assignmentReplyBodies, setAssignmentReplyBodies] = useState<Record<number, string>>({})
+  const [assignmentReplyBusy, setAssignmentReplyBusy] = useState(0)
   const [threadTitle, setThreadTitle] = useState("")
   const [threadBody, setThreadBody] = useState("")
   const [replyBodies, setReplyBodies] = useState<Record<number, string>>({})
@@ -643,6 +646,28 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
       showStudentToast({ type: "error", title: "Assignment submission failed", message: studentSafeErrorMessage(error, "Could not submit assignment.") })
     } finally {
       setSubmittingSupport(false)
+    }
+  }
+
+  async function submitAssignmentReply(assignmentId: number) {
+    const message = assignmentReplyBodies[assignmentId] || ""
+    if (!message.trim()) return
+    setAssignmentReplyBusy(assignmentId)
+    try {
+      const response = await fetch("/api/student/learning/assignment/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId, courseSlug: course.courseSlug, message })
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok || !json?.ok) throw new Error(json?.error || "Could not send reply.")
+      setAssignmentReplyBodies((current) => ({ ...current, [assignmentId]: "" }))
+      showStudentToast({ type: "success", title: "Reply sent", message: "Your private reply is now available to Learning Support." })
+      await refreshSupport()
+    } catch (error) {
+      showStudentToast({ type: "error", title: "Reply failed", message: studentSafeErrorMessage(error, "Could not send assignment reply.") })
+    } finally {
+      setAssignmentReplyBusy(0)
     }
   }
 
@@ -1052,6 +1077,35 @@ export function CoursePlayer({ course, initialLessonId, learner }: CoursePlayerP
                             </div>
                           ) : null}
                           {item.adminFeedback ? <p className="mt-2 text-primary">{item.adminFeedback}</p> : null}
+                          {item.messages?.length ? (
+                            <div className="mt-3 space-y-2 border-t border-[var(--sd-border)] pt-3">
+                              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-muted-foreground">
+                                <MessageSquareText className="h-4 w-4" /> Private Learning Support
+                              </p>
+                              {item.messages.map((message) => (
+                                <div key={message.messageUuid || message.id} className={cn("rounded-md border px-3 py-2", message.authorType === "student" ? "ml-6 border-primary/20 bg-primary/5" : "mr-6 border-[var(--sd-border)] bg-[var(--sd-soft)]")}>
+                                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                                    {message.authorType === "student" ? "You" : message.authorName || "Learning Support"}
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{message.body}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          {(item.adminFeedback || item.messages?.length || item.status !== "submitted") ? (
+                            <div className="mt-3 flex gap-2">
+                              <textarea
+                                value={assignmentReplyBodies[item.id] || ""}
+                                onChange={(event) => setAssignmentReplyBodies((current) => ({ ...current, [item.id]: event.target.value }))}
+                                className="field min-h-20 flex-1"
+                                placeholder="Reply privately to Learning Support"
+                              />
+                              <button type="button" onClick={() => submitAssignmentReply(item.id)} disabled={assignmentReplyBusy === item.id || !(assignmentReplyBodies[item.id] || "").trim()} className="btn-primary self-end disabled:opacity-50">
+                                {assignmentReplyBusy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                <span className="sr-only">Send private reply</span>
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>

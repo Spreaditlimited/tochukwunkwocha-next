@@ -79,6 +79,14 @@ export type LearningSupportPayload = {
     status: string
     adminFeedback: string
     attachments: { kind: string; url: string; sortOrder: number }[]
+    messages: {
+      id: number
+      messageUuid: string
+      authorType: "student" | "admin" | "system"
+      authorName: string
+      body: string
+      createdAt: Date | null
+    }[]
     createdAt: Date | null
   }[]
   threads: {
@@ -900,7 +908,6 @@ export async function getLearningSupportForStudent(accountId: bigint, email: str
       FROM tochukwu_learning_assignments
       WHERE course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
         AND account_id = ${accountId}
-        AND LOWER(student_email) COLLATE utf8mb4_general_ci = ${email.toLowerCase()}
         AND lesson_id IS NOT NULL
         AND NOT (submission_kind = 'link' AND submission_text = ${CERTIFICATE_PROOF_MARKER})
       ORDER BY id DESC
@@ -940,6 +947,41 @@ export async function getLearningSupportForStudent(accountId: bigint, email: str
     const current = attachmentsByAssignment.get(Number(item.assignmentId)) || []
     current.push({ kind: clean(item.kind, 24) || "file", url: clean(item.url, 1500), sortOrder: Number(item.sortOrder || 0) })
     attachmentsByAssignment.set(Number(item.assignmentId), current)
+  })
+  const assignmentMessages = assignmentIds.length
+    ? await prisma.$queryRaw<Array<{ id: number; messageUuid: string; assignmentId: number; authorType: string; authorName: string; body: string; createdAt: Date | null }>>(Prisma.sql`
+        SELECT CAST(id AS SIGNED) AS id, message_uuid AS messageUuid,
+          CAST(assignment_id AS SIGNED) AS assignmentId, author_type AS authorType,
+          COALESCE(author_name, '') AS authorName, body, created_at AS createdAt
+        FROM tochukwu_learning_assignment_messages
+        WHERE assignment_id IN (${Prisma.join(assignmentIds)})
+          AND account_id = ${accountId}
+        ORDER BY id ASC
+      `)
+    : []
+  if (assignmentIds.length) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE tochukwu_learning_assignment_messages
+      SET read_by_student_at = COALESCE(read_by_student_at, ${new Date()})
+      WHERE assignment_id IN (${Prisma.join(assignmentIds)})
+        AND account_id = ${accountId}
+        AND author_type IN ('admin', 'system')
+    `)
+  }
+  const messagesByAssignment = new Map<number, LearningSupportPayload["assignments"][number]["messages"]>()
+  assignmentMessages.forEach((message) => {
+    const assignmentId = Number(message.assignmentId)
+    const current = messagesByAssignment.get(assignmentId) || []
+    const authorType = ["student", "admin", "system"].includes(message.authorType) ? message.authorType : "system"
+    current.push({
+      id: Number(message.id),
+      messageUuid: clean(message.messageUuid, 64),
+      authorType: authorType as "student" | "admin" | "system",
+      authorName: clean(message.authorName, 180),
+      body: clean(message.body, 20000),
+      createdAt: message.createdAt
+    })
+    messagesByAssignment.set(assignmentId, current)
   })
   const threadIds = threads.map((item) => Number(item.id || 0)).filter(Boolean)
   const replies = threadIds.length
@@ -1007,6 +1049,7 @@ export async function getLearningSupportForStudent(accountId: bigint, email: str
         status: clean(item.status, 32),
         adminFeedback: clean(item.adminFeedback, 4000),
         attachments: attachmentsByAssignment.get(id) || [],
+        messages: messagesByAssignment.get(id) || [],
         createdAt: item.createdAt
       }
     }),
@@ -1067,7 +1110,6 @@ export async function createLearningAssignment(input: {
     FROM tochukwu_learning_assignments
     WHERE course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
       AND account_id = ${input.accountId}
-      AND LOWER(student_email) COLLATE utf8mb4_general_ci = ${input.email.toLowerCase()}
     ORDER BY id DESC
     LIMIT 1
   `)

@@ -129,19 +129,21 @@ export async function addCertificateProofMessage(input: {
   const body = clean(input.body, 20000)
   if (body.length < 2) throw new Error("Message is too short.")
   const now = new Date()
+  const messageUuid = `apm_${crypto.randomUUID().replace(/-/g, "")}`
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO tochukwu_learning_assignment_messages
       (message_uuid, assignment_id, course_slug, account_id, author_type,
        author_ref, author_name, message_type, body, read_by_student_at,
        read_by_admin_at, created_at)
     VALUES
-      (${`apm_${crypto.randomUUID().replace(/-/g, "")}`}, ${input.assignmentId},
+      (${messageUuid}, ${input.assignmentId},
        ${clean(input.courseSlug, 120).toLowerCase()}, ${input.accountId},
        ${input.authorType}, ${clean(input.authorRef, 220) || null},
        ${clean(input.authorName, 180) || null}, ${clean(input.messageType, 32) || "message"},
        ${body}, ${input.authorType === "student" ? null : now},
        ${input.authorType === "student" ? now : null}, ${now})
   `)
+  return messageUuid
 }
 
 function learningSupportRecipients() {
@@ -176,7 +178,7 @@ export async function notifyCertificateProofAdmins(input: {
     to,
     subject,
     text: [
-      `${input.studentName || "A student"} (${input.studentEmail}) sent an update about certificate proof.`,
+      `${input.studentName || "A student"} (${input.studentEmail}) sent a private Learning Support update.`,
       `Course: ${input.courseSlug}`,
       "",
       message,
@@ -184,7 +186,7 @@ export async function notifyCertificateProofAdmins(input: {
       `Open Learning Support: ${adminUrl}`
     ].join("\n"),
     html: [
-      `<p><strong>${escapeHtml(input.studentName || "A student")}</strong> (${escapeHtml(input.studentEmail)}) sent an update about certificate proof.</p>`,
+      `<p><strong>${escapeHtml(input.studentName || "A student")}</strong> (${escapeHtml(input.studentEmail)}) sent a private Learning Support update.</p>`,
       `<p><strong>Course:</strong> ${escapeHtml(input.courseSlug)}</p>`,
       `<p>${escapeHtml(message).replace(/\r?\n/g, "<br/>")}</p>`,
       `<p><a href="${escapeHtml(adminUrl)}">Open Learning Support</a></p>`

@@ -129,14 +129,13 @@ type LatestProof = {
   updatedAt: Date | null
 }
 
-async function latestProof(accountId: bigint, email: string, courseSlug: string, batchKey: string) {
+async function latestProof(accountId: bigint, courseSlug: string, batchKey: string) {
   const rows = await prisma.$queryRaw<LatestProof[]>`
     SELECT id, status, submission_link AS submissionLink,
       admin_feedback AS adminFeedback, reviewed_at AS reviewedAt,
       created_at AS createdAt, updated_at AS updatedAt
     FROM tochukwu_learning_assignments
     WHERE account_id = ${accountId}
-      AND LOWER(student_email) COLLATE utf8mb4_general_ci = ${email}
       AND course_slug = ${courseSlug}
       AND submission_kind = 'link'
       AND submission_text = ${CERTIFICATE_PROOF_MARKER}
@@ -160,7 +159,7 @@ export async function GET(request: Request) {
     await ensureCertificateEligibilityColumns()
     await ensureCertificateProofConversationTable()
     const batchKey = await getLearnerCertificateBatchKey(session.account.id, email, courseSlug)
-    const proof = await latestProof(session.account.id, email, courseSlug, batchKey)
+    const proof = await latestProof(session.account.id, courseSlug, batchKey)
     const messages = proof
       ? await listCertificateProofMessages(proof.id, {
           accountId: session.account.id,
@@ -225,7 +224,7 @@ export async function POST(request: Request) {
     await ensureCertificateEligibilityColumns()
     await ensureCertificateProofConversationTable()
     const batchKey = await getLearnerCertificateBatchKey(session.account.id, email, courseSlug)
-    const previousProof = await latestProof(session.account.id, email, courseSlug, batchKey)
+    const previousProof = await latestProof(session.account.id, courseSlug, batchKey)
     const previousStatus = clean(previousProof?.status, 32).toLowerCase()
     if (previousStatus === "approved") {
       return NextResponse.json({ ok: false, error: "Your certificate proof is already approved." }, { status: 400 })

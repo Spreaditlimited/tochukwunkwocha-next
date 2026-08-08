@@ -58,8 +58,8 @@ export async function reviewAssignmentAction(formData: FormData) {
     result.certificate.message,
     result.email.attempted
       ? result.email.sent
-        ? "Student email sent."
-        : `Student email failed: ${result.email.error}`
+        ? result.email.role === "learner" ? "Learner email sent." : "Group or school owner email sent."
+        : `Learning Support notification failed: ${result.email.error}`
       : ""
   ].filter(Boolean)
   await setInternalToast({
@@ -82,7 +82,7 @@ export async function replyToCertificateProofAction(formData: FormData) {
     type: result.email.sent ? "success" : "error",
     title: result.email.sent ? "Reply sent" : "Reply saved; email failed",
     message: result.email.sent
-      ? "The learner can now see the reply and has been notified by email."
+      ? "The learner can now see the reply; the learner or responsible owner has been notified by email."
       : result.email.error
   })
   revalidatePath(PATH)

@@ -29,7 +29,6 @@ export async function POST(request: Request) {
       SELECT id, status
       FROM tochukwu_learning_assignments
       WHERE account_id = ${session.account.id}
-        AND LOWER(student_email) COLLATE utf8mb4_general_ci = ${email}
         AND course_slug = ${courseSlug}
         AND submission_kind = 'link'
         AND submission_text = ${CERTIFICATE_PROOF_MARKER}

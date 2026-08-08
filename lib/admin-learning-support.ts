@@ -11,9 +11,9 @@ import { ensureCertificateVerificationColumns, getLatestApprovedStudentProject }
 import { sendEmail } from "@/lib/email"
 import {
   addCertificateProofMessage,
-  ensureCertificateProofConversationTable,
-  notifyCertificateProofStudent
+  ensureCertificateProofConversationTable
 } from "@/lib/certificate-proof-conversation"
+import { ensureLearningSupportNotificationTable, sendLearningSupportNotification } from "@/lib/learning-support-notifications"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { publicSiteUrl } from "@/lib/public-site-url"
@@ -23,15 +23,6 @@ export { CERTIFICATE_PROOF_MARKER }
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
-}
-
-function escapeHtml(value: unknown) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
 }
 
 function normalizeCourseSlug(value: unknown) {
@@ -61,6 +52,7 @@ function certificateNo() {
 }
 
 export async function ensureLearningSupportTables() {
+  await ensureLearningSupportNotificationTable()
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS tochukwu_learning_course_features (
       id BIGINT NOT NULL AUTO_INCREMENT,
@@ -534,9 +526,10 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
   const certificateProof = item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER
   const feedbackChanged = previousFeedback !== feedback
   const becameApproved = statusChanged && status === "approved"
-  if (certificateProof && (statusChanged || feedbackChanged)) {
+  let reviewMessageUuid = ""
+  if (statusChanged || feedbackChanged) {
     const recordsFeedback = Boolean(feedback) && (feedbackChanged || status === "needs_revision")
-    await addCertificateProofMessage({
+    reviewMessageUuid = await addCertificateProofMessage({
       assignmentId,
       courseSlug: item.courseSlug,
       accountId: item.accountId,
@@ -566,41 +559,34 @@ export async function reviewAssignment(input: { assignmentId: string; status: st
       console.warn("student_certificate_issue_failed", { assignmentId: assignmentId.toString(), error: certificate.error })
     }
   }
-  const email = { attempted: false, sent: false, error: "" }
-  if ((input.sendApprovalEmail || statusChanged || (certificateProof && feedbackChanged)) && item.studentEmail) {
-    email.attempted = true
+  let email: { attempted: boolean; sent: boolean; role: string | null; error: string } = { attempted: false, sent: false, role: null, error: "" }
+  if (input.sendApprovalEmail || statusChanged || feedbackChanged) {
     const certificateUrl = certificate.certificateUrl
-    const statusLabel = status.replace(/_/g, " ")
-    const courseLabel = escapeHtml(item.courseSlug)
-    const feedbackHtml = feedback ? `<p><strong>Feedback:</strong><br/>${escapeHtml(feedback).replace(/\r?\n/g, "<br/>")}</p>` : ""
-    const websiteHtml = item.submissionLink
-      ? `<p><strong>Submitted website:</strong> <a href="${escapeHtml(item.submissionLink)}" style="color:#0d4f9a;font-weight:700;">${escapeHtml(item.submissionLink)}</a></p>`
-      : ""
-    const revisionHtml = status === "needs_revision"
-      ? "<p>Please review the feedback, make the requested changes, and submit your revised project link from the certificate proof area.</p>"
-      : ""
-    const certificateHtml = certificateUrl
-      ? `<p>Your certificate is now available.</p><p><a href="${escapeHtml(certificateUrl)}" style="display:inline-block;border-radius:10px;background:#0d4f9a;color:#ffffff;font-weight:800;text-decoration:none;padding:12px 18px;">Download your certificate</a></p>`
-      : status === "approved" && certificateProof
-        ? "<p>Your proof has been approved. Your certificate will be available after all certificate requirements are fully satisfied.</p>"
-        : ""
-    try {
-      const delivery = await sendEmail({
-        to: item.studentEmail,
-        subject: certificateUrl
-          ? "Your Website Proof Was Approved - Certificate Ready"
-          : status === "needs_revision"
-            ? "Revision Required for Your Certificate Proof"
-            : `Your learning support status changed to ${status.replace(/_/g, " ")}`,
-        html: `<p>Hello ${escapeHtml(item.studentName || "Student")},</p><p>Your learning support submission for <strong>${courseLabel}</strong> is now <strong>${escapeHtml(statusLabel)}</strong>.</p>${websiteHtml}${feedbackHtml}${revisionHtml}${certificateHtml}<p><a href="${siteBaseUrl()}/dashboard/certificate?course=${encodeURIComponent(item.courseSlug)}#proof-review" style="color:#0d4f9a;font-weight:700;">Open your certificate proof review</a></p>`,
-        text: `Hello ${item.studentName || "Student"},\n\nYour submission for ${item.courseSlug} is now ${status}.\n${item.submissionLink ? `Submitted website: ${item.submissionLink}\n` : ""}${feedback ? `Feedback: ${feedback}\n` : ""}${status === "needs_revision" ? "Please make the requested changes and submit your revised project link from the certificate proof area.\n" : ""}${certificateUrl ? `Certificate: ${certificateUrl}\n` : ""}\nOpen your review: ${siteBaseUrl()}/dashboard/certificate?course=${encodeURIComponent(item.courseSlug)}#proof-review\n\nTochukwu Tech and AI Academy`
-      })
-      email.sent = delivery.ok
-      email.error = delivery.ok ? "" : delivery.error || "Email provider did not send the message."
-    } catch (error) {
-      email.error = error instanceof Error ? error.message : "Email delivery failed."
-      console.warn("assignment_status_email_failed", { assignmentId: assignmentId.toString(), error: email.error })
-    }
+    const notificationMessage = [
+      `The submission status is now ${status.replace(/_/g, " ")}.`,
+      feedback ? `Feedback: ${feedback}` : "",
+      item.submissionLink ? `Submitted link: ${item.submissionLink}` : "",
+      status === "needs_revision" ? "Please review the feedback, make the requested changes, and reply from the learner dashboard." : "",
+      certificateUrl ? `Certificate: ${certificateUrl}` : ""
+    ].filter(Boolean).join("\n\n")
+    email = await sendLearningSupportNotification({
+      assignmentId,
+      accountId: item.accountId,
+      courseSlug: item.courseSlug,
+      eventType: input.sendApprovalEmail ? "review_resent" : "review_updated",
+      idempotencyKey: input.sendApprovalEmail
+        ? `review-resend:${assignmentId.toString()}:${crypto.randomUUID()}`
+        : `review:${reviewMessageUuid || `${assignmentId.toString()}:${status}:${now.getTime()}`}`,
+      subject: certificateUrl
+        ? "Website Proof Approved - Certificate Ready"
+        : status === "needs_revision"
+          ? "Learning Support Revision Required"
+          : `Learning Support update: ${status.replace(/_/g, " ")}`,
+      message: notificationMessage,
+      learnerDashboardPath: certificateProof
+        ? `/dashboard/certificate?course=${encodeURIComponent(item.courseSlug)}#proof-review`
+        : "/dashboard/courses"
+    })
   }
   return {
     status,
@@ -644,10 +630,7 @@ export async function replyToCertificateProof(input: { assignmentId: string; mes
   `
   const assignment = rows[0]
   if (!assignment) throw new Error("Assignment not found.")
-  if (assignment.submissionKind !== "link" || assignment.submissionText !== CERTIFICATE_PROOF_MARKER) {
-    throw new Error("Replies in this area are limited to certificate proof submissions.")
-  }
-  await addCertificateProofMessage({
+  const messageUuid = await addCertificateProofMessage({
     assignmentId,
     courseSlug: assignment.courseSlug,
     accountId: assignment.accountId,
@@ -662,22 +645,31 @@ export async function replyToCertificateProof(input: { assignmentId: string; mes
       (assignment_id, actor_type, actor_ref, event_type, event_note, metadata_json, created_at)
     VALUES
       (${assignmentId}, 'admin', ${admin.email || admin.adminUuid}, 'message_sent',
-       ${message.slice(0, 800)}, ${JSON.stringify({ source: "certificate_proof_review" })}, ${new Date()})
+       ${message.slice(0, 800)}, ${JSON.stringify({ source: "learning_support_review" })}, ${new Date()})
   `.catch(() => null)
-  const delivery = await notifyCertificateProofStudent({
-    studentEmail: assignment.studentEmail,
-    studentName: assignment.studentName || "Student",
+  const certificateProof = assignment.submissionKind === "link" && assignment.submissionText === CERTIFICATE_PROOF_MARKER
+  const delivery = await sendLearningSupportNotification({
+    assignmentId,
+    accountId: assignment.accountId,
     courseSlug: assignment.courseSlug,
-    subject: "New Reply About Your Certificate Proof",
-    message
+    eventType: "admin_reply",
+    idempotencyKey: `reply:${messageUuid}`,
+    subject: certificateProof ? "New Reply About Your Certificate Proof" : "New Private Learning Support Reply",
+    message,
+    learnerDashboardPath: certificateProof
+      ? `/dashboard/certificate?course=${encodeURIComponent(assignment.courseSlug)}#proof-review`
+      : "/dashboard/courses"
   }).catch((error) => ({
-    ok: false,
+    attempted: true,
+    sent: false,
+    role: null,
     error: error instanceof Error ? error.message : "Email delivery failed."
   }))
   return {
     email: {
-      sent: delivery.ok,
-      error: delivery.ok ? "" : delivery.error || "Email provider did not send the message."
+      sent: delivery.sent,
+      role: delivery.role,
+      error: delivery.sent ? "" : delivery.error || "Email provider did not send the message."
     }
   }
 }

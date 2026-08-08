@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS `tochukwu_learning_support_notifications` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `notification_uuid` VARCHAR(64) NOT NULL,
+  `idempotency_key` VARCHAR(190) NOT NULL,
+  `assignment_id` BIGINT NOT NULL,
+  `account_id` BIGINT NOT NULL,
+  `event_type` VARCHAR(40) NOT NULL,
+  `recipient_role` VARCHAR(32) NOT NULL,
+  `recipient_email` VARCHAR(320) NOT NULL,
+  `status` VARCHAR(24) NOT NULL DEFAULT 'pending',
+  `attempts` INT NOT NULL DEFAULT 0,
+  `provider_message_id` VARCHAR(500) NULL,
+  `last_error` VARCHAR(1000) NULL,
+  `sent_at` DATETIME NULL,
+  `created_at` DATETIME NOT NULL,
+  `updated_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_learning_support_notification_uuid` (`notification_uuid`),
+  UNIQUE KEY `uniq_learning_support_notification_idempotency` (`idempotency_key`),
+  KEY `idx_learning_support_notification_assignment` (`assignment_id`, `created_at`),
+  KEY `idx_learning_support_notification_status` (`status`, `updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

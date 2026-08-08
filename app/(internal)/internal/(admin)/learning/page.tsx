@@ -433,12 +433,11 @@ export default async function InternalLearningSupportPage() {
                     
                   </div>
 
-                  {isCertificateProof ? (
-                    <section className="border-t border-border bg-muted/10 p-6">
+                  <section className="border-t border-border bg-muted/10 p-6">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="eyebrow text-primary">Private Review Thread</p>
-                          <h4 className="mt-1 font-heading text-lg font-black text-foreground">Proof Conversation</h4>
+                          <h4 className="mt-1 font-heading text-lg font-black text-foreground">Assignment Conversation</h4>
                         </div>
                         <p className="text-xs font-medium text-muted-foreground">
                           Status-change emails are sent automatically. Use the checkbox above only to resend one.
@@ -487,7 +486,7 @@ export default async function InternalLearningSupportPage() {
                             name="message"
                             rows={3}
                             required
-                            placeholder="Write a private reply about this certificate proof..."
+                            placeholder={isCertificateProof ? "Write a private reply about this certificate proof..." : "Write a private reply about this assignment..."}
                             className="w-full resize-none rounded-md border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                           />
                         </label>
@@ -496,8 +495,7 @@ export default async function InternalLearningSupportPage() {
                           Send Reply
                         </button>
                       </form>
-                    </section>
-                  ) : null}
+                  </section>
                 </article>
               )
             }) : (
