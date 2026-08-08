@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { CheckCircle2, Loader2, X } from "lucide-react"
+import { CheckCircle2, Loader2 } from "lucide-react"
+
+import { DashboardModal } from "@/components/dashboard/DashboardModal"
 
 type ProgressState = {
   running: boolean
@@ -151,28 +153,15 @@ export function AccessibilityGenerateButton({
         </div>
       ) : null}
       {confirmOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-2xl shadow-black/30">
-            <button
-              type="button"
-              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => setConfirmOpen(false)}
-              aria-label="Close confirmation"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <div className="flex items-start gap-3 pr-8">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <CheckCircle2 className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className="font-heading text-lg font-black text-foreground">Generate A11y</h2>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Generate captions and transcript accessibility fields for <span className="font-bold text-foreground">"{moduleTitle}"</span>?
-                </p>
-              </div>
-            </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <DashboardModal
+          title="Generate accessibility content"
+          eyebrow="Video Library"
+          description={<>Generate captions and transcript accessibility fields for <span className="font-bold text-foreground">“{moduleTitle}”</span>?</>}
+          onClose={() => setConfirmOpen(false)}
+          closeLabel="Close accessibility-generation confirmation"
+          size="sm"
+          footer={
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button type="button" className="btn-secondary justify-center" onClick={() => setConfirmOpen(false)}>
                 Cancel
               </button>
@@ -180,8 +169,15 @@ export function AccessibilityGenerateButton({
                 Start Generation
               </button>
             </div>
+          }
+        >
+          <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <CheckCircle2 className="h-5 w-5" />
+            </span>
+            <p className="text-sm font-semibold text-foreground">Existing accessibility fields may be refreshed during generation.</p>
           </div>
-        </div>
+        </DashboardModal>
       ) : null}
     </div>
   )

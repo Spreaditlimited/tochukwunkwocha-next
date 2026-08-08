@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { BookOpen, Captions, CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, MessageSquareText, Pencil, Play, RefreshCw, Search, ScrollText, Send, Trash2, Upload, X } from "lucide-react"
 
+import { DashboardModal } from "@/components/dashboard/DashboardModal"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { LearningCoursePayload, LearningLesson } from "@/lib/learning-player"
@@ -208,28 +209,14 @@ function RichNoteModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
-      <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 border-b border-border p-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
-            <h2 className="mt-1 font-heading text-lg font-black text-foreground">{title}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="btn-secondary h-9 px-3 text-xs">
-            <X className="h-4 w-4" />
-            Close
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          <div className="rounded-lg border border-input bg-background">
-            <div
-              className={`min-h-[28rem] overflow-auto px-5 py-4 ${editorNoteClass}`}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          </div>
-        </div>
+    <DashboardModal title={title} eyebrow={label} onClose={onClose} size="xl" fullHeight bodyClassName="p-4 sm:p-4">
+      <div className="rounded-lg border border-input bg-background">
+        <div
+          className={`min-h-[28rem] overflow-auto px-5 py-4 ${editorNoteClass}`}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       </div>
-    </div>
+    </DashboardModal>
   )
 }
 
@@ -249,40 +236,36 @@ function DiscussionEditModal({
   const isThread = target.kind === "thread"
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={isThread ? "Edit discussion thread" : "Edit discussion reply"} onClick={busy ? undefined : onClose}>
-      <div className="mx-auto mt-10 max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 border-b border-border p-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Course Discussion</p>
-            <h2 className="mt-1 font-heading text-lg font-black text-foreground">{isThread ? "Edit Thread" : "Edit Reply"}</h2>
-          </div>
-          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary h-9 px-3 text-xs disabled:opacity-50">
-            <X className="h-4 w-4" />
-            Close
+    <DashboardModal
+      title={isThread ? "Edit Thread" : "Edit Reply"}
+      eyebrow="Course Discussion"
+      onClose={onClose}
+      closeDisabled={busy}
+      size="lg"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary justify-center disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onSave({ title, body })} disabled={busy || (isThread && !title.trim()) || !body.trim()} className="btn-primary justify-center disabled:opacity-50">
+            {busy ? "Saving..." : "Save Changes"}
           </button>
         </div>
-        <div className="grid gap-4 p-4">
+      }
+    >
+      <div className="grid gap-4">
           {isThread ? (
             <label className="grid gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">Title</span>
-              <input value={title} onChange={(event) => setTitle(event.target.value)} className="field" />
+              <input value={title} onChange={(event) => setTitle(event.target.value)} className="field" data-modal-autofocus />
             </label>
           ) : null}
           <label className="grid gap-2">
             <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">{isThread ? "Body" : "Reply"}</span>
-            <textarea value={body} onChange={(event) => setBody(event.target.value)} className="field min-h-40" />
+            <textarea value={body} onChange={(event) => setBody(event.target.value)} className="field min-h-40" data-modal-autofocus={!isThread ? "true" : undefined} />
           </label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button type="button" onClick={onClose} disabled={busy} className="btn-secondary justify-center disabled:opacity-50">
-              Cancel
-            </button>
-            <button type="button" onClick={() => onSave({ title, body })} disabled={busy || (isThread && !title.trim()) || !body.trim()} className="btn-primary justify-center disabled:opacity-50">
-              {busy ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </DashboardModal>
   )
 }
 
@@ -298,27 +281,27 @@ function DiscussionDeleteModal({
   onConfirm: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Delete discussion item" onClick={busy ? undefined : onClose}>
-      <div className="mx-auto mt-16 max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="border-b border-border p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Course Discussion</p>
-          <h2 className="mt-1 font-heading text-lg font-black text-foreground">Delete {target.kind === "thread" ? "Thread" : "Reply"}</h2>
-        </div>
-        <div className="grid gap-4 p-4">
-          <p className="text-sm leading-6 text-muted-foreground">
-            This will permanently remove <span className="font-bold text-foreground">{target.title}</span>{target.kind === "thread" ? " and its replies" : ""}.
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+    <DashboardModal
+      title={`Delete ${target.kind === "thread" ? "Thread" : "Reply"}`}
+      eyebrow="Course Discussion"
+      description={<>This will permanently remove <span className="font-bold text-foreground">{target.title}</span>{target.kind === "thread" ? " and its replies" : ""}.</>}
+      onClose={onClose}
+      closeDisabled={busy}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" onClick={onClose} disabled={busy} className="btn-secondary justify-center disabled:opacity-50">
               Cancel
             </button>
             <button type="button" onClick={onConfirm} disabled={busy} className="btn-primary justify-center bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
               {busy ? "Deleting..." : "Delete"}
             </button>
-          </div>
         </div>
+      }
+    >
+      <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm font-semibold text-destructive">
+        This action cannot be undone.
       </div>
-    </div>
+    </DashboardModal>
   )
 }
 

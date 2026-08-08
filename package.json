@@ -36,7 +36,9 @@
     "smoke:learning-inactivity-followups": "node scripts/smoke-learning-inactivity-followups.mjs",
     "smoke:learning-inactivity-followups-db": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-db.mjs",
     "smoke:learning-inactivity-followups-live": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-live.mjs",
-    "smoke:google-analytics": "node scripts/smoke-google-analytics.mjs"
+    "smoke:google-analytics": "node scripts/smoke-google-analytics.mjs",
+    "smoke:course-communications": "node scripts/smoke-course-communications-e2e.mjs",
+    "smoke:dashboard-modal-contract": "node scripts/smoke-dashboard-modal-contract.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

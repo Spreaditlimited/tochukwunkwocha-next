@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { createPortal } from "react-dom"
 import Link from "@tiptap/extension-link"
 import { EditorContent, useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
@@ -18,8 +17,9 @@ import {
   Redo2,
   Undo2,
   Unlink,
-  X
 } from "lucide-react"
+
+import { DashboardModal } from "@/components/dashboard/DashboardModal"
 
 function cleanHtml(value: string) {
   if (typeof window === "undefined") return value
@@ -153,38 +153,25 @@ export function BlogContentEditor({ defaultHtml }: { defaultHtml?: string | null
   const words = editor?.getText().trim().split(/\s+/).filter(Boolean).length || 0
   const characters = editor?.getText().length || 0
 
-  const linkDialog = showLinkDialog && typeof document !== "undefined"
-    ? createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/55 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeLinkDialog()
-          }}
-        >
-          <div
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="blog-link-dialog-title"
-          >
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <div className="flex items-center gap-2">
-                <Link2 className="h-5 w-5 text-primary" />
-                <h3 id="blog-link-dialog-title" className="font-heading text-lg font-black text-foreground">
-                  Insert Link
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={closeLinkDialog}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Close link dialog"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={applyLink} className="space-y-4 p-6">
+  const linkDialog = showLinkDialog ? (
+    <DashboardModal
+      title="Insert Link"
+      eyebrow="Blog Editor"
+      onClose={closeLinkDialog}
+      closeLabel="Close link dialog"
+      size="sm"
+      footer={
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button type="button" className="btn-secondary" onClick={closeLinkDialog}>
+            Cancel
+          </button>
+          <button type="submit" form="blog-link-form" className="btn-primary">
+            Insert Link
+          </button>
+        </div>
+      }
+    >
+            <form id="blog-link-form" onSubmit={applyLink} className="space-y-4">
               <label className="block">
                 <span className="label">URL</span>
                 <span className="relative mt-1 block">
@@ -197,6 +184,7 @@ export function BlogContentEditor({ defaultHtml }: { defaultHtml?: string | null
                     }}
                     placeholder="https://example.com"
                     autoFocus
+                    data-modal-autofocus
                     aria-invalid={Boolean(linkError)}
                     aria-describedby={linkError ? "blog-link-error" : undefined}
                   />
@@ -247,21 +235,9 @@ export function BlogContentEditor({ defaultHtml }: { defaultHtml?: string | null
                   {linkError}
                 </p>
               ) : null}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" className="btn-secondary" onClick={closeLinkDialog}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Insert Link
-                </button>
-              </div>
             </form>
-          </div>
-        </div>,
-        document.body
-      )
-    : null
+    </DashboardModal>
+  ) : null
 
   return (
     <section className="grid gap-3">

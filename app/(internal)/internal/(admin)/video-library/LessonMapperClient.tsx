@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { FileText, GripVertical, PlusCircle, Save, Trash2, X } from "lucide-react"
+import { FileText, GripVertical, PlusCircle, Save, Trash2 } from "lucide-react"
 
+import { DashboardModal } from "@/components/dashboard/DashboardModal"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { saveVideoLibraryLessonsAction } from "./actions"
 import { RichNotesEditor, notesPreview } from "./RichNotesEditor"
@@ -256,27 +257,15 @@ export function LessonMapperClient({ moduleId, lessons, videos }: LessonMapperCl
       </div>
 
       {editingNotesRow ? (
-        <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm">
-          <div className="mx-auto flex h-full max-w-5xl flex-col rounded-xl border border-border bg-card shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-border p-4">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Lesson Notes</p>
-                <h3 className="mt-1 truncate font-heading text-lg font-black text-foreground">
-                  {editingNotesRow.lessonTitle || "Untitled lesson"}
-                </h3>
-              </div>
-              <button type="button" onClick={closeNotes} className="btn-secondary h-9 px-3 text-xs">
-                <X className="h-4 w-4" />
-                Close
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-4">
-              <RichNotesEditor
-                value={editingNotesDraft}
-                onChange={setEditingNotesDraft}
-              />
-            </div>
-            <div className="flex justify-end gap-3 border-t border-border p-4">
+        <DashboardModal
+          title={editingNotesRow.lessonTitle || "Untitled lesson"}
+          eyebrow="Lesson Notes"
+          onClose={closeNotes}
+          size="xl"
+          fullHeight
+          bodyClassName="p-4 sm:p-4"
+          footer={
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button type="button" onClick={closeNotes} className="btn-secondary">
                 Close without saving
               </button>
@@ -285,8 +274,13 @@ export function LessonMapperClient({ moduleId, lessons, videos }: LessonMapperCl
                 Save note
               </button>
             </div>
-          </div>
-        </div>
+          }
+        >
+          <RichNotesEditor
+            value={editingNotesDraft}
+            onChange={setEditingNotesDraft}
+          />
+        </DashboardModal>
       ) : null}
 
       <div className="border-t border-border bg-muted/10 p-5">

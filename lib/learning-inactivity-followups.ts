@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client"
 import { applyAdminSettingsToProcessEnv, getAdminSettingValues, upsertAdminSettings } from "@/lib/admin-settings"
 import { brandedBrevoEmail, sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import {
+  BatchLearnerEnrollment,
+  buildLearnerProgressSnapshots,
   LearnerProgressSnapshot,
   listStartedLearnerProgressSnapshots
 } from "@/lib/learning-progress-snapshots"
@@ -44,6 +46,14 @@ type CampaignRow = {
   status: string
   stoppedReason: string | null
   lockedAt: Date | null
+}
+
+type DueCampaignRow = CampaignRow & {
+  batchLabel: string | null
+  batchStartAt: Date
+  enrolledAt: Date | null
+  enrollmentSource: "card" | "manual" | "group" | "school"
+  courseName: string
 }
 
 export type LearningFollowupAdminRow = {
@@ -748,47 +758,89 @@ async function claimCampaignGroup(campaigns: CampaignRow[], snapshots: LearnerPr
   return { deliveryGroupUuid, claimed }
 }
 
-export async function processLearningInactivityFollowups(input?: { now?: Date; forceDryRun?: boolean }) {
+async function listDueLearningFollowupCampaigns(now: Date, limit: number) {
+  return prisma.$queryRaw<DueCampaignRow[]>(Prisma.sql`
+    SELECT c.id, c.campaign_uuid AS campaignUuid, c.account_id AS accountId,
+      c.course_slug AS courseSlug, c.batch_key AS batchKey, c.batch_label AS batchLabel,
+      c.learner_name AS learnerName, c.recipient_name AS recipientName,
+      c.recipient_email AS recipientEmail, c.enrollment_source AS enrollmentSource,
+      c.enrolled_at AS enrolledAt, c.batch_start_at AS batchStartAt,
+      c.campaign_started_at AS campaignStartedAt, c.campaign_ends_at AS campaignEndsAt,
+      c.last_activity_at AS lastActivityAt, c.last_reminder_at AS lastReminderAt,
+      c.next_reminder_at AS nextReminderAt, c.reminder_count AS reminderCount,
+      c.status, c.stopped_reason AS stoppedReason, c.locked_at AS lockedAt,
+      COALESCE(NULLIF(course.course_title, ''), c.course_slug) AS courseName
+    FROM tochukwu_learning_followup_campaigns c
+    LEFT JOIN tochukwu_learning_courses course
+      ON course.course_slug COLLATE utf8mb4_unicode_ci = c.course_slug COLLATE utf8mb4_unicode_ci
+    WHERE c.status = 'active' AND c.next_reminder_at <= ${now} AND c.campaign_ends_at > ${now}
+      AND c.reminder_count < ${limit}
+      AND (c.locked_at IS NULL OR c.locked_at < ${new Date(now.getTime() - 15 * 60_000)})
+    ORDER BY c.next_reminder_at, c.id
+    LIMIT 1500
+  `)
+}
+
+async function buildDueCampaignSnapshots(campaigns: DueCampaignRow[], now: Date) {
+  const enrollments: BatchLearnerEnrollment[] = campaigns.map((campaign) => ({
+    accountId: campaign.accountId,
+    learnerName: clean(campaign.learnerName, 180) || "Learner",
+    recipientName: clean(campaign.recipientName, 180) || clean(campaign.learnerName, 180) || "Student",
+    recipientEmail: clean(campaign.recipientEmail, 220).toLowerCase(),
+    courseSlug: clean(campaign.courseSlug, 120).toLowerCase(),
+    courseName: clean(campaign.courseName, 220) || clean(campaign.courseSlug, 120),
+    batchKey: clean(campaign.batchKey, 64).toLowerCase(),
+    batchLabel: clean(campaign.batchLabel, 120) || clean(campaign.batchKey, 64),
+    batchStartAt: campaign.batchStartAt,
+    enrolledAt: campaign.enrolledAt,
+    enrollmentSource: ["manual", "group", "school"].includes(clean(campaign.enrollmentSource, 40))
+      ? campaign.enrollmentSource
+      : "card"
+  }))
+  return buildLearnerProgressSnapshots(enrollments, now.getTime())
+}
+
+export async function processLearningInactivityFollowups(input?: {
+  now?: Date
+  forceDryRun?: boolean
+  forceLive?: boolean
+  recipientEmail?: string
+  courseSlug?: string
+  limit?: number
+}) {
   const now = input?.now || new Date()
+  await ensureLearningFollowupTables()
   const config = await learningFollowupConfig()
-  const reconciliation = await reconcileLearningFollowupCampaigns(now)
-  const snapshotByKey = new Map(reconciliation.snapshots.map((snapshot) => [
+  const due = await listDueLearningFollowupCampaigns(now, config.maxReminders)
+  const snapshots = await buildDueCampaignSnapshots(due, now)
+  const snapshotByKey = new Map(snapshots.map((snapshot) => [
     `${snapshot.accountId.toString()}::${snapshot.courseSlug}::${snapshot.batchKey}`,
     snapshot
   ]))
-  const due = await prisma.$queryRaw<CampaignRow[]>(Prisma.sql`
-    SELECT id, campaign_uuid AS campaignUuid, account_id AS accountId, course_slug AS courseSlug,
-      batch_key AS batchKey, learner_name AS learnerName, recipient_name AS recipientName,
-      recipient_email AS recipientEmail, campaign_started_at AS campaignStartedAt,
-      campaign_ends_at AS campaignEndsAt, last_activity_at AS lastActivityAt,
-      last_reminder_at AS lastReminderAt, next_reminder_at AS nextReminderAt,
-      reminder_count AS reminderCount, status, stopped_reason AS stoppedReason, locked_at AS lockedAt
-    FROM tochukwu_learning_followup_campaigns
-    WHERE status = 'active' AND next_reminder_at <= ${now} AND campaign_ends_at > ${now}
-      AND reminder_count < ${config.maxReminders}
-      AND (locked_at IS NULL OR locked_at < ${new Date(now.getTime() - 15 * 60_000)})
-    ORDER BY next_reminder_at, id
-    LIMIT ${config.runLimit * 5}
-  `)
   const grouped = new Map<string, CampaignRow[]>()
+  const recipientFilter = clean(input?.recipientEmail, 220).toLowerCase()
+  const courseFilter = clean(input?.courseSlug, 120).toLowerCase()
   for (const campaign of due) {
+    if (recipientFilter && campaign.recipientEmail.toLowerCase() !== recipientFilter) continue
+    if (courseFilter && clean(campaign.courseSlug, 120).toLowerCase() !== courseFilter) continue
     const snapshot = snapshotByKey.get(`${campaign.accountId.toString()}::${campaign.courseSlug}::${campaign.batchKey}`)
     if (!snapshot || snapshot.remainingLessons <= 0 || snapshot.totalLessons <= 0) continue
     grouped.set(campaign.recipientEmail, [...(grouped.get(campaign.recipientEmail) || []), campaign])
   }
-  const preview = Array.from(grouped.entries()).slice(0, config.runLimit).map(([recipientEmail, campaigns]) => ({
+  const runLimit = Math.max(1, Math.min(input?.limit || config.runLimit, 300))
+  const preview = Array.from(grouped.entries()).slice(0, runLimit).map(([recipientEmail, campaigns]) => ({
     recipientEmail,
     learners: campaigns.map((campaign) => campaign.learnerName || "Learner"),
     campaigns: campaigns.map((campaign) => campaign.campaignUuid)
   }))
-  const dryRun = input?.forceDryRun === true || config.dryRun || !config.enabled
-  if (dryRun) return { ok: true, enabled: config.enabled, dryRun: true, dueRecipients: preview.length, preview: input?.forceDryRun ? preview : [], sent: 0, failed: 0, deferred: 0 }
+  const dryRun = input?.forceDryRun === true || (input?.forceLive !== true && (config.dryRun || !config.enabled))
+  if (dryRun) return { ok: true, enabled: config.enabled, dryRun: true, dueRecipients: grouped.size, preview: input?.forceDryRun ? preview : [], sent: 0, failed: 0, deferred: 0 }
 
   let sent = 0
   let failed = 0
   let deferred = 0
-  for (const [recipientEmail, campaigns] of Array.from(grouped.entries()).slice(0, config.runLimit)) {
-    if (await recipientRecentlyContacted(recipientEmail, now, config.inactivityDays)) {
+  for (const [recipientEmail, campaigns] of Array.from(grouped.entries()).slice(0, runLimit)) {
+    if (input?.forceLive !== true && await recipientRecentlyContacted(recipientEmail, now, config.inactivityDays)) {
       deferred += 1
       continue
     }
@@ -851,7 +903,7 @@ export async function processLearningInactivityFollowups(input?: { now?: Date; f
       failed += 1
     }
   }
-  return { ok: failed === 0, enabled: true, dryRun: false, dueRecipients: preview.length, preview: [], sent, failed, deferred }
+  return { ok: failed === 0, enabled: config.enabled, dryRun: false, dueRecipients: grouped.size, preview: [], sent, failed, deferred }
 }
 
 export async function listLearningFollowupAdminData(input?: {

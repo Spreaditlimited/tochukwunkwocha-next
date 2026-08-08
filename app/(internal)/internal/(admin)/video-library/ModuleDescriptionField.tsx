@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { FileText, Save, X } from "lucide-react"
+import { FileText, Save } from "lucide-react"
 
+import { DashboardModal } from "@/components/dashboard/DashboardModal"
 import { RichNotesEditor, notesPreview } from "./RichNotesEditor"
 
 type ModuleDescriptionFieldProps = {
@@ -58,22 +59,15 @@ export function ModuleDescriptionField({ defaultValue }: ModuleDescriptionFieldP
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 bg-background/90 p-4 backdrop-blur-sm">
-          <div className="mx-auto flex h-full max-w-5xl flex-col rounded-xl border border-border bg-card shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-border p-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Module Super Note</p>
-                <h3 className="mt-1 font-heading text-lg font-black text-foreground">Edit module-level note</h3>
-              </div>
-              <button type="button" onClick={closeEditor} className="btn-secondary h-9 px-3 text-xs">
-                <X className="h-4 w-4" />
-                Close
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-4">
-              <RichNotesEditor value={draft} onChange={setDraft} />
-            </div>
-            <div className="flex justify-end gap-3 border-t border-border p-4">
+        <DashboardModal
+          title="Edit module-level note"
+          eyebrow="Module Super Note"
+          onClose={closeEditor}
+          size="xl"
+          fullHeight
+          bodyClassName="p-4 sm:p-4"
+          footer={
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button type="button" onClick={closeEditor} className="btn-secondary">
                 Close without saving
               </button>
@@ -82,8 +76,10 @@ export function ModuleDescriptionField({ defaultValue }: ModuleDescriptionFieldP
                 Save note
               </button>
             </div>
-          </div>
-        </div>
+          }
+        >
+          <RichNotesEditor value={draft} onChange={setDraft} />
+        </DashboardModal>
       ) : null}
     </div>
   )

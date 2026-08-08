@@ -413,12 +413,25 @@ export async function listStudentLiveSessionsForPairs(pairs: Array<{ courseSlug:
 }
 
 async function listSessionRecipients(courseSlug: string, batchKey: string) {
-  return prisma.$queryRaw<Array<{ email: string; fullName: string | null; phone: string | null }>>(Prisma.sql`
-    SELECT DISTINCT email, fullName, phone FROM (
+  const rows = await prisma.$queryRaw<Array<{
+    recipientKey: string
+    role: "learner" | "group_owner"
+    email: string
+    fullName: string | null
+    phone: string | null
+    learnerNames: string | null
+    learnerCount: number | bigint
+  }>>(Prisma.sql`
+    SELECT recipientKey, role, email, fullName, phone, learnerNames, learnerCount FROM (
       SELECT LOWER(o.email) COLLATE utf8mb4_unicode_ci AS email,
+             CONCAT('learner:', sa.id) COLLATE utf8mb4_unicode_ci AS recipientKey,
+             'learner' COLLATE utf8mb4_unicode_ci AS role,
              o.first_name COLLATE utf8mb4_unicode_ci AS fullName,
-             o.phone COLLATE utf8mb4_unicode_ci AS phone
+             o.phone COLLATE utf8mb4_unicode_ci AS phone,
+             COALESCE(NULLIF(sa.full_name, ''), NULLIF(o.first_name, ''), 'Student') COLLATE utf8mb4_unicode_ci AS learnerNames,
+             1 AS learnerCount
       FROM course_orders o
+      JOIN student_accounts sa ON LOWER(sa.email) COLLATE utf8mb4_unicode_ci = LOWER(o.email) COLLATE utf8mb4_unicode_ci
       WHERE o.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
         AND o.batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
         AND o.status = 'paid'
@@ -427,9 +440,14 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
       UNION
 
       SELECT LOWER(m.email) COLLATE utf8mb4_unicode_ci AS email,
+             CONCAT('learner:', sa.id) COLLATE utf8mb4_unicode_ci AS recipientKey,
+             'learner' COLLATE utf8mb4_unicode_ci AS role,
              m.first_name COLLATE utf8mb4_unicode_ci AS fullName,
-             m.phone COLLATE utf8mb4_unicode_ci AS phone
+             m.phone COLLATE utf8mb4_unicode_ci AS phone,
+             COALESCE(NULLIF(sa.full_name, ''), NULLIF(m.first_name, ''), 'Student') COLLATE utf8mb4_unicode_ci AS learnerNames,
+             1 AS learnerCount
       FROM course_manual_payments m
+      JOIN student_accounts sa ON LOWER(sa.email) COLLATE utf8mb4_unicode_ci = LOWER(m.email) COLLATE utf8mb4_unicode_ci
       WHERE m.course_slug COLLATE utf8mb4_unicode_ci = ${courseSlug} COLLATE utf8mb4_unicode_ci
         AND m.batch_key COLLATE utf8mb4_unicode_ci = ${batchKey} COLLATE utf8mb4_unicode_ci
         AND m.status = 'approved'
@@ -438,8 +456,12 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
       UNION
 
       SELECT LOWER(f.parent_email) COLLATE utf8mb4_unicode_ci AS email,
+             CONCAT('family:', f.id) COLLATE utf8mb4_unicode_ci AS recipientKey,
+             'group_owner' COLLATE utf8mb4_unicode_ci AS role,
              f.parent_name COLLATE utf8mb4_unicode_ci AS fullName,
-             f.parent_phone COLLATE utf8mb4_unicode_ci AS phone
+             f.parent_phone COLLATE utf8mb4_unicode_ci AS phone,
+             GROUP_CONCAT(DISTINCT c.full_name ORDER BY c.full_name SEPARATOR ', ') COLLATE utf8mb4_unicode_ci AS learnerNames,
+             COUNT(DISTINCT c.id) AS learnerCount
       FROM family_child_enrollments e
       JOIN family_children c ON c.id = e.child_id
       JOIN family_accounts f ON f.id = e.family_id
@@ -448,9 +470,11 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
         AND e.status = 'active'
         AND c.status = 'active'
         AND f.status = 'active'
+      GROUP BY f.id, f.parent_email, f.parent_name, f.parent_phone
     ) x
     WHERE email IS NOT NULL AND email <> ''
   `)
+  return Array.from(new Map(rows.map((row) => [clean(row.recipientKey, 190), row])).values())
 }
 
 function dashboardUrl() {
@@ -477,7 +501,10 @@ async function sendLiveSessionEmail(input: {
   stage: LiveReminderStage
 }) {
   const course = courseName(input.session.courseSlug)
-  const name = clean(input.recipient.fullName, 160)
+  const recipient = input.recipient as typeof input.recipient & { role?: "learner" | "group_owner"; learnerNames?: string | null; learnerCount?: number | bigint }
+  const name = clean(recipient.fullName, 160)
+  const owner = recipient.role === "group_owner"
+  const learners = clean(recipient.learnerNames, 1500)
   const { sessionTime, accessTime } = liveSessionReminderTimes(input.session)
   const isTomorrow = input.stage === "day_before"
   const zoomJoinUrl = safeZoomJoinUrl(input.session.zoomJoinUrl)
@@ -485,22 +512,29 @@ async function sendLiveSessionEmail(input: {
   const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : "access is open"}`
   const html = [
     `<p>Hello${name ? ` ${escapeHtml(name.split(" ")[0])}` : ""},</p>`,
-    isTomorrow
+    owner
+      ? `<p><strong>${escapeHtml(learners || "Your enrolled learners")}</strong> ${Number(recipient.learnerCount || 0) === 1 ? "is" : "are"} scheduled for <strong>${escapeHtml(input.session.sessionTitle)}</strong> in <strong>${escapeHtml(course)}</strong>${isTomorrow ? " tomorrow" : " today"} at ${escapeHtml(sessionTime)}.</p>`
+      : isTomorrow
       ? `<p>Your <strong>${escapeHtml(input.session.sessionTitle)}</strong> for <strong>${escapeHtml(course)}</strong> is tomorrow at ${escapeHtml(sessionTime)}.</p>`
       : `<p>Your <strong>${escapeHtml(input.session.sessionTitle)}</strong> for <strong>${escapeHtml(course)}</strong> starts today at ${escapeHtml(sessionTime)}.</p>`,
     isTomorrow
       ? `<p>Your live-class access link will become available in your dashboard 30 minutes before the session, at ${escapeHtml(accessTime)}.</p>`
       : `<p>Your live-class access is now open. Join the class directly using the Zoom button below.</p>`,
+    owner
+      ? `<p>Each learner can join from their own dashboard using their individual access code. You may also share the Zoom link below once access opens.</p>`
+      : "",
     !isTomorrow && zoomJoinUrl
       ? `<p><a href="${escapeHtml(zoomJoinUrl)}" style="display:inline-block;background:#0a54dc;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Join the live class on Zoom</a></p>`
       : "",
-    `<p><a href="${escapeHtml(dashboardUrl())}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Open student dashboard</a></p>`,
+    `<p><a href="${escapeHtml(owner ? publicAbsoluteUrl("/dashboard/family") : dashboardUrl())}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">${owner ? "Open Group Enrollment" : "Open student dashboard"}</a></p>`,
     `<p>Tochukwu Tech and AI Academy</p>`
   ].filter(Boolean).join("")
   const text = [
     `Hello${name ? ` ${name.split(" ")[0]}` : ""},`,
     "",
-    isTomorrow
+    owner
+      ? `${learners || "Your enrolled learners"} ${Number(recipient.learnerCount || 0) === 1 ? "is" : "are"} scheduled for ${input.session.sessionTitle} in ${course}${isTomorrow ? " tomorrow" : " today"} at ${sessionTime}.`
+      : isTomorrow
       ? `Your ${input.session.sessionTitle} for ${course} is tomorrow at ${sessionTime}.`
       : `Your ${input.session.sessionTitle} for ${course} starts today at ${sessionTime}.`,
     "",
@@ -509,7 +543,7 @@ async function sendLiveSessionEmail(input: {
       : "Your live-class access is now open.",
     ...(!isTomorrow && zoomJoinUrl ? ["", `Join Zoom: ${zoomJoinUrl}`] : []),
     "",
-    `Dashboard: ${dashboardUrl()}`,
+    `Dashboard: ${owner ? publicAbsoluteUrl("/dashboard/family") : dashboardUrl()}`,
     "",
     "Tochukwu Tech and AI Academy"
   ].join("\n")
@@ -545,7 +579,7 @@ export async function retryLiveSessionReminderEmails(input: { sessionUuid: strin
     const result = await deliverReminderChannel({
       sessionUuid: session.sessionUuid,
       stage,
-      recipientKey: clean(recipient.email, 320).toLowerCase(),
+      recipientKey: clean(recipient.recipientKey, 190),
       channel: "email",
       destination: recipient.email,
       send: () => sendLiveSessionEmail({ session, recipient, stage })
@@ -775,7 +809,7 @@ export async function sendDueLiveSessionReminders() {
       const errors: string[] = []
       let allTerminal = true
       for (const recipient of recipients) {
-        const recipientKey = clean(recipient.email, 320).toLowerCase()
+        const recipientKey = clean(recipient.recipientKey, 190)
         const emailResult = await deliverReminderChannel({
           sessionUuid: session.sessionUuid,
           stage,

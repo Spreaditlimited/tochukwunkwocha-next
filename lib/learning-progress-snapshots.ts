@@ -14,7 +14,7 @@ export type BatchLearnerEnrollment = {
   batchLabel: string
   batchStartAt: Date
   enrolledAt: Date | null
-  enrollmentSource: "card" | "manual" | "group"
+  enrollmentSource: "card" | "manual" | "group" | "school"
 }
 
 export type LearnerProgressSnapshot = BatchLearnerEnrollment & {
@@ -161,6 +161,31 @@ export async function listStartedBatchLearnerEnrollments(nowMs = Date.now()) {
         AND f.status = 'active'
         AND c.account_id IS NOT NULL
         AND b.batch_start_at IS NOT NULL
+
+      UNION ALL
+
+      SELECT ss.account_id AS accountId,
+        COALESCE(NULLIF(ss.full_name, ''), NULLIF(learner.full_name, ''), 'Learner') COLLATE utf8mb4_unicode_ci AS learnerName,
+        COALESCE(NULLIF(admin.full_name, ''), NULLIF(sc.school_name, ''), 'School Administrator') COLLATE utf8mb4_unicode_ci AS recipientName,
+        LOWER(admin.email) COLLATE utf8mb4_unicode_ci AS recipientEmail,
+        sc.course_slug COLLATE utf8mb4_unicode_ci AS courseSlug,
+        CONCAT('school-', sc.id) COLLATE utf8mb4_unicode_ci AS batchKey,
+        COALESCE(NULLIF(sc.school_name, ''), 'School Registration') COLLATE utf8mb4_unicode_ci AS batchLabel,
+        COALESCE(sc.paid_at, ss.created_at) AS batchStartAt,
+        COALESCE(sc.paid_at, ss.created_at) AS enrolledAt,
+        'school' COLLATE utf8mb4_unicode_ci AS enrollmentSource
+      FROM school_students ss
+      JOIN school_accounts sc ON sc.id = ss.school_id AND sc.status = 'active'
+      JOIN student_accounts learner ON learner.id = ss.account_id
+      JOIN school_admins admin ON admin.school_id = sc.id AND admin.is_active = 1
+      WHERE ss.status = 'active'
+        AND ss.account_id IS NOT NULL
+        AND COALESCE(TRIM(sc.course_slug), '') <> ''
+        AND (sc.access_expires_at IS NULL OR sc.access_expires_at >= NOW())
+        AND admin.id = (
+          SELECT MIN(primary_admin.id) FROM school_admins primary_admin
+          WHERE primary_admin.school_id = sc.id AND primary_admin.is_active = 1
+        )
     ) candidate
     JOIN tochukwu_learning_courses course
       ON course.course_slug COLLATE utf8mb4_unicode_ci = candidate.courseSlug COLLATE utf8mb4_unicode_ci
@@ -189,8 +214,8 @@ export async function listStartedBatchLearnerEnrollments(nowMs = Date.now()) {
       batchLabel: clean(row.batchLabel, 120) || batchKey,
       batchStartAt,
       enrolledAt: row.enrolledAt,
-      enrollmentSource: ["manual", "group"].includes(row.enrollmentSource)
-        ? row.enrollmentSource as "manual" | "group"
+      enrollmentSource: ["manual", "group", "school"].includes(row.enrollmentSource)
+        ? row.enrollmentSource as "manual" | "group" | "school"
         : "card"
     }
     const existing = deduped.get(key)

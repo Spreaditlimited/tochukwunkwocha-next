@@ -5,6 +5,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/course-lifecycle-emails",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/affiliate-commissions",
       "schedule": "0 * * * *"
     },
@@ -22,7 +26,11 @@
     },
     {
       "path": "/api/cron/learning-inactivity-followups",
-      "schedule": "0 8 * * *"
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/learning-inactivity-followup-reconcile",
+      "schedule": "30 7 * * *"
     }
   ]
 }

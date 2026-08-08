@@ -24,12 +24,18 @@ import {
   listStudentsProgressByCourse
 } from "@/lib/admin-learning-progress"
 import { listLearningFollowupAdminData } from "@/lib/learning-inactivity-followups"
+import { courseLifecycleConfig, listCourseLifecycleBatchOptions, listCourseLifecycleDeliveries, listCourseLifecycleDeliveryStats, previewCourseLifecycleEmails, type LifecycleStage } from "@/lib/course-lifecycle-emails"
+import { listAutomationRunHealth } from "@/lib/automation-runs"
 import { formatDate } from "@/lib/utils"
 import {
   configureLearningFollowupWebhookAction,
+  previewCourseLifecycleEmailsAction,
   previewLearningFollowupsAction,
   retryLearningFollowupCampaignAction,
   saveLearningFollowupSettingsAction,
+  saveCourseLifecycleSettingsAction,
+  sendCourseLifecycleEmailsAction,
+  sendLearningFollowupsNowAction,
   setLearningFollowupCampaignPausedAction
 } from "./actions"
 
@@ -59,6 +65,47 @@ function durationLabel(seconds: number) {
   return `${minutes}m ${String(remaining).padStart(2, "0")}s`
 }
 
+function automationRunOutcome(run: { status: string; resultJson: string | null }) {
+  if (run.status === "failed") return { label: "Run failed", tone: "text-destructive", detail: "The automation stopped with an error." }
+  if (run.status === "running") return { label: "Checking now", tone: "text-amber-600", detail: "The automation is still processing." }
+  if (!run.resultJson) return { label: "Check finished", tone: "text-muted-foreground", detail: "No delivery result was recorded for this run." }
+
+  let result: Record<string, unknown> = {}
+  try {
+    result = run.resultJson ? JSON.parse(run.resultJson) as Record<string, unknown> : {}
+  } catch {
+    result = {}
+  }
+  const sent = Math.max(0, Number(result.sent || 0))
+  const failed = Math.max(0, Number(result.failed || 0))
+  const deferred = Math.max(0, Number(result.deferred || 0))
+  const due = Math.max(0, Number(result.due ?? result.dueRecipients ?? 0))
+
+  if (result.dryRun === true) {
+    return {
+      label: "Dry run only",
+      tone: "text-amber-600",
+      detail: `${due} email${due === 1 ? "" : "s"} due · no email sent`
+    }
+  }
+  if (sent > 0) {
+    return {
+      label: `${sent} email${sent === 1 ? "" : "s"} sent`,
+      tone: "text-emerald-600",
+      detail: `${failed} failed${deferred ? ` · ${deferred} deferred` : ""}`
+    }
+  }
+  if (deferred > 0) {
+    return {
+      label: "Emails deferred",
+      tone: "text-amber-600",
+      detail: `${deferred} recipient${deferred === 1 ? "" : "s"} deferred · no email sent`
+    }
+  }
+  if (due === 0) return { label: "No email due", tone: "text-muted-foreground", detail: "The check ran successfully; no email was sent." }
+  return { label: "No email sent", tone: "text-muted-foreground", detail: `${due} due · ${failed} failed` }
+}
+
 export default async function InternalLearningProgressPage({ searchParams }: PageProps) {
   const params = await searchParams || {}
   const courseSlug = param(params, "course", "prompt-to-profit")
@@ -74,12 +121,33 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
   const previewDue = Math.max(0, Number(param(params, "previewDue", "0")) || 0)
   const previewAt = param(params, "previewAt", "")
   const brevoState = param(params, "brevoState", "")
+  const lifecyclePreviewState = param(params, "lifecyclePreviewState", "")
+  const lifecyclePreviewDue = Math.max(0, Number(param(params, "lifecyclePreviewDue", "0")) || 0)
+  const lifecycleCourse = param(params, "lifecycleCourse", "")
+  const lifecycleBatch = param(params, "lifecycleBatch", "")
+  const lifecycleStage = param(params, "lifecycleStage", "all") as LifecycleStage | "all"
+  const lifecycleRecipient = param(params, "lifecycleRecipient", "")
 
-  const [courses, progress, followups] = await Promise.all([
+  const [courses, progress, followups, lifecycleConfig, lifecycleStats, automationHealth, lifecycleBatches, lifecycleDeliveries] = await Promise.all([
     listLearningProgressCourseOptions(),
     listStudentsProgressByCourse({ courseSlug, enrollmentType, batchKey, search }),
-    listLearningFollowupAdminData({ status: followupStatus, courseSlug: followupCourse, search: followupSearch })
+    listLearningFollowupAdminData({ status: followupStatus, courseSlug: followupCourse, search: followupSearch }),
+    courseLifecycleConfig(),
+    listCourseLifecycleDeliveryStats(),
+    listAutomationRunHealth(["course-lifecycle-emails", "learning-inactivity-delivery", "learning-inactivity-reconcile"]),
+    listCourseLifecycleBatchOptions(),
+    listCourseLifecycleDeliveries()
   ])
+  const lifecyclePreview = lifecyclePreviewState === "success"
+    ? await previewCourseLifecycleEmails({ courseSlug: lifecycleCourse, batchKey: lifecycleBatch, stage: lifecycleStage, recipientEmail: lifecycleRecipient, limit: 10 })
+    : null
+  const selectedLifecycleEmail = lifecyclePreview?.preview[0] as {
+    recipientEmail: string
+    recipientRole: string
+    subject: string
+    html?: string
+    text?: string
+  } | undefined
   
   const detail = detailAccount || detailEmail
     ? await getStudentCourseProgressDetail({
@@ -100,6 +168,13 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
     : [{ value: progress.courseSlug, label: progress.courseSlug }]
   const enrollmentOptions = progress.filters.availableEnrollmentTypes.map((type) => ({ value: type.key, label: type.label }))
   const batchOptions = progress.filters.availableBatches.map((batch) => ({ value: batch.key, label: batch.label }))
+  const lifecycleCourseOptions = Array.from(new Map(lifecycleBatches.map((batch) => [batch.courseSlug, { value: batch.courseSlug, label: batch.courseName || batch.courseSlug }])).values())
+  const lifecycleStageOptions = [
+    { value: "all", label: "All due stages" },
+    { value: "welcome_48h", label: "48-hour preparation" },
+    { value: "batch_switch_24h", label: "24-hour batch switch" },
+    { value: "lesson_release", label: "Lesson release" }
+  ]
 
   return (
     <main className="space-y-8 pb-12">
@@ -165,6 +240,110 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
         </section>
       </DashboardStatsVisibility>
 
+      <section id="course-lifecycle-emails" className="scroll-mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:p-8 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><BellRing className="h-5 w-5" /></div>
+              <div><h2 className="font-heading text-xl font-black text-foreground">Course Lifecycle Emails</h2><p className="mt-1 text-sm text-muted-foreground">Role-aware preparation, batch-switch and lesson-release emails generated from live batch data.</p></div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
+              <span className={`rounded-md border px-2.5 py-1 ${lifecycleConfig.enabled ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600" : "border-border bg-muted text-muted-foreground"}`}>{lifecycleConfig.enabled ? "Automation enabled" : "Automation disabled"}</span>
+              <span className={`rounded-md border px-2.5 py-1 ${lifecycleConfig.dryRun ? "border-amber-500/20 bg-amber-500/10 text-amber-600" : "border-primary/20 bg-primary/10 text-primary"}`}>{lifecycleConfig.dryRun ? "Dry run only" : "Live delivery"}</span>
+            </div>
+          </div>
+          <form action={previewCourseLifecycleEmailsAction}><button type="submit" className="btn-secondary w-full justify-center lg:w-auto"><ShieldCheck className="mr-2 h-4 w-4" />Run Safe Preview</button></form>
+        </div>
+        {lifecyclePreviewState ? (
+          <div className={`border-b p-5 text-sm font-semibold ${lifecyclePreviewState === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700" : "border-destructive/20 bg-destructive/10 text-destructive"}`}>
+            {lifecyclePreviewState === "success" ? `${lifecyclePreviewDue} lifecycle email${lifecyclePreviewDue === 1 ? " is" : "s are"} currently due. Nothing was sent.` : "The safe preview failed. Nothing was sent."}
+          </div>
+        ) : null}
+        <div className="border-b border-border bg-background p-6 sm:p-8">
+          <div className="mb-5"><p className="eyebrow text-primary">Email Operations</p><h3 className="mt-1 font-heading text-lg font-black">Preview or manually send due lifecycle emails</h3><p className="mt-1 text-sm text-muted-foreground">Filters never make an ineligible email eligible. Sent stages remain protected by the delivery ledger.</p></div>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <form action={previewCourseLifecycleEmailsAction} className="grid gap-4 rounded-xl border border-border bg-muted/10 p-5 sm:grid-cols-2">
+              <div className="sm:col-span-2"><p className="text-sm font-black">Exact safe preview</p><p className="mt-1 text-xs text-muted-foreground">Shows the rendered email and sends nothing.</p></div>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span><PremiumPicker name="courseSlug" defaultValue={lifecycleCourse} options={[{ value: "", label: "All courses" }, ...lifecycleCourseOptions]} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch</span><PremiumPicker name="batchKey" defaultValue={lifecycleBatch} options={[{ value: "", label: "All batches" }, ...lifecycleBatches.map((batch) => ({ value: batch.batchKey, label: `${batch.batchLabel} · ${batch.courseName}` }))]} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Stage</span><PremiumPicker name="stage" defaultValue={lifecycleStage} options={lifecycleStageOptions} /></label>
+              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recipient emails (optional)</span><textarea name="recipientEmail" defaultValue={lifecycleRecipient.replace(/,/g, "\n")} rows={3} placeholder={"Leave blank for everyone matching the filters, or enter selected emails separated by commas or new lines."} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /><span className="mt-1.5 block text-xs text-muted-foreground">Use this to preview everyone, one person, or a selected group.</span></label>
+              <button type="submit" className="btn-secondary justify-center sm:col-span-2"><Eye className="mr-2 h-4 w-4" />Preview Exact Email</button>
+            </form>
+
+            <form action={sendCourseLifecycleEmailsAction} className="grid gap-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 sm:grid-cols-2">
+              <div className="sm:col-span-2"><p className="text-sm font-black">Manual lifecycle send</p><p className="mt-1 text-xs text-muted-foreground">Select one batch. Leave the recipient list blank for everyone eligible in that batch, or enter only the email addresses you want.</p></div>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span><PremiumPicker name="courseSlug" required defaultValue={lifecycleCourse} options={[{ value: "", label: "Select a course", disabled: true }, ...lifecycleCourseOptions]} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Batch</span><PremiumPicker name="batchKey" required defaultValue={lifecycleBatch} options={[{ value: "", label: "Select a batch", disabled: true }, ...lifecycleBatches.map((batch) => ({ value: batch.batchKey, label: `${batch.batchLabel} · ${batch.courseName}` }))]} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Stage</span><PremiumPicker name="stage" defaultValue={lifecycleStage} options={lifecycleStageOptions} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Maximum email sends this run</span><input name="limit" type="number" min="1" max="300" defaultValue="300" className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-bold" /></label>
+              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recipient emails (optional)</span><textarea name="recipientEmail" defaultValue={lifecycleRecipient.replace(/,/g, "\n")} rows={4} placeholder={"Leave blank to send to everyone eligible in this batch.\n\nTo send to some people, enter their emails separated by commas or new lines."} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /><span className="mt-1.5 block text-xs font-semibold text-muted-foreground">Blank = all eligible batch recipients. One or more emails = only those matching recipients.</span></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-amber-700">Type SEND to confirm</span><input name="confirmation" required pattern="[Ss][Ee][Nn][Dd]" autoComplete="off" className="w-full rounded-lg border border-amber-500/40 bg-background px-3 py-2.5 text-sm font-black uppercase" /></label>
+              <button type="submit" className="btn-primary justify-center sm:col-span-2"><Send className="mr-2 h-4 w-4" />Send to Selected Batch Audience</button>
+            </form>
+          </div>
+        </div>
+        {selectedLifecycleEmail?.html ? (
+          <details open className="border-b border-border bg-muted/10 p-6 sm:p-8">
+            <summary className="cursor-pointer text-sm font-black">Exact lifecycle email preview</summary>
+            <div className="mt-4 rounded-xl border border-border bg-background p-5">
+              <p className="text-xs text-muted-foreground">Recipient: {selectedLifecycleEmail.recipientEmail} · {selectedLifecycleEmail.recipientRole.replace(/_/g, " ")}</p>
+              <p className="mt-2 font-bold">Subject: {selectedLifecycleEmail.subject}</p>
+              <iframe title="Course lifecycle email preview" srcDoc={selectedLifecycleEmail.html} sandbox="" className="mt-4 h-[720px] w-full rounded-xl border border-border bg-white" />
+              <details className="mt-4 rounded-lg border border-border p-4"><summary className="cursor-pointer text-xs font-black uppercase tracking-wider text-muted-foreground">Plain-text fallback</summary><pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-6 text-muted-foreground">{selectedLifecycleEmail.text}</pre></details>
+            </div>
+          </details>
+        ) : lifecyclePreviewState === "success" ? <p className="border-b border-border p-6 text-sm text-muted-foreground">No currently due email matches those filters.</p> : null}
+        <div className="grid gap-3 border-b border-border p-6 sm:grid-cols-3 sm:p-8">
+          {automationHealth.length ? automationHealth.map((run) => {
+            const outcome = automationRunOutcome(run)
+            return (
+              <div key={run.automationKey} className="rounded-xl border border-border bg-background p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{run.automationKey.replace(/-/g, " ")}</p>
+                <p className={`mt-2 text-sm font-black uppercase ${outcome.tone}`}>{outcome.label}</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">{outcome.detail}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Last checked {formatDate(run.startedAt)}</p>
+                {run.lastError ? <p className="mt-2 text-xs text-destructive">{run.lastError}</p> : null}
+              </div>
+            )
+          }) : <p className="text-sm text-muted-foreground sm:col-span-3">No scheduled automation run has been recorded yet. The first deployed cron invocation will appear here.</p>}
+        </div>
+        <div className="grid gap-3 border-b border-border p-6 sm:grid-cols-2 sm:p-8 lg:grid-cols-4">
+          {lifecycleStats.length ? lifecycleStats.map((item) => (
+            <div key={item.status} className="rounded-xl border border-border bg-background p-4"><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{item.status.replace(/_/g, " ")}</p><p className="mt-2 font-heading text-3xl font-black">{item.total}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.latestSentAt ? `Latest ${formatDate(item.latestSentAt)}` : "No completed send"}</p></div>
+          )) : <p className="text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">No lifecycle deliveries have been attempted yet.</p>}
+        </div>
+        <div className="border-b border-border bg-background p-6 sm:p-8">
+          <h3 className="font-heading text-lg font-black">Lifecycle Delivery Audit</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Recipient-level automated and manual delivery attempts.</p>
+          <div className="mt-4 max-h-[380px] overflow-auto rounded-xl border border-border">
+            <table className="w-full min-w-[76rem] text-left text-sm">
+              <thead className="sticky top-0 border-b border-border bg-card text-[10px] font-bold uppercase tracking-widest text-muted-foreground"><tr><th className="px-4 py-3">Recipient</th><th className="px-4 py-3">Course / Batch</th><th className="px-4 py-3">Stage</th><th className="px-4 py-3">Subject</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Timing</th><th className="px-4 py-3">Provider</th></tr></thead>
+              <tbody className="divide-y divide-border">
+                {lifecycleDeliveries.length ? lifecycleDeliveries.map((delivery) => (
+                  <tr key={delivery.deliveryUuid}>
+                    <td className="px-4 py-3"><p className="font-semibold">{delivery.recipientName || "Recipient"}</p><p className="mt-1 text-xs text-muted-foreground">{delivery.recipientEmail} · {delivery.recipientRole.replace(/_/g, " ")}</p></td>
+                    <td className="px-4 py-3"><p className="font-semibold">{delivery.courseSlug}</p><p className="mt-1 text-xs text-muted-foreground">{delivery.batchKey}</p></td>
+                    <td className="px-4 py-3 text-xs font-bold uppercase">{delivery.stage.replace(/_/g, " ")}</td>
+                    <td className="max-w-[280px] truncate px-4 py-3" title={delivery.subject}>{delivery.subject || "Pending render"}</td>
+                    <td className="px-4 py-3"><span className="rounded border border-border bg-muted/40 px-2 py-1 text-[10px] font-black uppercase">{delivery.status.replace(/_/g, " ")}</span><p className="mt-1 text-[10px] text-muted-foreground">{delivery.attempts} attempt{delivery.attempts === 1 ? "" : "s"}</p>{delivery.lastError ? <p className="mt-1 max-w-[260px] truncate text-[10px] text-destructive" title={delivery.lastError}>{delivery.lastError}</p> : null}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground"><p>Due {formatDate(delivery.dueAt)}</p><p className="mt-1">{delivery.sentAt ? `Sent ${formatDate(delivery.sentAt)}` : "Not sent"}</p></td>
+                    <td className="max-w-[180px] truncate px-4 py-3 font-mono text-[10px] text-muted-foreground" title={delivery.providerMessageId}>{delivery.providerMessageId || "—"}</td>
+                  </tr>
+                )) : <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No lifecycle delivery attempts recorded.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <form action={saveCourseLifecycleSettingsAction} className="grid gap-4 bg-background p-6 sm:grid-cols-2 sm:p-8 lg:grid-cols-[auto_auto_160px_1fr_auto] lg:items-end">
+          <label className="flex items-center gap-3 rounded-lg border border-border px-4 py-3"><input name="enabled" type="checkbox" defaultChecked={lifecycleConfig.enabled} className="h-4 w-4 rounded" /><span className="text-xs font-bold">Enable automation</span></label>
+          <label className="flex items-center gap-3 rounded-lg border border-border px-4 py-3"><input name="dryRun" type="checkbox" defaultChecked={lifecycleConfig.dryRun} className="h-4 w-4 rounded" /><span className="text-xs font-bold">Dry-run mode</span></label>
+          <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recipients/run</span><input name="runLimit" type="number" min="1" max="300" defaultValue={lifecycleConfig.runLimit} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-bold" /></label>
+          <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Community URLs JSON</span><input name="communityUrls" defaultValue={JSON.stringify(Object.fromEntries(lifecycleConfig.communityUrls))} className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label>
+          <button type="submit" className="btn-primary h-[42px] justify-center"><Send className="mr-2 h-4 w-4" />Save</button>
+        </form>
+      </section>
+
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:p-8 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -202,6 +381,26 @@ export default async function InternalLearningProgressPage({ searchParams }: Pag
               <p className="mt-2 font-heading text-3xl font-black text-foreground">{value}</p>
             </div>
           ))}
+        </div>
+
+        <div className="border-b border-border bg-background p-6 sm:p-8">
+          <div className="mb-5"><p className="eyebrow text-primary">Email Operations</p><h3 className="mt-1 font-heading text-lg font-black">Preview or manually send due follow-ups</h3><p className="mt-1 text-sm text-muted-foreground">A manual run still requires an active, due campaign and uses the existing campaign-cycle idempotency key.</p></div>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <form action={previewLearningFollowupsAction} className="grid gap-4 rounded-xl border border-border bg-muted/10 p-5 sm:grid-cols-2">
+              <div className="sm:col-span-2"><p className="text-sm font-black">Exact safe preview</p><p className="mt-1 text-xs text-muted-foreground">Selects a currently due recipient and sends nothing.</p></div>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span><PremiumPicker name="courseSlug" defaultValue={followupCourse === "all" ? "" : followupCourse} options={[{ value: "", label: "All courses" }, ...courses.map((course, index) => ({ key: `manual-preview-${course.courseSlug}-${index}`, value: course.courseSlug, label: course.courseTitle || course.courseSlug }))]} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recipient email</span><input name="recipientEmail" type="email" defaultValue={followupSearch.includes("@") ? followupSearch : ""} placeholder="Optional: one recipient" className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label>
+              <button type="submit" data-toast-long="true" className="btn-secondary justify-center sm:col-span-2"><Eye className="mr-2 h-4 w-4" />Preview Exact Follow-up</button>
+            </form>
+            <form action={sendLearningFollowupsNowAction} className="grid gap-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 sm:grid-cols-2">
+              <div className="sm:col-span-2"><p className="text-sm font-black">Manual follow-up send</p><p className="mt-1 text-xs text-muted-foreground">Triggers due follow-ups now, even when scheduled automation is paused or in dry-run mode.</p></div>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course</span><PremiumPicker name="courseSlug" defaultValue={followupCourse === "all" ? "" : followupCourse} options={[{ value: "", label: "All courses" }, ...courses.map((course, index) => ({ key: `manual-send-${course.courseSlug}-${index}`, value: course.courseSlug, label: course.courseTitle || course.courseSlug }))]} /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recipient email</span><input name="recipientEmail" type="email" defaultValue={followupSearch.includes("@") ? followupSearch : ""} placeholder="Optional: one recipient" className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Maximum recipients</span><input name="limit" type="number" min="1" max="300" defaultValue="80" className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-bold" /></label>
+              <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-amber-700">Type SEND to confirm</span><input name="confirmation" required pattern="[Ss][Ee][Nn][Dd]" autoComplete="off" className="w-full rounded-lg border border-amber-500/40 bg-background px-3 py-2.5 text-sm font-black uppercase" /></label>
+              <button type="submit" className="btn-primary justify-center sm:col-span-2"><Send className="mr-2 h-4 w-4" />Send Due Follow-ups Now</button>
+            </form>
+          </div>
         </div>
 
         <form action={saveLearningFollowupSettingsAction} className="grid gap-4 border-b border-border bg-background p-6 sm:grid-cols-2 sm:p-8 xl:grid-cols-7">
