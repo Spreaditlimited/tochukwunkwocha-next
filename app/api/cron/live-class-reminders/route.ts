@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { sendDueLiveSessionReminders } from "@/lib/course-live-sessions"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 300
 
 function authorized(request: NextRequest) {
   const secret = String(process.env.CRON_SECRET || "").trim()

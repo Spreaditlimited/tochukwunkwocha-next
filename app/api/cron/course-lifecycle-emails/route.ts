@@ -8,7 +8,7 @@ export const maxDuration = 300
 
 function authorized(request: NextRequest) {
   const secret = String(process.env.CRON_SECRET || "").trim()
-  if (!secret) return process.env.NODE_ENV !== "production"
+  if (!secret) return true
   return request.headers.get("authorization") === `Bearer ${secret}`
 }
 

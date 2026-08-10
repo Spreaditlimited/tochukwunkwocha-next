@@ -30,6 +30,10 @@ function dashboardUrl(path = "/dashboard/courses") {
   return publicAbsoluteUrl(path)
 }
 
+function containsLocalUrl(value: unknown) {
+  return /(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\.local(?:\/|:|$))/i.test(String(value || ""))
+}
+
 export function transactionalCourseName(slug: unknown) {
   const courseSlug = clean(slug, 120).toLowerCase()
   const names: Record<string, string> = {
@@ -49,6 +53,10 @@ async function sendTransactionalWhatsApp(payload: TransactionalWhatsAppPayload) 
   const webhookUrl = clean(await getAdminSettingValue("N8N_TRANSACTIONAL_WHATSAPP_WEBHOOK_URL"), 1200)
   const webhookToken = clean(await getAdminSettingValue("N8N_TRANSACTIONAL_WHATSAPP_WEBHOOK_TOKEN"), 1000)
   if (!webhookUrl || !webhookToken) return { ok: true, skipped: true, reason: "missing_webhook_settings" }
+
+  if (containsLocalUrl(JSON.stringify({ templateVariables: payload.templateVariables, metadata: payload.metadata || {} }))) {
+    throw new Error("Transactional WhatsApp message contains a local URL and was blocked.")
+  }
 
   const response = await fetch(webhookUrl, {
     method: "POST",
@@ -133,7 +141,7 @@ export function sendLiveClassReminderWhatsApp(input: {
   fullName?: string | null
   courseSlug?: string | null
   sessionTitle?: string | null
-  stage: "day_before" | "access_open"
+  stage: "day_before" | "access_open" | "early_access"
   sessionTime: string
   accessTime: string
 }) {

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client"
 import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import { prisma } from "@/lib/prisma"
 import { publicAbsoluteUrl } from "@/lib/public-site-url"
+import { addColumnIfMissing } from "@/lib/schema-guards"
 import { sendLiveClassReminderWhatsApp } from "@/lib/transactional-whatsapp"
 import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 import { createNoFixedTimeZoomMeeting } from "@/lib/zoom"
@@ -62,11 +63,11 @@ const LIVE_REMINDER_MAX_CHANNEL_ATTEMPTS = 5
 const LIVE_REMINDER_RETRY_DELAY_MS = 10 * 60 * 1000
 const LIVE_SESSION_ACCESS_MINUTES_BEFORE = 30
 
-type LiveReminderStage = "day_before" | "access_open"
+type LiveReminderStage = "day_before" | "access_open" | "early_access"
 type LiveReminderChannel = "email" | "whatsapp"
 
 function shouldSendWhatsAppReminder(stage: LiveReminderStage) {
-  return stage === "day_before" || stage === "access_open"
+  return stage === "day_before" || stage === "access_open" || stage === "early_access"
 }
 
 function watCalendarDateParts(timestampMs: number) {
@@ -164,6 +165,7 @@ export type CourseLiveSessionRow = {
   reminderSendAt: Date | null
   reminderSentAt: Date | null
   reminderLastError: string | null
+  earlyReminderSendAt?: Date | null
 }
 
 export type StudentLiveSession = {
@@ -204,6 +206,7 @@ export async function ensureCourseLiveSessionTables() {
       KEY idx_tochukwu_course_live_session_reminder (reminder_enabled, reminder_sent_at, reminder_send_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  await addColumnIfMissing("tochukwu_course_batch_live_sessions", "early_reminder_send_at", "DATETIME NULL AFTER reminder_send_at")
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS tochukwu_course_live_session_reminder_log (
       id BIGINT NOT NULL AUTO_INCREMENT,
@@ -507,9 +510,10 @@ async function sendLiveSessionEmail(input: {
   const learners = clean(recipient.learnerNames, 1500)
   const { sessionTime, accessTime } = liveSessionReminderTimes(input.session)
   const isTomorrow = input.stage === "day_before"
+  const isEarlyAccess = input.stage === "early_access"
   const zoomJoinUrl = safeZoomJoinUrl(input.session.zoomJoinUrl)
   if (!isTomorrow && !zoomJoinUrl) throw new Error("A valid HTTPS Zoom join link is required for the access-open email.")
-  const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : "access is open"}`
+  const subject = `${course}: ${input.session.sessionTitle} ${isTomorrow ? "is tomorrow" : isEarlyAccess ? "Zoom link for today" : "access is open"}`
   const html = [
     `<p>Hello${name ? ` ${escapeHtml(name.split(" ")[0])}` : ""},</p>`,
     owner
@@ -519,9 +523,11 @@ async function sendLiveSessionEmail(input: {
       : `<p>Your <strong>${escapeHtml(input.session.sessionTitle)}</strong> for <strong>${escapeHtml(course)}</strong> starts today at ${escapeHtml(sessionTime)}.</p>`,
     isTomorrow
       ? `<p>Your live-class access link will become available in your dashboard 30 minutes before the session, at ${escapeHtml(accessTime)}.</p>`
+      : isEarlyAccess
+      ? `<p>Here is the actual Zoom link for today’s class. The normal access-open reminder will still arrive at ${escapeHtml(accessTime)}.</p>`
       : `<p>Your live-class access is now open. Join the class directly using the Zoom button below.</p>`,
     owner
-      ? `<p>Each learner can join from their own dashboard using their individual access code. You may also share the Zoom link below once access opens.</p>`
+      ? `<p>Each learner can join from their own dashboard using their individual access code. You may also share the actual Zoom link below${isTomorrow ? " once access opens" : ""}.</p>`
       : "",
     !isTomorrow && zoomJoinUrl
       ? `<p><a href="${escapeHtml(zoomJoinUrl)}" style="display:inline-block;background:#0a54dc;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Join the live class on Zoom</a></p>`
@@ -540,6 +546,8 @@ async function sendLiveSessionEmail(input: {
     "",
     isTomorrow
       ? `Your live-class access link will become available in your dashboard 30 minutes before the session, at ${accessTime}.`
+      : isEarlyAccess
+      ? `Here is the actual Zoom link for today's class. The normal access-open reminder will still arrive at ${accessTime}.`
       : "Your live-class access is now open.",
     ...(!isTomorrow && zoomJoinUrl ? ["", `Join Zoom: ${zoomJoinUrl}`] : []),
     "",
@@ -550,7 +558,15 @@ async function sendLiveSessionEmail(input: {
   if (/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\.local(?:\/|:|$))/i.test(`${html}\n${text}`)) {
     throw new Error("Live-class email contains a local URL and was blocked.")
   }
-  return sendBrevoTransactionalEmail({ to: input.recipient.email, name, subject, html, text })
+  return sendBrevoTransactionalEmail({
+    to: input.recipient.email,
+    name,
+    subject,
+    html,
+    text,
+    tags: ["live-class-reminder", input.stage],
+    headers: { "X-Tochukwu-Live-Reminder-Stage": input.stage }
+  })
 }
 
 export async function retryLiveSessionReminderEmails(input: { sessionUuid: string; stage?: LiveReminderStage }) {
@@ -569,7 +585,7 @@ export async function retryLiveSessionReminderEmails(input: { sessionUuid: strin
   `)
   const session = sessions[0]
   if (!session) throw new Error("Live session not found.")
-  if (stage === "access_open" && !safeZoomJoinUrl(session.zoomJoinUrl)) {
+  if (stage !== "day_before" && !safeZoomJoinUrl(session.zoomJoinUrl)) {
     throw new Error("A valid HTTPS Zoom join link is required before retrying access-open emails.")
   }
   const recipients = await listSessionRecipients(normalizeSlug(session.courseSlug), normalizeBatchKey(session.batchKey))
@@ -604,6 +620,7 @@ export async function retryLiveSessionReminderEmails(input: { sessionUuid: strin
 
 function liveReminderDueAt(session: CourseLiveSessionRow, stage: LiveReminderStage) {
   if (!session.startsAt) return null
+  if (stage === "early_access") return session.earlyReminderSendAt || null
   if (stage === "day_before") {
     return new Date(watWallDateTimeMs(session.startsAt) - 24 * 60 * 60 * 1000)
   }
@@ -779,7 +796,8 @@ export async function sendDueLiveSessionReminders() {
       session_title AS sessionTitle, day_offset AS dayOffset, time_of_day AS timeOfDay, starts_at AS startsAt,
       zoom_meeting_id AS zoomMeetingId, zoom_join_url AS zoomJoinUrl, zoom_start_url AS zoomStartUrl,
       is_visible AS isVisible, reminder_enabled AS reminderEnabled, reminder_minutes_before AS reminderMinutesBefore,
-      reminder_send_at AS reminderSendAt, reminder_sent_at AS reminderSentAt, reminder_last_error AS reminderLastError
+      reminder_send_at AS reminderSendAt, early_reminder_send_at AS earlyReminderSendAt,
+      reminder_sent_at AS reminderSentAt, reminder_last_error AS reminderLastError
     FROM tochukwu_course_batch_live_sessions
     WHERE reminder_enabled = 1
       AND COALESCE(TRIM(zoom_join_url), '') <> ''
@@ -792,7 +810,11 @@ export async function sendDueLiveSessionReminders() {
   let attemptedSessions = 0
   let attemptedStages = 0
   for (const session of sessions) {
-    const stages: LiveReminderStage[] = ["day_before", "access_open"]
+    const stages: LiveReminderStage[] = [
+      ...(session.earlyReminderSendAt ? ["early_access" as const] : []),
+      "day_before",
+      "access_open"
+    ]
     let sessionAttempted = false
     for (const stage of stages) {
       const dueAt = liveReminderDueAt(session, stage)

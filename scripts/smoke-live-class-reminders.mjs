@@ -13,7 +13,7 @@ const migration = fs.readFileSync(path.join(root, "prisma/migrations/20260802150
 
 assert.match(
   liveSessions,
-  /type LiveReminderStage = "day_before" \| "access_open"/
+  /type LiveReminderStage = "day_before" \| "access_open" \| "early_access"/
 )
 assert.match(
   liveSessions,
@@ -34,7 +34,11 @@ assert.match(
 assert.match(liveSessions, /Your live-class access link will become available in your dashboard 30 minutes before the session/)
 assert.match(liveSessions, /Your live-class access is now open/)
 assert.match(liveSessions, /Join the live class on Zoom/)
+assert.match(liveSessions, /Here is the actual Zoom link for today/)
+assert.match(liveSessions, /early_reminder_send_at AS earlyReminderSendAt/)
+assert.match(liveSessions, /tags: \["live-class-reminder", input\.stage\]/)
 assert.match(liveSessions, /Live-class email contains a local URL and was blocked/)
+assert.match(brevo, /\.\.\.\(tags\.length \? \{ tags \} : \{\}\)/)
 assert.match(brevo, /\.\.\.\(Object\.keys\(headers\)\.length \? \{ headers \} : \{\}\)/)
 assert.match(whatsapp, /templateName: dayBefore \? "tochukwu_live_class_day_before" : "tochukwu_live_class_reminder"/)
 assert.match(whatsapp, /templateName: dayBefore \? "tochukwu_live_class_day_before" : "tochukwu_live_class_reminder",\s*templateLanguage: dayBefore \? "en_GB" : "en"/)
@@ -44,7 +48,8 @@ assert.match(whatsapp, /reminderStage: input\.stage/)
 assert.match(whatsapp, /return publicAbsoluteUrl\(path\)/)
 assert.match(publicSiteUrl, /isLocalHostname\(url\.hostname\)/)
 assert.match(publicSiteUrl, /return PRODUCTION_SITE_URL/)
-assert.doesNotMatch(whatsapp, /localhost/)
+assert.doesNotMatch(whatsapp, /https?:\/\/localhost/)
+assert.match(whatsapp, /Transactional WhatsApp message contains a local URL and was blocked/)
 assert.doesNotMatch(liveSessions, /https?:\/\/localhost/)
 assert.match(coursesPage, /const accessOpensMs = sessionStartMs - 30 \* 60 \* 1000/)
 assert.match(coursesPage, /Unlocks 30 minutes before the session/)

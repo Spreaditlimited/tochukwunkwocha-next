@@ -80,13 +80,14 @@ export async function sendBrevoTransactionalEmail(input: {
       .map(([key, value]) => [clean(key, 100), clean(value, 500)])
       .filter(([key, value]) => key && value)
   )
+  const tags = (input.tags || []).map((tag) => clean(tag, 80)).filter(Boolean).slice(0, 10)
   const payload = {
     sender: sender(),
     to: [{ email: to, name: clean(input.name, 160) || undefined }],
     subject,
     htmlContent: brandedBrevoEmail({ subject, html: input.html }),
     textContent: clean(input.text, 200000) || undefined,
-    tags: (input.tags || []).map((tag) => clean(tag, 80)).filter(Boolean).slice(0, 10),
+    ...(tags.length ? { tags } : {}),
     ...(Object.keys(headers).length ? { headers } : {})
   }
 
