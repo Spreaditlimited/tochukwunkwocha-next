@@ -21,7 +21,7 @@ export type PublicStudentProject = {
   courseSlug: string
   courseLabel: string
   learnerLabel: string
-  sourceType: "individual" | "school"
+  sourceType: "individual" | "group" | "school"
   schoolName: string
   publishedAt: Date | null
   links: PublicStudentProjectLink[]
@@ -69,11 +69,20 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
     courseSlug: string | null
     studentName: string | null
     certificateNo: string | null
+    isGroupLearner: number | bigint | boolean
     publishedAt: Date | null
   }>>(Prisma.sql`
     SELECT a.id, a.account_id AS accountId, a.submission_link AS projectUrl, a.course_slug AS courseSlug,
       COALESCE(NULLIF(a.student_name, ''), NULLIF(c.recipient_name, '')) AS studentName,
       c.certificate_no AS certificateNo,
+      EXISTS (
+        SELECT 1
+        FROM family_children child
+        JOIN family_accounts family ON family.id = child.family_id
+        WHERE child.account_id = a.account_id
+          AND child.status = 'active'
+          AND family.status = 'active'
+      ) AS isGroupLearner,
       COALESCE(a.reviewed_at, a.updated_at, a.created_at) AS publishedAt
     FROM tochukwu_learning_assignments a
     LEFT JOIN student_certificates c
@@ -94,10 +103,11 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
     projectUrl: string | null
     courseSlug: string | null
     schoolName: string | null
+    certificateNo: string | null
     publishedAt: Date | null
   }>>(Prisma.sql`
     SELECT s.id, s.website_url AS projectUrl, c.course_slug AS courseSlug,
-      sc.school_name AS schoolName,
+      sc.school_name AS schoolName, c.certificate_no AS certificateNo,
       COALESCE(c.issued_at, s.website_submitted_at, s.updated_at) AS publishedAt
     FROM school_students s
     JOIN school_certificates c
@@ -123,7 +133,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
         courseSlug,
         courseLabel: courseLabel(courseSlug),
         learnerLabel: clean(row.studentName, 80) || "Student project",
-        sourceType: "individual",
+        sourceType: Number(row.isGroupLearner || 0) === 1 ? "group" : "individual",
         schoolName: "",
         publishedAt: row.publishedAt,
         links: [
@@ -151,6 +161,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
       if (!url) return null
       const courseSlug = clean(row.courseSlug, 120)
       const schoolName = clean(row.schoolName, 140)
+      const certificateNo = clean(row.certificateNo, 140)
       return {
         id: `school-${row.id.toString()}`,
         ...url,
@@ -160,7 +171,15 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
         sourceType: "school",
         schoolName,
         publishedAt: row.publishedAt,
-        links: []
+        links: certificateNo
+          ? [{
+              label: "Verify certificate",
+              url: `/certificates/verify/${encodeURIComponent(certificateNo)}`,
+              host: "Certificate verification",
+              kind: "certificate_verification" as const,
+              description: "Academy-issued certificate verification page."
+            }]
+          : []
       }
     })
   ].filter((item): item is PublicStudentProject => Boolean(item))

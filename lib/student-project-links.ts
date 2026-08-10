@@ -6,6 +6,7 @@ import {
   STUDENT_PROJECT_LINK_DECLARATION_TEXT,
   STUDENT_PROJECT_LINK_DECLARATION_VERSION
 } from "@/lib/student-project-link-policy"
+import { addColumnIfMissing, columnExists } from "@/lib/schema-guards"
 
 export type StudentProjectLink = {
   linkUuid: string
@@ -17,6 +18,10 @@ export type StudentProjectLink = {
   certificateNo: string
   isPublic: boolean
   status: string
+  reviewStatus: "pending" | "approved" | "rejected"
+  reviewNote: string
+  reviewedBy: string
+  reviewedAt: string | null
   sourceType: "self_declared"
   declarationAcceptedAt: string | null
   createdAt: string | null
@@ -41,6 +46,11 @@ function normalizeUrl(value: unknown) {
   }
 }
 
+function normalizeReviewStatus(value: unknown): StudentProjectLink["reviewStatus"] {
+  const status = clean(value, 24).toLowerCase()
+  return status === "approved" || status === "rejected" ? status : "pending"
+}
+
 function mapRow(row: Record<string, unknown>): StudentProjectLink {
   return {
     linkUuid: clean(row.linkUuid || row.link_uuid, 80),
@@ -52,6 +62,10 @@ function mapRow(row: Record<string, unknown>): StudentProjectLink {
     certificateNo: clean(row.certificateNo || row.certificate_no, 140),
     isPublic: Number(row.isPublic ?? row.is_public ?? 0) === 1,
     status: clean(row.status, 40),
+    reviewStatus: normalizeReviewStatus(row.reviewStatus || row.review_status),
+    reviewNote: clean(row.reviewNote || row.review_note, 2000),
+    reviewedBy: clean(row.reviewedBy || row.reviewed_by, 180),
+    reviewedAt: row.reviewedAt || row.reviewed_at ? new Date(row.reviewedAt as string || row.reviewed_at as string).toISOString() : null,
     sourceType: "self_declared",
     declarationAcceptedAt: row.declarationAcceptedAt || row.declaration_accepted_at ? new Date(row.declarationAcceptedAt as string || row.declaration_accepted_at as string).toISOString() : null,
     createdAt: row.createdAt || row.created_at ? new Date(row.createdAt as string || row.created_at as string).toISOString() : null
@@ -76,6 +90,10 @@ export async function ensureStudentProjectLinkTables() {
       declaration_accepted_at DATETIME NOT NULL,
       is_public TINYINT(1) NOT NULL DEFAULT 1,
       status VARCHAR(40) NOT NULL DEFAULT 'active',
+      review_status VARCHAR(24) NOT NULL DEFAULT 'pending',
+      review_note TEXT NULL,
+      reviewed_by VARCHAR(180) NULL,
+      reviewed_at DATETIME NULL,
       created_at DATETIME NOT NULL,
       updated_at DATETIME NOT NULL,
       PRIMARY KEY (id),
@@ -86,6 +104,17 @@ export async function ensureStudentProjectLinkTables() {
       KEY idx_student_project_links_created (created_at)
     )
   `)
+  const hadReviewStatus = await columnExists("student_project_links", "review_status")
+  if (!hadReviewStatus) {
+    // Preserve links that were already public before moderation existed. The
+    // temporary default backfills those rows as approved; all future inserts
+    // use the pending default set immediately below.
+    await addColumnIfMissing("student_project_links", "review_status", "VARCHAR(24) NOT NULL DEFAULT 'approved' AFTER status")
+  }
+  await addColumnIfMissing("student_project_links", "review_note", "TEXT NULL AFTER review_status")
+  await addColumnIfMissing("student_project_links", "reviewed_by", "VARCHAR(180) NULL AFTER review_note")
+  await addColumnIfMissing("student_project_links", "reviewed_at", "DATETIME NULL AFTER reviewed_by")
+  await prisma.$executeRawUnsafe("ALTER TABLE student_project_links ALTER COLUMN review_status SET DEFAULT 'pending'")
 }
 
 export async function hasVerifiedStudentProjectProfile(accountId: bigint) {
@@ -114,7 +143,9 @@ export async function listStudentProjectLinks(accountId: bigint) {
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
     SELECT link_uuid AS linkUuid, title, project_url AS projectUrl, host, description,
       course_slug AS courseSlug, certificate_no AS certificateNo, is_public AS isPublic,
-      status, source_type AS sourceType, declaration_accepted_at AS declarationAcceptedAt,
+      status, review_status AS reviewStatus, review_note AS reviewNote,
+      reviewed_by AS reviewedBy, reviewed_at AS reviewedAt,
+      source_type AS sourceType, declaration_accepted_at AS declarationAcceptedAt,
       created_at AS createdAt
     FROM student_project_links
     WHERE account_id = ${accountId}
@@ -132,12 +163,15 @@ export async function listPublicSelfDeclaredProjectLinks(accountIds: bigint[]) {
   const rows = await prisma.$queryRaw<Array<Record<string, unknown> & { accountId: bigint }>>(Prisma.sql`
     SELECT account_id AS accountId, link_uuid AS linkUuid, title, project_url AS projectUrl, host, description,
       course_slug AS courseSlug, certificate_no AS certificateNo, is_public AS isPublic,
-      status, source_type AS sourceType, declaration_accepted_at AS declarationAcceptedAt,
+      status, review_status AS reviewStatus, review_note AS reviewNote,
+      reviewed_by AS reviewedBy, reviewed_at AS reviewedAt,
+      source_type AS sourceType, declaration_accepted_at AS declarationAcceptedAt,
       created_at AS createdAt
     FROM student_project_links
     WHERE account_id IN (${Prisma.join(ids)})
       AND status = 'active'
       AND is_public = 1
+      AND review_status = 'approved'
     ORDER BY created_at DESC, id DESC
   `).catch(() => [])
 
@@ -188,12 +222,13 @@ export async function createStudentProjectLink(input: {
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO student_project_links
       (link_uuid, account_id, certificate_no, course_slug, title, project_url, host, description,
-       source_type, declaration_version, declaration_text, declaration_accepted_at, is_public, status, created_at, updated_at)
+       source_type, declaration_version, declaration_text, declaration_accepted_at, is_public, status,
+       review_status, created_at, updated_at)
     VALUES
       (${linkUuid}, ${input.accountId}, ${clean(input.certificateNo, 140) || null}, ${clean(input.courseSlug, 120) || null},
        ${title}, ${url.projectUrl}, ${url.host}, ${clean(input.description, 1000) || null},
        'self_declared', ${STUDENT_PROJECT_LINK_DECLARATION_VERSION}, ${STUDENT_PROJECT_LINK_DECLARATION_TEXT},
-       ${now}, 1, 'active', ${now}, ${now})
+       ${now}, 1, 'active', 'pending', ${now}, ${now})
   `)
 
   return listStudentProjectLinks(input.accountId)

@@ -3,6 +3,7 @@ import {
   BookOpen,
   CheckCircle2, 
   Clock, 
+  ExternalLink,
   FileCheck2, 
   FileText, 
   GraduationCap, 
@@ -25,6 +26,7 @@ import {
   replyToCertificateProofAction,
   resendCertificateApprovalEmailAction,
   resetStudentDevicesAction,
+  reviewAdditionalProjectLinkAction,
   reviewAssignmentAction,
   saveCourseFeaturesAction
 } from "./actions"
@@ -67,7 +69,7 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 export default async function InternalLearningSupportPage() {
-  const { courses, features, assignments, attachments, assignmentMessages, students } = await listLearningSupportData()
+  const { courses, features, assignments, attachments, assignmentMessages, students, additionalProjectLinks } = await listLearningSupportData()
   const alumniParticipationOptions = [
     { value: "none", label: "None (Hidden)" },
     { value: "read_only", label: "Read Only" },
@@ -87,6 +89,11 @@ export default async function InternalLearningSupportPage() {
     { value: "approved", label: "Approved (Pass)" },
     { value: "rejected", label: "Rejected (Fail)" }
   ]
+  const additionalLinkStatusOptions = [
+    { value: "pending", label: "Pending Review (Hidden)" },
+    { value: "approved", label: "Approved & Published" },
+    { value: "rejected", label: "Rejected / Hidden" }
+  ]
   
   const attachmentMap = new Map<string, typeof attachments>()
   for (const attachment of attachments) {
@@ -101,6 +108,7 @@ export default async function InternalLearningSupportPage() {
   
   const pendingCount = assignments.filter((item) => ["submitted", "in_review"].includes(item.status)).length
   const certificateProofCount = assignments.filter((item) => item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER).length
+  const pendingAdditionalLinkCount = additionalProjectLinks.filter((item) => item.reviewStatus === "pending").length
 
   return (
     <main className="space-y-8 pb-12">
@@ -120,12 +128,14 @@ export default async function InternalLearningSupportPage() {
 
       {/* Primary Pulse Metrics */}
       <DashboardStatsVisibility storageKey="tochukwu-internal-learning-stats">
-        <section className="grid gap-4 sm:grid-cols-3">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardStatCard statKey="Total Courses" label="Total Courses" value={courses.length} icon={<BookOpen className="h-5 w-5" />} valueClassName="text-4xl" />
           <DashboardStatCard statKey="Pending Reviews" label="Pending Reviews" value={pendingCount} icon={<Clock className="h-5 w-5" />}
             iconClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400" valueClassName="text-4xl" />
           <DashboardStatCard statKey="Certificate Proofs" label="Certificate Proofs" value={certificateProofCount} icon={<Award className="h-5 w-5" />}
             iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" valueClassName="text-4xl" />
+          <DashboardStatCard statKey="Additional Links" label="Additional Links Pending" value={pendingAdditionalLinkCount} icon={<LinkIcon className="h-5 w-5" />}
+            iconClassName="bg-violet-500/10 text-violet-600 dark:text-violet-400" valueClassName="text-4xl" />
         </section>
       </DashboardStatsVisibility>
 
@@ -502,6 +512,103 @@ export default async function InternalLearningSupportPage() {
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 py-16 text-center text-sm font-semibold text-muted-foreground">
                 <FileCheck2 className="mb-4 h-8 w-8 text-muted-foreground/50" />
                 No assignments currently require evaluation.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Additional student project links */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+              <LinkIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-heading text-xl font-black text-foreground">Additional Project Links</h2>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Review student-declared portfolio links and control whether each one appears on the public Student Projects page.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-center shadow-inner">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pending Review</p>
+            <p className="font-heading text-xl font-black text-foreground">{pendingAdditionalLinkCount}</p>
+          </div>
+        </div>
+
+        <div className="max-h-[900px] overflow-auto bg-background p-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20 sm:p-8">
+          <div className="grid gap-5">
+            {additionalProjectLinks.length ? additionalProjectLinks.map((link) => (
+              <article key={link.linkUuid} className="rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-primary/20">
+                <div className="flex flex-col gap-4 border-b border-border bg-muted/10 p-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill status={link.reviewStatus} />
+                      <span className="rounded-md border border-border bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        {link.learnerType} learner
+                      </span>
+                      {isOn(link.isPublic) && link.reviewStatus === "approved" ? (
+                        <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                          Public
+                        </span>
+                      ) : null}
+                    </div>
+                    <h3 className="mt-3 font-heading text-xl font-black text-foreground">{link.title}</h3>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{link.studentName || "Unknown learner"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {link.studentEmail}
+                      {link.responsibleEmail ? ` · Responsible contact: ${link.responsibleName || "Owner"} (${link.responsibleEmail})` : ""}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-xs font-medium text-muted-foreground">Submitted {formatDate(link.createdAt)}</p>
+                </div>
+
+                <div className="grid lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="border-b border-border p-5 lg:border-b-0 lg:border-r">
+                    <a href={link.projectUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center break-all text-sm font-bold text-primary underline">
+                      {link.projectUrl}
+                      <ExternalLink className="ml-2 h-4 w-4 shrink-0" />
+                    </a>
+                    {link.description ? <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{link.description}</p> : null}
+                    <dl className="mt-5 grid gap-3 rounded-xl border border-border bg-muted/10 p-4 text-xs sm:grid-cols-2">
+                      <div><dt className="font-bold uppercase tracking-widest text-muted-foreground">Programme</dt><dd className="mt-1 break-all font-semibold text-foreground">{link.courseSlug || "Not specified"}</dd></div>
+                      <div><dt className="font-bold uppercase tracking-widest text-muted-foreground">Certificate</dt><dd className="mt-1 break-all font-mono font-semibold text-foreground">{link.certificateNo || "Not linked"}</dd></div>
+                      <div><dt className="font-bold uppercase tracking-widest text-muted-foreground">Declaration accepted</dt><dd className="mt-1 font-semibold text-foreground">{formatDate(link.declarationAcceptedAt)}</dd></div>
+                      <div><dt className="font-bold uppercase tracking-widest text-muted-foreground">Last reviewed by</dt><dd className="mt-1 break-all font-semibold text-foreground">{link.reviewedBy || "Not reviewed"}</dd></div>
+                    </dl>
+                  </div>
+
+                  <form action={reviewAdditionalProjectLinkAction} className="grid content-start gap-4 p-5">
+                    <input type="hidden" name="linkUuid" value={link.linkUuid} />
+                    <label className="block">
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Publication decision</span>
+                      <PremiumPicker name="reviewStatus" defaultValue={link.reviewStatus || "pending"} options={additionalLinkStatusOptions} />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Internal review note</span>
+                      <textarea
+                        name="reviewNote"
+                        rows={4}
+                        defaultValue={link.reviewNote || ""}
+                        placeholder="Optional moderation note"
+                        className="w-full resize-y rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                    </label>
+                    <button type="submit" className="btn-primary w-full justify-center sm:w-fit">
+                      Save Review
+                    </button>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Only links marked <strong>Approved &amp; Published</strong> are shown publicly. Pending or rejected links remain hidden.
+                    </p>
+                  </form>
+                </div>
+              </article>
+            )) : (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 py-16 text-center text-sm font-semibold text-muted-foreground">
+                <LinkIcon className="mb-4 h-8 w-8 text-muted-foreground/50" />
+                No additional student project links have been submitted.
               </div>
             )}
           </div>

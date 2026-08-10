@@ -18,6 +18,7 @@ import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/
 import { prisma } from "@/lib/prisma"
 import { publicSiteUrl } from "@/lib/public-site-url"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
+import { ensureStudentProjectLinkTables } from "@/lib/student-project-links"
 
 export { CERTIFICATE_PROOF_MARKER }
 
@@ -157,6 +158,7 @@ export async function ensureLearningSupportTables() {
   await ensureCertificateEligibilityColumns()
   await ensureCertificateVerificationColumns()
   await ensureCertificateProofConversationTable()
+  await ensureStudentProjectLinkTables()
 }
 
 export async function listLearningSupportData(filters?: { courseSlug?: string; status?: string; search?: string }) {
@@ -311,7 +313,91 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
     ORDER BY sa.updated_at DESC
     LIMIT 80
   `.catch(() => [])
-  return { courses, features, assignments: filtered, attachments, assignmentMessages, transcriptRequests, students }
+  const additionalProjectLinks = await prisma.$queryRaw<Array<{
+    linkUuid: string
+    accountId: bigint
+    studentName: string | null
+    studentEmail: string | null
+    responsibleName: string | null
+    responsibleEmail: string | null
+    learnerType: string
+    title: string
+    projectUrl: string
+    host: string
+    description: string | null
+    courseSlug: string | null
+    certificateNo: string | null
+    isPublic: number | bigint | boolean
+    status: string
+    reviewStatus: string
+    reviewNote: string | null
+    reviewedBy: string | null
+    reviewedAt: Date | null
+    declarationAcceptedAt: Date | null
+    createdAt: Date | null
+  }>>`
+    SELECT l.link_uuid AS linkUuid, l.account_id AS accountId,
+      sa.full_name AS studentName, sa.email AS studentEmail,
+      COALESCE(f.parent_name, school.school_name) AS responsibleName,
+      COALESCE(f.parent_email, school_admin.email) AS responsibleEmail,
+      CASE
+        WHEN child.id IS NOT NULL THEN 'group'
+        WHEN school_student.id IS NOT NULL THEN 'school'
+        ELSE 'direct'
+      END AS learnerType,
+      l.title, l.project_url AS projectUrl, l.host, l.description,
+      l.course_slug AS courseSlug, l.certificate_no AS certificateNo,
+      l.is_public AS isPublic, l.status, l.review_status AS reviewStatus,
+      l.review_note AS reviewNote, l.reviewed_by AS reviewedBy,
+      l.reviewed_at AS reviewedAt, l.declaration_accepted_at AS declarationAcceptedAt,
+      l.created_at AS createdAt
+    FROM student_project_links l
+    JOIN student_accounts sa ON sa.id = l.account_id
+    LEFT JOIN family_children child ON child.account_id = l.account_id AND child.status = 'active'
+    LEFT JOIN family_accounts f ON f.id = child.family_id AND f.status = 'active'
+    LEFT JOIN school_students school_student ON school_student.account_id = l.account_id AND school_student.status = 'active'
+    LEFT JOIN school_accounts school ON school.id = school_student.school_id AND school.status = 'active'
+    LEFT JOIN school_admins school_admin
+      ON school_admin.id = (
+        SELECT MIN(sa2.id)
+        FROM school_admins sa2
+        WHERE sa2.school_id = school.id AND sa2.is_active = 1
+      )
+    WHERE l.status <> 'deleted'
+    ORDER BY
+      CASE l.review_status WHEN 'pending' THEN 0 WHEN 'rejected' THEN 1 ELSE 2 END,
+      l.created_at DESC,
+      l.id DESC
+    LIMIT 250
+  `.catch(() => [])
+  return { courses, features, assignments: filtered, attachments, assignmentMessages, transcriptRequests, students, additionalProjectLinks }
+}
+
+export async function reviewAdditionalProjectLink(input: { linkUuid: string; reviewStatus: string; reviewNote?: string }) {
+  await ensureLearningSupportTables()
+  const admin = await requireAdmin("/internal/learning")
+  const linkUuid = clean(input.linkUuid, 80)
+  const reviewStatus = clean(input.reviewStatus, 24).toLowerCase()
+  const reviewNote = clean(input.reviewNote, 2000)
+  if (!linkUuid) throw new Error("Project link is required.")
+  if (!["pending", "approved", "rejected"].includes(reviewStatus)) {
+    throw new Error("Select a valid project-link review status.")
+  }
+  const now = new Date()
+  const updated = await prisma.$executeRaw`
+    UPDATE student_project_links
+    SET review_status = ${reviewStatus},
+        review_note = ${reviewNote || null},
+        reviewed_by = ${admin.email || admin.adminUuid},
+        reviewed_at = ${now},
+        is_public = ${reviewStatus === "approved" ? 1 : 0},
+        updated_at = ${now}
+    WHERE link_uuid = ${linkUuid}
+      AND status <> 'deleted'
+    LIMIT 1
+  `
+  if (!updated) throw new Error("Project link was not found.")
+  return { linkUuid, reviewStatus, isPublic: reviewStatus === "approved" }
 }
 
 export async function saveCourseFeatures(input: {

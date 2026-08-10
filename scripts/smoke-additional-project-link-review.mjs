@@ -1,0 +1,52 @@
+import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), "utf8")
+
+const links = read("lib/student-project-links.ts")
+const admin = read("lib/admin-learning-support.ts")
+const adminActions = read("app/(internal)/internal/(admin)/learning/actions.ts")
+const adminPage = read("app/(internal)/internal/(admin)/learning/page.tsx")
+const studentPanel = read("components/student-dashboard/StudentProjectLinksPanel.tsx")
+const publicProjectsPage = read("app/(public)/projects/page.tsx")
+const publicProjectsData = read("lib/public-student-projects.ts")
+
+assert.match(links, /review_status VARCHAR\(24\) NOT NULL DEFAULT 'pending'/)
+assert.match(links, /DEFAULT 'approved' AFTER status/)
+assert.match(links, /ALTER COLUMN review_status SET DEFAULT 'pending'/)
+assert.match(links, /AND review_status = 'approved'/)
+assert.match(links, /'self_declared',[\s\S]*'pending'/)
+
+assert.match(admin, /additionalProjectLinks/)
+assert.match(admin, /export async function reviewAdditionalProjectLink/)
+assert.match(admin, /is_public = \$\{reviewStatus === "approved" \? 1 : 0\}/)
+assert.match(adminActions, /reviewAdditionalProjectLinkAction/)
+assert.match(adminActions, /revalidateTag\("public-student-projects"\)/)
+
+assert.match(adminPage, />Additional Project Links</)
+assert.match(adminPage, /Approved &amp; Published/)
+assert.match(adminPage, /Responsible contact:/)
+assert.match(studentPanel, /Pending approval/)
+assert.match(studentPanel, /submitted for administrator approval/)
+assert.match(publicProjectsPage, /grid items-stretch/)
+assert.match(publicProjectsPage, /className="group flex h-full flex-col/)
+assert.match(publicProjectsPage, /overflow-y-auto/)
+assert.match(publicProjectsPage, /<details className=/)
+assert.match(publicProjectsPage, /<summary className=/)
+assert.match(publicProjectsPage, /verificationLink = project\.links\.find/)
+assert.match(publicProjectsPage, /additionalLinks = project\.links\.filter/)
+assert.match(publicProjectsPage, /More links \(\{additionalLinks\.length\}\)/)
+assert.match(publicProjectsPage, /No other links/)
+assert.match(publicProjectsPage, /Academy-issued credential/)
+assert.match(publicProjectsPage, /additionalLinks\.map/)
+assert.doesNotMatch(publicProjectsPage, /project\.links\.slice/)
+assert.match(publicProjectsPage, /Young Learner/)
+assert.doesNotMatch(publicProjectsPage, /Group Learner/)
+assert.doesNotMatch(publicProjectsPage, /Direct Learner/)
+assert.match(publicProjectsData, /FROM family_children child/)
+assert.match(publicProjectsData, /sourceType: Number\(row\.isGroupLearner/)
+assert.match(publicProjectsData, /c\.certificate_no AS certificateNo/)
+
+console.log("Additional project-link admin review smoke test passed.")

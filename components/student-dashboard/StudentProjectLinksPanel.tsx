@@ -18,6 +18,10 @@ type StudentProjectLink = {
   certificateNo: string
   isPublic: boolean
   status: string
+  reviewStatus: "pending" | "approved" | "rejected"
+  reviewNote: string
+  reviewedBy: string
+  reviewedAt: string | null
   sourceType: "self_declared"
   declarationAcceptedAt: string | null
   createdAt: string | null
@@ -82,7 +86,7 @@ export function StudentProjectLinksPanel({
       setProjectUrl("")
       setDescription("")
       setDeclarationAccepted(false)
-      showStudentToast({ type: "success", title: "Project link added", message: "Your additional project link is now available on your public project profile." })
+      showStudentToast({ type: "success", title: "Project link submitted", message: "Your additional project link has been submitted for administrator approval." })
     } catch (error) {
       showStudentToast({ type: "error", title: "Project link not saved", message: studentSafeErrorMessage(error, "Could not save project link.") })
     } finally {
@@ -123,7 +127,7 @@ export function StudentProjectLinksPanel({
           <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Public Project Profile</p>
           <h3 className="mt-1 font-heading text-xl font-black text-foreground">Additional Project Links</h3>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Add other projects you have built or materially contributed to. These links are student-declared and are separate from academy-verified certificate projects.
+            Add other projects you have built or materially contributed to. These links are separate from academy-verified certificate projects and appear publicly after administrator approval.
           </p>
         </div>
       </div>
@@ -136,8 +140,8 @@ export function StudentProjectLinksPanel({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="font-heading text-base font-bold text-foreground">{link.title}</h4>
-                    <span className={link.isPublic ? "rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-300" : "rounded-full bg-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground"}>
-                      {link.isPublic ? "Public" : "Hidden"}
+                    <span className={link.reviewStatus === "approved" && link.isPublic ? "rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-300" : link.reviewStatus === "rejected" ? "rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-destructive" : "rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-300"}>
+                      {link.reviewStatus === "approved" ? (link.isPublic ? "Approved · Public" : "Approved · Hidden") : link.reviewStatus === "rejected" ? "Not approved" : "Pending approval"}
                     </span>
                   </div>
                   <a href={link.projectUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex max-w-full items-center break-all text-sm font-bold text-primary">
@@ -145,17 +149,20 @@ export function StudentProjectLinksPanel({
                     <ExternalLink className="ml-1.5 h-3.5 w-3.5 shrink-0" />
                   </a>
                   {link.description ? <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{link.description}</p> : null}
+                  {link.reviewNote ? <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-muted-foreground"><strong>Review note:</strong> {link.reviewNote}</p> : null}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary px-3 py-2 text-xs"
-                    disabled={Boolean(busy)}
-                    onClick={() => updateVisibility(link.linkUuid, !link.isPublic)}
-                  >
-                    {busy === link.linkUuid ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                    {link.isPublic ? "Hide" : "Show"}
-                  </button>
+                  {link.reviewStatus === "approved" ? (
+                    <button
+                      type="button"
+                      className="btn-secondary px-3 py-2 text-xs"
+                      disabled={Boolean(busy)}
+                      onClick={() => updateVisibility(link.linkUuid, !link.isPublic)}
+                    >
+                      {busy === link.linkUuid ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                      {link.isPublic ? "Hide" : "Show"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="inline-flex items-center justify-center rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10"
@@ -236,7 +243,7 @@ export function StudentProjectLinksPanel({
         ) : null}
         <button type="submit" className="btn-primary w-full sm:w-fit" disabled={!canAddLinks || !declarationAccepted || Boolean(busy)}>
           {busy === "create" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Add Project Link
+          Submit Project Link for Review
         </button>
       </form>
     </section>

@@ -10,6 +10,7 @@ import {
   resendCertificateApprovalEmail,
   resendStudentResetLink,
   resetStudentDevices,
+  reviewAdditionalProjectLink,
   reviewAssignment,
   reviewTranscriptAccess,
   saveCourseFeatures
@@ -66,6 +67,25 @@ export async function reviewAssignmentAction(formData: FormData) {
     type: result.email.attempted && !result.email.sent ? "error" : "success",
     title: result.email.attempted && !result.email.sent ? "Review saved; email failed" : "Assignment reviewed",
     message: details.join(" ") || "The learner assignment status has been updated."
+  })
+  revalidateTag("public-student-projects")
+  revalidatePath("/projects")
+  revalidatePath(PATH)
+}
+
+export async function reviewAdditionalProjectLinkAction(formData: FormData) {
+  await requireAdmin("/internal/learning")
+  const result = await reviewAdditionalProjectLink({
+    linkUuid: String(formData.get("linkUuid") || ""),
+    reviewStatus: String(formData.get("reviewStatus") || "pending"),
+    reviewNote: String(formData.get("reviewNote") || "")
+  })
+  await setInternalToast({
+    type: "success",
+    title: result.reviewStatus === "approved" ? "Project link approved" : result.reviewStatus === "rejected" ? "Project link hidden" : "Project link returned to review",
+    message: result.reviewStatus === "approved"
+      ? "The additional project link is approved and published on the Student Projects page."
+      : "The additional project link is not visible on the public Student Projects page."
   })
   revalidateTag("public-student-projects")
   revalidatePath("/projects")

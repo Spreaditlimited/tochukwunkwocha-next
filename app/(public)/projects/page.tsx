@@ -3,14 +3,17 @@ import Link from "next/link"
 import { 
   ArrowRight, 
   ArrowUpRight, 
+  BadgeCheck,
   Briefcase, 
+  ChevronDown,
   Compass, 
   ExternalLink, 
   FolderKanban, 
   GraduationCap, 
   Lightbulb, 
   School, 
-  Sparkles 
+  Sparkles,
+  Users
 } from "lucide-react"
 
 import { listPublicStudentProjects } from "@/lib/public-student-projects"
@@ -132,16 +135,19 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
           </div>
 
           {projects.length ? (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {projects.map((project) => (
+            <div className="grid items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.map((project) => {
+                const verificationLink = project.links.find((link) => link.kind === "certificate_verification")
+                const additionalLinks = project.links.filter((link) => link.kind === "self_declared")
+                return (
                 <article 
                   key={project.id} 
-                  className="group flex flex-col justify-between rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5"
+                  className="group flex h-full flex-col rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5"
                 >
-                  <div>
+                  <div className="flex flex-1 flex-col">
                     <div className="flex items-start justify-between gap-4">
-                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${project.sourceType === "school" ? "bg-sky-500/10 text-sky-600 dark:text-sky-400" : "bg-primary/10 text-primary"}`}>
-                        {project.sourceType === "school" ? <School className="h-6 w-6" /> : <FolderKanban className="h-6 w-6" />}
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${project.sourceType === "school" ? "bg-sky-500/10 text-sky-600 dark:text-sky-400" : project.sourceType === "group" ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" : "bg-primary/10 text-primary"}`}>
+                        {project.sourceType === "school" ? <School className="h-6 w-6" /> : project.sourceType === "group" ? <Users className="h-6 w-6" /> : <FolderKanban className="h-6 w-6" />}
                       </div>
                       <a
                         href={project.projectUrl}
@@ -155,9 +161,16 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                     </div>
 
                     <div className="mt-6">
-                      <p className={`text-[10px] font-bold uppercase tracking-widest ${project.sourceType === "school" ? "text-sky-600 dark:text-sky-400" : "text-primary"}`}>
-                        {project.courseLabel}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={`text-[10px] font-bold uppercase tracking-widest ${project.sourceType === "school" ? "text-sky-600 dark:text-sky-400" : project.sourceType === "group" ? "text-violet-600 dark:text-violet-400" : "text-primary"}`}>
+                          {project.courseLabel}
+                        </p>
+                        {project.sourceType !== "individual" ? (
+                          <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${project.sourceType === "school" ? "border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400" : "border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400"}`}>
+                            {project.sourceType === "school" ? "School Learner" : "Young Learner"}
+                          </span>
+                        ) : null}
+                      </div>
                       <h3 className="mt-2 font-heading text-xl font-black leading-tight tracking-tight text-foreground line-clamp-2">
                         {project.learnerLabel}
                       </h3>
@@ -166,11 +179,30 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                       </p>
                     </div>
 
-                    {project.links.length ? (
-                      <div className="mt-5 rounded-xl border border-border/60 bg-muted/20 p-3">
-                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">More links</p>
-                        <div className="grid gap-2">
-                          {project.links.slice(0, 4).map((link) => (
+                    {verificationLink ? (
+                      <a
+                        href={verificationLink.url}
+                        className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm no-underline transition-colors hover:bg-emerald-500/10"
+                      >
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <BadgeCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span>
+                            <span className="block font-bold text-foreground">Verify certificate</span>
+                            <span className="mt-0.5 block text-[11px] text-muted-foreground">Academy-issued credential</span>
+                          </span>
+                        </span>
+                        <ArrowUpRight className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      </a>
+                    ) : null}
+
+                    {additionalLinks.length ? (
+                      <details className="group/links mt-3 rounded-xl border border-border/60 bg-muted/20">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                          <span>More links ({additionalLinks.length})</span>
+                          <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open/links:rotate-180" />
+                        </summary>
+                        <div className="mx-3 mb-3 grid max-h-28 content-start gap-2 overflow-y-auto overscroll-contain border-t border-border/60 pt-3 pr-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20" aria-label={`Additional links from ${project.learnerLabel}`}>
+                          {additionalLinks.map((link) => (
                             <a
                               key={`${project.id}-${link.kind}-${link.url}`}
                               href={link.url}
@@ -180,19 +212,21 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                             >
                               <span className="min-w-0">
                                 <span className="block truncate font-bold text-foreground">{link.label}</span>
-                                <span className="mt-0.5 block truncate text-muted-foreground">
-                                  {link.kind === "certificate_verification" ? "Verified by the academy" : "Student-declared project"}
-                                </span>
+                                <span className="mt-0.5 block truncate text-muted-foreground">Additional student project</span>
                               </span>
                               <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5 group-hover/link:text-primary" />
                             </a>
                           ))}
                         </div>
+                      </details>
+                    ) : (
+                      <div className="mt-3 flex min-h-11 items-center rounded-xl border border-border/60 bg-muted/20 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        No other links
                       </div>
-                    ) : null}
+                    )}
                   </div>
 
-                  <div className="mt-8 flex items-center justify-between gap-4 border-t border-border/50 pt-5">
+                  <div className="mt-5 flex shrink-0 items-center justify-between gap-4 border-t border-border/50 pt-5">
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                       <GraduationCap className="h-4 w-4 opacity-70" />
                       {formatDate(project.publishedAt) || "Approved"}
@@ -208,7 +242,8 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                     </a>
                   </div>
                 </article>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/80 bg-muted/10 py-24 text-center">
