@@ -543,7 +543,8 @@ export async function processCourseLifecycleEmails(input?: CourseLifecycleProces
 
   let sent = 0
   let failed = 0
-  for (const item of filteredDue.slice(0, runLimit)) {
+  for (const item of filteredDue) {
+    if (sent + failed >= runLimit) break
     const email = renderCourseLifecycleEmail({
       ...item,
       communityUrl: config.communityUrls.get(item.batch.courseSlug)
