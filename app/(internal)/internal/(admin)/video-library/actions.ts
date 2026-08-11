@@ -95,9 +95,11 @@ export async function saveVideoLibraryModuleAction(formData: FormData) {
     dripAt: dripDates[index] || ""
   }))
   const isActive = formData.get("isActive") === "on"
+  const submittedCourseSlug = String(formData.get("courseSlug") || "").trim()
+  const openedCourseSlug = String(formData.get("openedCourseSlug") || "").trim()
   const saved = await saveVideoLibraryModule({
     moduleId: String(formData.get("moduleId") || ""),
-    courseSlug: String(formData.get("courseSlug") || ""),
+    courseSlug: submittedCourseSlug || openedCourseSlug,
     moduleSlug: String(formData.get("moduleSlug") || ""),
     moduleTitle: String(formData.get("moduleTitle") || ""),
     moduleDescription: String(formData.get("moduleDescription") || ""),
@@ -113,7 +115,7 @@ export async function saveVideoLibraryModuleAction(formData: FormData) {
   revalidatePath(PATH)
   revalidatePath("/internal/learning")
   if (creating && saved.moduleId > BigInt(0)) {
-    const courseSlug = String(formData.get("courseSlug") || "")
+    const courseSlug = submittedCourseSlug
     redirect(`${PATH}?course=${encodeURIComponent(courseSlug)}&moduleCourse=${encodeURIComponent(courseSlug)}&moduleId=${String(saved.moduleId)}#module-builder`)
   }
 }

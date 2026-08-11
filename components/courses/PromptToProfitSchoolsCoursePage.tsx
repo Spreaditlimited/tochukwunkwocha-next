@@ -365,7 +365,7 @@ export function PromptToProfitSchoolsCoursePage({ studentWebsites }: { studentWe
             <div className="grid gap-6">
               <div className="surface-raised border-l-4 border-l-sky-500 bg-card p-8">
                 <p className="font-heading text-5xl font-black text-foreground">700+</p>
-                <p className="mt-2 font-medium text-muted-foreground">Learners trained in the first 2 months after launch.</p>
+                <p className="mt-2 font-medium text-muted-foreground">Learners trained so far.</p>
               </div>
               <div className="surface-raised border-l-4 border-l-cyan-500 bg-card p-8">
                 <p className="font-heading text-4xl font-black text-foreground">Zero Pressure</p>

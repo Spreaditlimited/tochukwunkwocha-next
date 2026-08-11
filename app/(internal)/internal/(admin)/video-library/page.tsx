@@ -635,12 +635,12 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                             </form>
                             <AccessibilityGenerateButton moduleId={String(module.id)} moduleTitle={module.moduleTitle} />
                             <Link href={videoLibraryHref({
-                              course: selectedCourseSlug,
+                              course: module.courseSlug,
                               moduleTableCourse: selectedModuleTableCourseSlug,
                               moduleTableBatch: effectiveModuleTableBatchKey,
                               moduleCourse: module.courseSlug,
                               moduleId: module.id
-                            })} className={isSelected ? "btn-primary h-10 shrink-0 px-4 text-xs" : "btn-secondary h-10 shrink-0 px-4 text-xs"}>
+                            }) + "#module-builder"} className={isSelected ? "btn-primary h-10 shrink-0 px-4 text-xs" : "btn-secondary h-10 shrink-0 px-4 text-xs"}>
                               Open
                             </Link>
                             <form action={saveVideoLibraryModuleAction}>
@@ -710,8 +710,13 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
               </div>
             </div>
 
-            <form action={saveVideoLibraryModuleAction} className="grid gap-4 p-5 md:grid-cols-2">
+            <form
+              key={selectedModule ? `${selectedModule.courseSlug}:${String(selectedModule.id)}` : `new:${activeCourse?.courseSlug || "no-course"}`}
+              action={saveVideoLibraryModuleAction}
+              className="grid gap-4 p-5 md:grid-cols-2"
+            >
               <input type="hidden" name="moduleId" value={selectedModule ? String(selectedModule.id) : ""} />
+              <input type="hidden" name="openedCourseSlug" value={selectedModule?.courseSlug || ""} />
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 md:col-span-2">
                 <label className="block">
                   <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-primary">Select Existing Module</span>

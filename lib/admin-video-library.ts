@@ -1671,7 +1671,8 @@ export async function saveVideoLibraryModule(input: {
 }) {
   await ensureVideoLibraryTables()
   const moduleId = toBigIntId(input.moduleId)
-  const courseSlug = slugify(input.courseSlug, "course").slice(0, 120)
+  const submittedCourseSlug = clean(input.courseSlug, 120)
+  const courseSlug = submittedCourseSlug ? slugify(submittedCourseSlug).slice(0, 120) : ""
   const moduleTitle = clean(input.moduleTitle, 220)
   const moduleSlug = slugify(input.moduleSlug || moduleTitle, "module").slice(0, 160)
   const sortOrder = toInt(input.sortOrder, 0)
@@ -1680,13 +1681,18 @@ export async function saveVideoLibraryModule(input: {
   if (Boolean(input.dripEnabled) && hasInvalidScheduleRows(input.dripSchedules)) {
     throw new Error("Set a valid drip date/time for every selected batch that is not marked Immediate access.")
   }
+  if (!courseSlug || !moduleTitle) throw new Error("Course and module title are required.")
   const courseRows = await prisma.$queryRaw<Array<{ enrollmentMode: string | null }>>`
     SELECT enrollment_mode AS enrollmentMode
     FROM tochukwu_learning_courses
     WHERE course_slug = ${courseSlug}
     LIMIT 1
   `
-  if (!courseRows.length) throw new Error("Create this course first before adding modules.")
+  if (!courseRows.length) {
+    throw new Error(moduleId > BigInt(0)
+      ? "The course attached to this module could not be found. Reopen the module and try again."
+      : "Create this course first before adding modules.")
+  }
   const immediateCourse = clean(courseRows[0]?.enrollmentMode, 24).toLowerCase() === "immediate"
   const batchKeys = await listCourseBatchKeys(courseSlug)
   if (!immediateCourse && Boolean(input.dripEnabled) && batchKeys.length && !schedules.length) {
@@ -1704,7 +1710,6 @@ export async function saveVideoLibraryModule(input: {
     ? Math.round((primaryDripAt.getTime() - anchorStartAt.getTime()) / 1000)
     : null
   const now = new Date()
-  if (!courseSlug || !moduleTitle) throw new Error("Course and module title are required.")
   if (moduleId > BigInt(0)) {
     await prisma.$executeRaw`
       UPDATE tochukwu_learning_modules

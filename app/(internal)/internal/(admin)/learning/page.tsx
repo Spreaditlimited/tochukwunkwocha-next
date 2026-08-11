@@ -39,6 +39,10 @@ function isOn(value: number | bigint | boolean | null | undefined) {
   return Number(value || 0) === 1
 }
 
+function isAccessCodeLearner(email: string | null | undefined) {
+  return String(email || "").trim().toLowerCase().endsWith("@student-code.local")
+}
+
 function featureFor(features: Awaited<ReturnType<typeof listLearningSupportData>>["features"], courseSlug: string) {
   return features.find((item) => item.courseSlug === courseSlug)
 }
@@ -156,12 +160,20 @@ export default async function InternalLearningSupportPage() {
           
           <div className="flex-1 overflow-auto bg-background p-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20 sm:p-8">
             <div className="grid gap-4">
-              {students.length ? students.map((student) => (
-                <article key={String(student.id)} className="rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/20">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <h3 className="font-heading text-lg font-black text-foreground">{student.fullName || "Unknown Student"}</h3>
-                      <p className="mt-0.5 text-sm font-medium text-muted-foreground">{student.email}</p>
+              {students.length ? students.map((student) => {
+                const accessCodeLearner = isAccessCodeLearner(student.email)
+                return (
+                <article key={String(student.id)} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/20">
+                  <div className="grid min-w-0 gap-5">
+                    <div className="min-w-0">
+                      <h3 className="break-words font-heading text-lg font-black leading-tight text-foreground">{student.fullName || "Unknown Student"}</h3>
+                      {accessCodeLearner ? (
+                        <p className="mt-2 inline-flex rounded-md border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-400">
+                          Young learner · access-code account
+                        </p>
+                      ) : (
+                        <p className="mt-1 break-all text-sm font-medium leading-relaxed text-muted-foreground">{student.email}</p>
+                      )}
                       
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                         <span className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1">
@@ -170,29 +182,32 @@ export default async function InternalLearningSupportPage() {
                         <span className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1">
                           <Smartphone className="h-3 w-3" /> {Number(student.trustedDevices || 0)} Devices
                         </span>
-                        <span className="flex items-center gap-1.5">
-                          <Clock className="h-3 w-3" /> Login: {formatDate(student.lastLoginAt)}
+                        <span className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1">
+                          <Clock className="h-3 w-3" /> {student.lastLoginAt ? `Login: ${formatDate(student.lastLoginAt)}` : "Never signed in"}
                         </span>
                       </div>
                     </div>
                     
-                    <div className="flex shrink-0 flex-wrap gap-2 lg:flex-col">
-                      <form action={resendStudentResetLinkAction} className="w-full sm:w-auto lg:w-full">
+                    <div className={`grid gap-2 border-t border-border pt-4 ${accessCodeLearner ? "grid-cols-1" : "sm:grid-cols-2"}`}>
+                      {!accessCodeLearner ? (
+                        <form action={resendStudentResetLinkAction} className="min-w-0">
+                          <input type="hidden" name="accountId" value={String(student.id)} />
+                          <button className="btn-secondary w-full justify-center whitespace-nowrap px-3 text-xs shadow-sm" type="submit">
+                            <Mail className="mr-2 h-3.5 w-3.5" /> Send Reset Link
+                          </button>
+                        </form>
+                      ) : null}
+                      <form action={resetStudentDevicesAction} className="min-w-0">
                         <input type="hidden" name="accountId" value={String(student.id)} />
-                        <button className="btn-secondary w-full justify-center shadow-sm" type="submit">
-                          <Mail className="mr-2 h-3.5 w-3.5" /> Send Reset Link
-                        </button>
-                      </form>
-                      <form action={resetStudentDevicesAction} className="w-full sm:w-auto lg:w-full">
-                        <input type="hidden" name="accountId" value={String(student.id)} />
-                        <button className="inline-flex w-full items-center justify-center rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive shadow-sm transition-colors hover:bg-destructive hover:text-destructive-foreground" type="submit">
+                        <button className="inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive shadow-sm transition-colors hover:bg-destructive hover:text-destructive-foreground" type="submit">
                           <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset Devices
                         </button>
                       </form>
                     </div>
                   </div>
                 </article>
-              )) : (
+                )
+              }) : (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 py-12 text-center text-sm font-semibold text-muted-foreground">
                   <ShieldAlert className="mb-2 h-6 w-6" />
                   No student accounts found.
