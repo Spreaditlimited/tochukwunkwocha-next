@@ -11,6 +11,7 @@ import {
   RefreshCw, 
   Send, 
   ShieldAlert, 
+  Undo2,
   Trash2, 
   Users, 
   XCircle 
@@ -38,6 +39,7 @@ import {
   completeManualPaymentRecoveryAction,
   deleteHolidayWaitlistContactAction,
   reconcilePaystackPaymentsAction,
+  recordCoursePaymentRefundAction,
   resendBatchActivationEmailsAction,
   reviewManualPaymentAction,
   sendManualPaymentMetaPurchaseAction,
@@ -65,6 +67,7 @@ function statusTone(status: string | null) {
   const raw = String(status || "").toLowerCase()
   if (raw === "approved" || raw === "paid") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
   if (raw === "rejected" || raw === "provider_mismatch" || raw === "provider_failed" || raw === "duplicate_payment_review") return "border-destructive/20 bg-destructive/10 text-destructive"
+  if (raw === "refunded") return "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300"
   return "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
 }
 
@@ -75,6 +78,7 @@ function statusLabel(status: string | null) {
   if (raw === "provider_mismatch") return "Payment Mismatch"
   if (raw === "provider_failed") return "Verification Issue"
   if (raw === "duplicate_payment_review") return "Duplicate Payment Review"
+  if (raw === "refunded") return "Refunded"
   return raw.replace(/_/g, " ")
 }
 
@@ -133,6 +137,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     + (globalSummary.find((item) => item.status === "recovery_required")?.students || 0)
   const approvedCount = globalSummary.find((item) => item.status === "approved")?.students || 0
   const rejectedCount = globalSummary.find((item) => item.status === "rejected")?.students || 0
+  const refundedCount = globalSummary.find((item) => item.status === "refunded")?.students || 0
   const approvedTotal = globalSummary.find((item) => item.status === "approved")?.totalMinor || 0
   const dashboardProviders = dashboardSummary.providerCounts
   const dashboardTotal = formatTotalsByCurrency(dashboardSummary.totalsByCurrency)
@@ -264,10 +269,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
           <p className="eyebrow text-primary">Global Statistics</p>
           <p className="mt-1 text-sm font-medium text-muted-foreground">All courses and all batches. These figures never change with the filters below.</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <DashboardStatCard statKey="Pending Review" label="Pending Review" value={pendingCount} icon={<RefreshCw className="h-5 w-5" />} iconClassName="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
           <DashboardStatCard statKey="Paid Approved Seats" label="Paid / Approved Seats" value={approvedCount} icon={<CheckCircle2 className="h-5 w-5" />} iconClassName="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
           <DashboardStatCard statKey="Rejected" label="Rejected" value={rejectedCount} icon={<XCircle className="h-5 w-5" />} iconClassName="bg-destructive/10 text-destructive" />
+          <DashboardStatCard statKey="Refunded" label="Refunded" value={refundedCount} icon={<Undo2 className="h-5 w-5" />} iconClassName="bg-violet-500/10 text-violet-700 dark:text-violet-300" />
           <DashboardStatCard statKey="Approved Revenue" label="Approved Revenue" value={formatMinorCurrency("NGN", approvedTotal)} icon={<CreditCard className="h-5 w-5" />} valueClassName="break-words text-2xl" />
         </div>
       </section>
@@ -647,6 +653,7 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                   { value: "recovery_required", label: "Recovery Required" },
                   { value: "approved", label: "Approved" },
                   { value: "rejected", label: "Rejected" }
+                  ,{ value: "refunded", label: "Refunded" }
                 ]}
               />
             </label>
@@ -735,7 +742,11 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                     ) : null}
                   </td>
                   <td className="px-6 py-5">
-                    {payment.source === "online" && payment.status === "approved" ? (
+                    {payment.status === "refunded" ? (
+                      <span className="inline-flex items-center rounded-md border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-xs font-bold text-violet-700 dark:text-violet-300">
+                        Refund Recorded
+                      </span>
+                    ) : payment.source === "online" && payment.status === "approved" ? (
                       <span className="inline-flex items-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                         Provider Verified
                       </span>
@@ -820,6 +831,15 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                         <input name="transferReference" defaultValue={payment.transferReference || ""} placeholder="Bank reference (optional)" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium outline-none focus:border-primary" />
                         <ManagedSubmitButton pendingLabel="Saving & approving..." className="btn-secondary w-full justify-center py-2 text-xs shadow-sm">Save Details &amp; Approve</ManagedSubmitButton>
                       </ManagedActionForm>
+                    ) : payment.status === "refunded" && payment.refundUuid ? (
+                      <div className="w-[280px] whitespace-normal rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 text-xs shadow-sm">
+                        <p className="font-bold text-violet-700 dark:text-violet-300">Refund recorded</p>
+                        <p className="mt-2 font-black text-foreground">{formatMinorCurrency(payment.currency || "NGN", payment.refundAmountMinor || payment.amountMinor)}</p>
+                        <p className="mt-2"><span className="font-semibold">Method:</span> {payment.refundMethod?.replace(/_/g, " ")}</p>
+                        <p className="mt-1 break-all"><span className="font-semibold">Reference:</span> {payment.refundReference}</p>
+                        <p className="mt-1"><span className="font-semibold">Date:</span> {formatDate(payment.refundedAt)}</p>
+                        <p className="mt-2 leading-relaxed text-muted-foreground">{payment.refundReason}</p>
+                      </div>
                     ) : payment.source === "manual" ? (
                       <div className="grid w-[240px] gap-2.5 rounded-xl border border-border bg-muted/20 p-4 shadow-inner">
                       <ManagedActionForm action={updateManualPaymentEmailAction} className="grid gap-2.5">
@@ -838,6 +858,23 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                       {payment.status === "approved" && (
                         <ActivationEmailForm paymentUuid={payment.paymentUuid} source="manual" />
                       )}
+                      {payment.status === "approved" && payment.buyerType !== "family" ? (
+                        <ManagedActionForm action={recordCoursePaymentRefundAction} className="mt-1 grid gap-2 border-t border-border pt-3">
+                          <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                          <input type="hidden" name="source" value="manual" />
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-700 dark:text-violet-300">Record issued refund</p>
+                          <PremiumPicker name="refundMethod" defaultValue="bank_transfer" options={[
+                            { value: "bank_transfer", label: "Bank transfer" },
+                            { value: "cash", label: "Cash" },
+                            { value: "other", label: "Other" }
+                          ]} />
+                          <input name="refundReference" required placeholder="Refund transaction reference" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:border-primary" />
+                          <textarea name="reason" required rows={2} placeholder="Reason for refund" className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:border-primary" />
+                          <ManagedSubmitButton pendingLabel="Recording..." className="inline-flex w-full items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700">
+                            <Undo2 className="mr-1.5 h-3.5 w-3.5" /> Record Full Refund
+                          </ManagedSubmitButton>
+                        </ManagedActionForm>
+                      ) : null}
                       </div>
                     ) : payment.status === "approved" && ["PAYSTACK", "STRIPE"].includes(payment.providerLabel) ? (
                       <div className="grid w-[240px] gap-3 rounded-xl border border-border bg-background p-4 text-xs shadow-sm">
@@ -845,6 +882,25 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
                           {payment.accountExists ? "Account connected" : "Account missing"}
                         </span>
                         <ActivationEmailForm paymentUuid={payment.paymentUuid} source="online" accountExists={payment.accountExists} />
+                        {payment.buyerType !== "family" ? (
+                          <ManagedActionForm action={recordCoursePaymentRefundAction} className="grid gap-2 border-t border-border pt-3">
+                            <input type="hidden" name="paymentUuid" value={payment.paymentUuid} />
+                            <input type="hidden" name="source" value="online" />
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-violet-700 dark:text-violet-300">Record provider refund</p>
+                            <PremiumPicker name="refundMethod" defaultValue={payment.providerLabel.toLowerCase()} options={[
+                              { value: "paystack", label: "Paystack" },
+                              { value: "stripe", label: "Stripe" },
+                              { value: "paypal", label: "PayPal" },
+                              { value: "bank_transfer", label: "Bank transfer" },
+                              { value: "other", label: "Other" }
+                            ]} />
+                            <input name="refundReference" required placeholder="Provider refund reference" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:border-primary" />
+                            <textarea name="reason" required rows={2} placeholder="Reason for refund" className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:border-primary" />
+                            <ManagedSubmitButton pendingLabel="Recording..." className="inline-flex w-full items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700">
+                              <Undo2 className="mr-1.5 h-3.5 w-3.5" /> Record Full Refund
+                            </ManagedSubmitButton>
+                          </ManagedActionForm>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="w-[240px] whitespace-normal break-words rounded-xl border border-border bg-background p-4 text-xs leading-relaxed text-muted-foreground shadow-sm">

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
 import { getAdminSettingValue } from "@/lib/admin-settings"
+import { ensureCourseRefundTable } from "@/lib/payment-refunds"
 import { prisma } from "@/lib/prisma"
 
 export type FinancialFilters = {
@@ -125,6 +126,7 @@ function validVat(value: unknown, fallback: number) {
 }
 
 export async function reconcileFinancialTransactions() {
+  await ensureCourseRefundTable()
   const [ngVatSetting, internationalVatSetting] = await Promise.all([
     getAdminSettingValue("SITE_VAT_PERCENT"),
     getAdminSettingValue("INTL_VAT_PERCENT")
@@ -162,7 +164,7 @@ export async function reconcileFinancialTransactions() {
         THEN 'estimated' ELSE 'exact' END,
       NOW(), NOW()
     FROM course_orders o
-    WHERE o.status = 'paid'
+    WHERE o.status IN ('paid', 'refunded')
       AND COALESCE(o.provider, '') <> 'wallet'
       AND COALESCE(o.paid_at, o.updated_at, o.created_at) IS NOT NULL
   `)
@@ -192,7 +194,7 @@ export async function reconcileFinancialTransactions() {
         THEN 'estimated' ELSE 'exact' END,
       NOW(), NOW()
     FROM course_manual_payments m
-    WHERE m.status = 'approved'
+    WHERE m.status IN ('approved', 'refunded')
       AND COALESCE(m.updated_at, m.created_at) IS NOT NULL
   `)
 
@@ -237,6 +239,24 @@ export async function reconcileFinancialTransactions() {
       JSON_OBJECT('orderNumber', o.order_number), ${now}, ${now}
     FROM tochukwu_shop_orders o
     WHERE o.payment_status = 'paid' AND COALESCE(o.paid_at, o.updated_at) IS NOT NULL
+  `
+
+  await prisma.$executeRaw`
+    INSERT IGNORE INTO tochukwu_financial_transactions
+      (transaction_uuid, source_type, source_uuid, source_parent_uuid, category, payment_type,
+       product_slug, product_label, customer_name, customer_email, currency, sales_amount_minor,
+       discount_minor, vat_minor, processing_fee_minor, shipping_minor, total_collected_minor,
+       provider, payment_reference, paid_at, source_created_at, breakdown_quality, metadata_json,
+       created_at, updated_at)
+    SELECT
+      CONCAT('fin_course_refund_', r.refund_uuid), 'course_refund', r.refund_uuid, r.payment_uuid,
+      'course', 'Refund', r.course_slug, CONCAT(COALESCE(NULLIF(r.course_slug, ''), 'Course'), ' refund'),
+      r.customer_name, r.customer_email, UPPER(r.currency), -r.amount_minor,
+      0, 0, 0, 0, -r.amount_minor, r.refund_method, r.refund_reference,
+      r.refunded_at, r.created_at, 'exact',
+      JSON_OBJECT('reason', r.reason, 'recordedBy', r.recorded_by, 'accessRevoked', r.access_revoked),
+      ${now}, ${now}
+    FROM tochukwu_course_payment_refunds r
   `
 }
 

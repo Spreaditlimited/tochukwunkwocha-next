@@ -8,6 +8,7 @@ import {
   normalizeCourse
 } from "@/lib/payments/course-checkout"
 import {
+  ensurePaystackAuditTable,
   isPaystackProcessingStatus,
   recordPaystackAuditEvent,
   validateCourseOrderPaystackPayment
@@ -37,6 +38,7 @@ export type PaystackReconciliationResult = {
   mismatched: number
   duplicateReview: number
   failed: number
+  terminalOrdersDeleted: number
 }
 
 function clean(value: unknown, max = 190) {
@@ -45,6 +47,89 @@ function clean(value: unknown, max = 190) {
 
 const MISSING_PAYSTACK_REFERENCE_GRACE_MS = 24 * 60 * 60 * 1000
 const TERMINAL_PAYSTACK_STATUSES = new Set(["abandoned", "failed", "reversed"])
+
+export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: number; limit?: number; dryRun?: boolean }) {
+  await ensurePaystackAuditTable()
+  const minimumAgeHours = Math.max(24, Math.min(24 * 30, Math.round(Number(input?.minimumAgeHours || 24))))
+  const limit = Math.max(1, Math.min(300, Math.round(Number(input?.limit || 120))))
+  const rows = await prisma.$queryRaw<Array<{
+    orderUuid: string
+    status: string
+    email: string | null
+    courseSlug: string | null
+    updatedAt: Date | null
+  }>>`
+    SELECT co.order_uuid AS orderUuid, co.status, co.email, co.course_slug AS courseSlug, co.updated_at AS updatedAt
+    FROM course_orders co
+    WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
+      AND co.status IN ('failed', 'abandoned', 'reversed')
+      AND co.updated_at < DATE_SUB(NOW(), INTERVAL ${minimumAgeHours} HOUR)
+      AND NOT EXISTS (
+        SELECT 1 FROM tochukwu_paystack_payment_events successful
+        WHERE successful.order_uuid COLLATE utf8mb4_unicode_ci = co.order_uuid COLLATE utf8mb4_unicode_ci
+          AND successful.outcome IN ('verified', 'provisioned')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM family_seat_ledger ledger
+        WHERE ledger.source_type = 'course_order'
+          AND ledger.source_uuid COLLATE utf8mb4_unicode_ci = co.order_uuid COLLATE utf8mb4_unicode_ci
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tochukwu_course_enrollment_claims claim
+        WHERE claim.source_type = 'course_order'
+          AND claim.source_uuid COLLATE utf8mb4_unicode_ci = co.order_uuid COLLATE utf8mb4_unicode_ci
+      )
+    ORDER BY co.updated_at ASC, co.id ASC
+    LIMIT ${limit}
+  `
+  if (input?.dryRun) return { eligible: rows.length, deleted: 0, orderUuids: rows.map((row) => row.orderUuid) }
+
+  let deleted = 0
+  for (const row of rows) {
+    const removed = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE tochukwu_abandoned_enrollment_followups
+        SET status = 'stopped', stopped_at = NOW(), stopped_reason = 'terminal_payment_cleanup',
+            locked_at = NULL, last_error = NULL, updated_at = NOW()
+        WHERE order_uuid COLLATE utf8mb4_unicode_ci = ${row.orderUuid} COLLATE utf8mb4_unicode_ci
+          AND status IN ('pending', 'retry', 'processing')
+      `.catch(() => 0)
+      await tx.$executeRaw`
+        DELETE enrollment FROM family_child_enrollments enrollment
+        JOIN family_children child ON child.id = enrollment.child_id
+        WHERE child.source_type = 'course_order'
+          AND child.source_uuid COLLATE utf8mb4_unicode_ci = ${row.orderUuid} COLLATE utf8mb4_unicode_ci
+          AND child.status = 'pending_payment'
+          AND enrollment.status = 'pending_payment'
+      `.catch(() => 0)
+      await tx.$executeRaw`
+        DELETE FROM family_children
+        WHERE source_type = 'course_order'
+          AND source_uuid COLLATE utf8mb4_unicode_ci = ${row.orderUuid} COLLATE utf8mb4_unicode_ci
+          AND status = 'pending_payment'
+      `.catch(() => 0)
+      return tx.$executeRaw`
+        DELETE FROM course_orders
+        WHERE order_uuid = ${row.orderUuid}
+          AND status IN ('failed', 'abandoned', 'reversed')
+          AND updated_at < DATE_SUB(NOW(), INTERVAL ${minimumAgeHours} HOUR)
+        LIMIT 1
+      `
+    })
+    if (Number(removed || 0) !== 1) continue
+    deleted += 1
+    await recordPaystackAuditEvent({
+      orderUuid: row.orderUuid,
+      source: "reconciliation",
+      eventType: "order.cleanup",
+      outcome: "ignored",
+      providerStatus: row.status,
+      errorCode: "terminal_order_deleted_after_24h",
+      errorMessage: `Terminal unpaid Paystack order removed from the enrollment registry after ${minimumAgeHours} hours.`
+    })
+  }
+  return { eligible: rows.length, deleted, orderUuids: rows.map((row) => row.orderUuid) }
+}
 
 async function markOrderTerminal(orderUuid: string, status: string) {
   const terminalStatus = TERMINAL_PAYSTACK_STATUSES.has(status) ? status : "abandoned"
@@ -138,7 +223,8 @@ export async function reconcileCoursePaystackOrders(input?: {
     notPaid: 0,
     mismatched: 0,
     duplicateReview: 0,
-    failed: 0
+    failed: 0,
+    terminalOrdersDeleted: 0
   }
 
   for (const candidate of candidates) {
@@ -309,5 +395,9 @@ export async function reconcileCoursePaystackOrders(input?: {
     }
   }
 
+  if (!orderUuid) {
+    const cleanup = await cleanupTerminalPaystackOrders({ minimumAgeHours: 24, limit })
+    result.terminalOrdersDeleted = cleanup.deleted
+  }
   return result
 }

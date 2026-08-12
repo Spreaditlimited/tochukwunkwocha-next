@@ -64,6 +64,13 @@ export type EnrollmentPaymentRow = {
   providerLastCheckedAt: Date | null
   providerLastError: string | null
   accountExists: boolean
+  refundUuid: string | null
+  refundAmountMinor: number | null
+  refundMethod: string | null
+  refundReference: string | null
+  refundReason: string | null
+  refundedAt: Date | null
+  refundRecordedBy: string | null
   createdAt: Date | null
 }
 
@@ -442,6 +449,8 @@ export async function listEnrollmentPayments(input: {
   limit?: number
 }) {
   await ensureManualPaymentReviewColumns()
+  const { ensureCourseRefundTable } = await import("@/lib/payment-refunds")
+  await ensureCourseRefundTable()
   await ensurePaystackAuditTable().catch(() => null)
   const courseSlug = normalizeCourse(input.courseSlug) || "all"
   const status = clean(input.status, 40) || "all"
@@ -496,6 +505,13 @@ export async function listEnrollmentPayments(input: {
         SELECT 1 FROM student_accounts sa
         WHERE sa.email = course_manual_payments.email
       ) AS accountExists,
+      (SELECT refund_uuid FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundUuid,
+      (SELECT amount_minor FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundAmountMinor,
+      (SELECT refund_method FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundMethod,
+      (SELECT refund_reference FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundReference,
+      (SELECT reason FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundReason,
+      (SELECT refunded_at FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundedAt,
+      (SELECT recorded_by FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'manual' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_manual_payments.payment_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundRecordedBy,
       created_at AS createdAt
     FROM course_manual_payments
     WHERE (
@@ -540,6 +556,7 @@ export async function listEnrollmentPayments(input: {
         NULL AS proofPublicId,
         CASE
           WHEN status = 'paid' THEN 'approved'
+          WHEN status = 'refunded' THEN 'refunded'
           WHEN status = 'duplicate_payment_review' THEN 'duplicate_payment_review'
           WHEN (
             SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
@@ -605,20 +622,28 @@ export async function listEnrollmentPayments(input: {
           SELECT 1 FROM student_accounts sa
           WHERE sa.email = course_orders.email COLLATE utf8mb4_0900_ai_ci
         ) AS accountExists,
+        (SELECT refund_uuid FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundUuid,
+        (SELECT amount_minor FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundAmountMinor,
+        (SELECT refund_method FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundMethod,
+        (SELECT refund_reference FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundReference,
+        (SELECT reason FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundReason,
+        (SELECT refunded_at FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundedAt,
+        (SELECT recorded_by FROM tochukwu_course_payment_refunds r WHERE r.source_type = 'online' AND r.payment_uuid COLLATE utf8mb4_unicode_ci = course_orders.order_uuid COLLATE utf8mb4_unicode_ci LIMIT 1) AS refundRecordedBy,
         created_at AS createdAt
       FROM course_orders
-      WHERE (status IN ('paid', 'duplicate_payment_review') OR LOWER(COALESCE(provider, '')) = 'paystack')
+      WHERE (status IN ('paid', 'refunded', 'duplicate_payment_review') OR LOWER(COALESCE(provider, '')) = 'paystack')
         AND (${courseSlug} = 'all' OR course_slug = ${courseSlug})
         AND (
           ${status} = 'all'
           OR (${status} IN ('approved', 'paid') AND status = 'paid')
+          OR (${status} = 'refunded' AND status = 'refunded')
           OR (${status} = 'duplicate_payment_review' AND status = 'duplicate_payment_review')
-          OR (${status} = 'provider_processing' AND status <> 'paid' AND COALESCE((
+          OR (${status} = 'provider_processing' AND status NOT IN ('paid', 'refunded') AND COALESCE((
             SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
             WHERE pe.order_uuid = course_orders.order_uuid
             ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
           ), 'processing') NOT IN ('mismatch', 'failed'))
-          OR (${status} = 'provider_issue' AND status <> 'paid' AND (
+          OR (${status} = 'provider_issue' AND status NOT IN ('paid', 'refunded') AND (
             SELECT pe.outcome FROM tochukwu_paystack_payment_events pe
             WHERE pe.order_uuid = course_orders.order_uuid
             ORDER BY pe.created_at DESC, pe.id DESC LIMIT 1
@@ -661,7 +686,8 @@ export async function listEnrollmentPayments(input: {
       recoveryOrigin: Boolean(Number(row.recoveryOrigin || 0)),
       accountExists: Boolean(Number(row.accountExists || 0)),
       providerExpectedAmountMinor: row.providerExpectedAmountMinor === null || row.providerExpectedAmountMinor === undefined ? null : toInt(row.providerExpectedAmountMinor),
-      providerReceivedAmountMinor: row.providerReceivedAmountMinor === null || row.providerReceivedAmountMinor === undefined ? null : toInt(row.providerReceivedAmountMinor)
+      providerReceivedAmountMinor: row.providerReceivedAmountMinor === null || row.providerReceivedAmountMinor === undefined ? null : toInt(row.providerReceivedAmountMinor),
+      refundAmountMinor: row.refundAmountMinor === null || row.refundAmountMinor === undefined ? null : toInt(row.refundAmountMinor)
     }))
 }
 
@@ -688,12 +714,12 @@ export async function enrollmentSummary(courseSlugInput?: string, batchKeyInput?
       UNION ALL
 
       SELECT
-        'approved' AS status,
+        CASE WHEN status = 'refunded' THEN 'refunded' ELSE 'approved' END AS status,
         1 AS records,
         CASE WHEN UPPER(COALESCE(currency, 'NGN')) = 'NGN' THEN COALESCE(final_amount_minor, amount_minor, 0) ELSE 0 END AS total_minor,
         CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END AS seats
       FROM course_orders
-      WHERE status = 'paid'
+      WHERE status IN ('paid', 'refunded')
         AND (${courseSlug} = 'all' OR course_slug = ${courseSlug})
         AND (${batchKey} = 'all' OR COALESCE(batch_key, '') = ${batchKey})
     ) enrollment_rows

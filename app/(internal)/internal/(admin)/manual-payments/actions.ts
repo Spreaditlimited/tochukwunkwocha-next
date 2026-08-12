@@ -16,6 +16,7 @@ import {
 } from "@/lib/admin-enrollments"
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
 import { reconcileCoursePaystackOrders } from "@/lib/payments/paystack-reconciliation"
+import { recordCoursePaymentRefund } from "@/lib/payment-refunds"
 
 export type ManualPaymentActionState = {
   status: "idle" | "success" | "error"
@@ -46,6 +47,7 @@ export async function reconcilePaystackPaymentsAction(
     if (result.mismatched) details.push(`${result.mismatched} amount or currency mismatch${result.mismatched === 1 ? "" : "es"}`)
     if (result.duplicateReview) details.push(`${result.duplicateReview} duplicate payment${result.duplicateReview === 1 ? "" : "s"} held for review`)
     if (result.failed) details.push(`${result.failed} failed`)
+    if (result.terminalOrdersDeleted) details.push(`${result.terminalOrdersDeleted} terminal record${result.terminalOrdersDeleted === 1 ? "" : "s"} cleaned up`)
     revalidatePath("/internal/manual-payments")
     revalidatePath("/dashboard")
     return {
@@ -96,6 +98,41 @@ export async function reviewManualPaymentAction(
       status: "error",
       title: action === "approve" ? "Payment was not approved" : "Payment was not rejected",
       message: error instanceof Error ? error.message : "The payment review could not be saved.",
+      submittedAt: Date.now()
+    }
+  }
+}
+
+export async function recordCoursePaymentRefundAction(
+  _previousState: ManualPaymentActionState,
+  formData: FormData
+): Promise<ManualPaymentActionState> {
+  const admin = await requireAdmin("/internal/manual-payments")
+  try {
+    const result = await recordCoursePaymentRefund({
+      source: String(formData.get("source") || "manual") === "online" ? "online" : "manual",
+      paymentUuid: String(formData.get("paymentUuid") || ""),
+      reason: String(formData.get("reason") || ""),
+      refundMethod: String(formData.get("refundMethod") || ""),
+      refundReference: String(formData.get("refundReference") || ""),
+      recordedBy: admin.email || admin.adminUuid || "admin"
+    })
+    revalidatePath("/internal/manual-payments")
+    revalidatePath("/internal/financials")
+    revalidatePath("/dashboard")
+    return {
+      status: "success",
+      title: result.alreadyRecorded ? "Refund already recorded" : "Refund recorded",
+      message: result.alreadyRecorded
+        ? "The existing refund record was preserved; no duplicate was created."
+        : "The refund was recorded, course access was revoked, and active dashboard sessions were terminated.",
+      submittedAt: Date.now()
+    }
+  } catch (error) {
+    return {
+      status: "error",
+      title: "Refund was not recorded",
+      message: error instanceof Error ? error.message : "The refund could not be recorded.",
       submittedAt: Date.now()
     }
   }

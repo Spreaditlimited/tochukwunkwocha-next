@@ -32,6 +32,8 @@ type AttemptRow = {
   courseStartAt: Date | null
 }
 
+export const MAX_ABANDONED_ENROLLMENT_REMINDERS = 3
+
 let tablePromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
@@ -160,7 +162,10 @@ async function backfillExistingAttempts() {
            CASE WHEN EXISTS (
              SELECT 1 FROM tochukwu_whatsapp_contacts wc
              WHERE wc.whatsapp_opted_in = 1
-               AND (LOWER(wc.email) = LOWER(co.email) OR wc.phone_e164 = co.phone)
+               AND (
+                 LOWER(wc.email) COLLATE utf8mb4_unicode_ci = LOWER(co.email) COLLATE utf8mb4_unicode_ci
+                 OR wc.phone_e164 COLLATE utf8mb4_unicode_ci = co.phone COLLATE utf8mb4_unicode_ci
+               )
            ) THEN 1 ELSE 0 END,
            0, 0, 0, NOW(), NOW(), 0, NOW(), NOW()
     FROM course_orders co
@@ -182,8 +187,10 @@ async function loadAttempt(orderUuid: string) {
            lc.release_at AS courseStartAt
     FROM course_orders co
     LEFT JOIN course_batches cb
-      ON cb.course_slug = co.course_slug AND cb.batch_key = co.batch_key
-    LEFT JOIN tochukwu_learning_courses lc ON lc.course_slug = co.course_slug
+      ON cb.course_slug COLLATE utf8mb4_unicode_ci = co.course_slug COLLATE utf8mb4_unicode_ci
+     AND cb.batch_key COLLATE utf8mb4_unicode_ci = co.batch_key COLLATE utf8mb4_unicode_ci
+    LEFT JOIN tochukwu_learning_courses lc
+      ON lc.course_slug COLLATE utf8mb4_unicode_ci = co.course_slug COLLATE utf8mb4_unicode_ci
     WHERE co.order_uuid = ${orderUuid}
     LIMIT 1
   `
@@ -215,13 +222,14 @@ async function newerAttemptExists(attempt: AttemptRow) {
   const rows = await prisma.$queryRaw<Array<{ total: number | bigint }>>`
     SELECT COUNT(*) AS total
     FROM course_orders newer
-    JOIN course_orders current ON current.order_uuid = ${attempt.orderUuid}
+    JOIN course_orders current
+      ON current.order_uuid COLLATE utf8mb4_unicode_ci = CAST(${attempt.orderUuid} AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
     WHERE newer.created_at > current.created_at
       AND LOWER(COALESCE(newer.provider, '')) = 'paystack'
       AND LOWER(COALESCE(newer.status, 'pending')) NOT IN ('paid', 'duplicate_payment_review')
-      AND LOWER(COALESCE(newer.email, '')) = LOWER(COALESCE(current.email, ''))
-      AND newer.course_slug = current.course_slug
-      AND COALESCE(newer.batch_key, '') = COALESCE(current.batch_key, '')
+      AND LOWER(COALESCE(newer.email, '')) COLLATE utf8mb4_unicode_ci = LOWER(COALESCE(current.email, '')) COLLATE utf8mb4_unicode_ci
+      AND newer.course_slug COLLATE utf8mb4_unicode_ci = current.course_slug COLLATE utf8mb4_unicode_ci
+      AND COALESCE(newer.batch_key, '') COLLATE utf8mb4_unicode_ci = COALESCE(current.batch_key, '') COLLATE utf8mb4_unicode_ci
   `
   return Number(rows[0]?.total || 0) > 0
 }
@@ -258,7 +266,8 @@ export async function stopAbandonedEnrollmentFollowups(orderUuidInput: string, r
   if (!attempt) return false
   await prisma.$executeRaw`
     UPDATE tochukwu_abandoned_enrollment_followups f
-    JOIN course_orders co ON co.order_uuid = f.order_uuid
+    JOIN course_orders co
+      ON co.order_uuid COLLATE utf8mb4_unicode_ci = f.order_uuid COLLATE utf8mb4_unicode_ci
     SET f.status = 'stopped', f.stopped_at = NOW(), f.stopped_reason = ${clean(reason, 80)},
         f.locked_at = NULL, f.updated_at = NOW()
     WHERE LOWER(COALESCE(co.email, '')) = LOWER(${clean(attempt.email, 190)})
@@ -273,6 +282,15 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
   await ensureAbandonedEnrollmentFollowupTable()
   await backfillExistingAttempts()
   const limit = Math.max(1, Math.min(50, Math.round(Number(input?.limit || 20))))
+  await prisma.$executeRaw`
+    UPDATE tochukwu_abandoned_enrollment_followups
+    SET status = 'stopped', stopped_at = NOW(), stopped_reason = 'reminder_limit_reached',
+        locked_at = NULL, last_error = NULL, updated_at = NOW()
+    WHERE status IN ('pending', 'retry')
+      AND reminder_count >= ${MAX_ABANDONED_ENROLLMENT_REMINDERS}
+      AND email_cycle_sent >= ${MAX_ABANDONED_ENROLLMENT_REMINDERS}
+      AND (whatsapp_opted_in = 0 OR whatsapp_cycle_sent >= ${MAX_ABANDONED_ENROLLMENT_REMINDERS})
+  `
   await prisma.$executeRaw`
     UPDATE tochukwu_abandoned_enrollment_followups
     SET status = 'retry', locked_at = NULL, updated_at = NOW()
@@ -347,10 +365,22 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
         continue
       }
 
-      const reminderNumber = Number(row.reminderCount || 0) + 1
+      const currentReminderCount = Math.min(
+        MAX_ABANDONED_ENROLLMENT_REMINDERS,
+        Number(row.reminderCount || 0)
+      )
+      const whatsappRequired = Boolean(Number(row.whatsappOptedIn || 0)) && Boolean(clean(attempt.phone, 80))
+      const currentCycleIncomplete = currentReminderCount > 0 && (
+        Number(row.emailCycleSent || 0) < currentReminderCount
+        || (whatsappRequired && Number(row.whatsappCycleSent || 0) < currentReminderCount)
+      )
+      const reminderNumber = currentCycleIncomplete
+        ? currentReminderCount
+        : Math.min(MAX_ABANDONED_ENROLLMENT_REMINDERS, currentReminderCount + 1)
       const checkoutUrl = `${siteBaseUrl()}/checkout/${encodeURIComponent(clean(attempt.courseSlug, 120))}`
       const stopUrl = `${siteBaseUrl()}/api/checkout/follow-up/stop?token=${encodeURIComponent(stopToken(row.orderUuid))}`
-      if (Number(row.emailCycleSent || 0) < reminderNumber) {
+      let emailCycleSent = Number(row.emailCycleSent || 0)
+      if (emailCycleSent < reminderNumber) {
         await sendAbandonedEnrollmentReminderEmail({
           email: clean(attempt.email, 190),
           fullName: attempt.firstName,
@@ -365,9 +395,11 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
           SET email_cycle_sent = ${reminderNumber}, updated_at = NOW()
           WHERE id = ${row.id}
         `
+        emailCycleSent = reminderNumber
       }
       let whatsappError = ""
-      if (Boolean(Number(row.whatsappOptedIn || 0)) && clean(attempt.phone, 80) && Number(row.whatsappCycleSent || 0) < reminderNumber) {
+      let whatsappCycleSent = Number(row.whatsappCycleSent || 0)
+      if (whatsappRequired && whatsappCycleSent < reminderNumber) {
         try {
           await sendEnrollmentPaymentReminderWhatsApp({
             phone: attempt.phone,
@@ -382,16 +414,23 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
             SET whatsapp_cycle_sent = ${reminderNumber}, updated_at = NOW()
             WHERE id = ${row.id}
           `
+          whatsappCycleSent = reminderNumber
         } catch (error) {
           whatsappError = clean(error instanceof Error ? error.message : error, 1000)
           whatsappFailed += 1
         }
       }
-      const nextReminderAt = new Date(Date.now() + 24 * 60 * 60_000)
+      const reminderLimitReached = reminderNumber >= MAX_ABANDONED_ENROLLMENT_REMINDERS
+        && emailCycleSent >= MAX_ABANDONED_ENROLLMENT_REMINDERS
+        && (!whatsappRequired || whatsappCycleSent >= MAX_ABANDONED_ENROLLMENT_REMINDERS)
+      const nextReminderAt = new Date(Date.now() + (whatsappError ? 15 * 60_000 : 24 * 60 * 60_000))
       await prisma.$executeRaw`
         UPDATE tochukwu_abandoned_enrollment_followups
-        SET status = 'pending', reminder_count = ${reminderNumber}, last_reminder_at = NOW(),
+        SET status = ${reminderLimitReached ? "stopped" : whatsappError ? "retry" : "pending"},
+            reminder_count = ${reminderNumber}, last_reminder_at = NOW(),
             next_reminder_at = ${nextReminderAt}, attempts = ${whatsappError ? 1 : 0}, locked_at = NULL,
+            stopped_at = ${reminderLimitReached ? new Date() : null},
+            stopped_reason = ${reminderLimitReached ? "reminder_limit_reached" : null},
             last_error = ${whatsappError || null}, updated_at = NOW()
         WHERE id = ${row.id}
       `
