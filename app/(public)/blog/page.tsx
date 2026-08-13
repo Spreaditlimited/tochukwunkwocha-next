@@ -15,16 +15,26 @@ import {
 
 import { BlogNewsletterForm } from "@/components/blog/BlogNewsletterForm"
 import { getBlogImageSrc, getPublishedPostsPage } from "@/lib/blog"
-import { buildMetadata } from "@/lib/site-seo"
+import { absoluteUrl, buildMetadata } from "@/lib/site-seo"
 import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
-export const metadata = buildMetadata({
+const blogMetadata = buildMetadata({
   title: "AI, Technology, and Building Insights",
   description: "Practical articles on AI, prompt engineering, software building, productivity, business, education, and digital skills.",
   path: "/blog"
 })
+
+export const metadata = {
+  ...blogMetadata,
+  alternates: {
+    ...blogMetadata.alternates,
+    types: {
+      "application/rss+xml": absoluteUrl("/blog/rss.xml")
+    }
+  }
+}
 
 const sectionContainer = "site-container"
 const BLOG_PAGE_SIZE = 12

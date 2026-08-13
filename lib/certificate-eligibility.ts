@@ -139,8 +139,11 @@ export async function getCertificateCourseCompletion(
     const snapshot = snapshots[0]
     if (snapshot) {
       return {
-        totalLessons: snapshot.totalLessons,
-        completedLessons: snapshot.completedLessons
+        // Certificate eligibility must match the curriculum the learner can
+        // actually access for their batch. Course-wide snapshots also contain
+        // modules assigned to other batches, which must not block submission.
+        totalLessons: snapshot.releasedLessons,
+        completedLessons: snapshot.releasedCompletedLessons
       }
     }
   }

@@ -20,6 +20,7 @@ export type BatchLearnerEnrollment = {
 export type LearnerProgressSnapshot = BatchLearnerEnrollment & {
   totalLessons: number
   releasedLessons: number
+  releasedCompletedLessons: number
   completedLessons: number
   remainingLessons: number
   completionPercent: number
@@ -357,6 +358,7 @@ export async function buildLearnerProgressSnapshots(
       || Number(left.lessonId - right.lessonId)
     )
     let completedLessons = 0
+    let releasedCompletedLessons = 0
     let lastActivityAt: Date | null = null
     let lastLessonId: number | null = null
     let lastLessonTitle = ""
@@ -366,6 +368,7 @@ export async function buildLearnerProgressSnapshots(
       const completed = Number(progress?.isCompleted || 0) === 1
       if (completed) completedLessons += 1
       const released = releasedLessonIds.has(lesson.lessonId.toString())
+      if (released && completed) releasedCompletedLessons += 1
       if (released && !completed && !resumeLesson) resumeLesson = lesson
       const activityAt = latestDate(progress?.lastWatchedAt, progress?.completedAt)
       if (activityAt && (!lastActivityAt || activityAt.getTime() > lastActivityAt.getTime())) {
@@ -381,6 +384,7 @@ export async function buildLearnerProgressSnapshots(
       ...enrollment,
       totalLessons,
       releasedLessons: releasedLessonIds.size,
+      releasedCompletedLessons,
       completedLessons,
       remainingLessons: Math.max(0, totalLessons - completedLessons),
       completionPercent: totalLessons ? Math.round((completedLessons / totalLessons) * 100) : 0,

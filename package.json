@@ -39,6 +39,7 @@
     "smoke:learning-inactivity-followups-db": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-db.mjs",
     "smoke:learning-inactivity-followups-live": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-live.mjs",
     "smoke:google-analytics": "node scripts/smoke-google-analytics.mjs",
+    "smoke:blog-rss": "node scripts/smoke-blog-rss.mjs",
     "smoke:course-communications": "node scripts/smoke-course-communications-e2e.mjs",
     "smoke:course-refunds": "node scripts/smoke-course-refunds.mjs",
     "smoke:paystack-terminal-cleanup": "node scripts/smoke-paystack-terminal-cleanup.mjs",

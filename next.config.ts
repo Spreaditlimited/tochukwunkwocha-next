@@ -37,7 +37,8 @@ const sharedConfig: NextConfig = {
       "prompt-to-profit-children"
     ]
 
-    return promptToProfitLegacySlugs.flatMap((slug) => [
+    return [
+      ...promptToProfitLegacySlugs.flatMap((slug) => [
       {
         source: `/${slug}`,
         destination: "/courses/prompt-to-profit",
@@ -53,7 +54,13 @@ const sharedConfig: NextConfig = {
         destination: "/checkout/prompt-to-profit",
         permanent: false
       }
-    ])
+      ]),
+      ...["/blog/rss", "/blog/feed", "/blog/feed.xml"].map((source) => ({
+        source,
+        destination: "/blog/rss.xml",
+        permanent: true
+      }))
+    ]
   },
 }
 
