@@ -34,6 +34,7 @@
     "smoke:manual-payment-toasts": "node scripts/smoke-manual-payment-toast-completion.mjs",
     "smoke:abandoned-enrollment-followups": "node scripts/smoke-abandoned-enrollment-followups.mjs",
     "audit:abandoned-enrollment-followups-db": "node --env-file=.env.local scripts/audit-abandoned-enrollment-followups-db.mjs",
+    "repair:paystack-retry-storm": "node --env-file=.env scripts/repair-paystack-retry-storm.mjs",
     "smoke:learning-inactivity-followups": "node scripts/smoke-learning-inactivity-followups.mjs",
     "smoke:learning-inactivity-followups-db": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-db.mjs",
     "smoke:learning-inactivity-followups-live": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-live.mjs",

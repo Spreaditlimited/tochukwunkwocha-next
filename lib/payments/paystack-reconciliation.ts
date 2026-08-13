@@ -15,6 +15,7 @@ import {
 } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
+import { Prisma } from "@prisma/client"
 
 type ReconciliationCandidate = {
   orderUuid: string | null
@@ -48,6 +49,13 @@ function clean(value: unknown, max = 190) {
 const MISSING_PAYSTACK_REFERENCE_GRACE_MS = 24 * 60 * 60 * 1000
 const TERMINAL_PAYSTACK_STATUSES = new Set(["abandoned", "failed", "reversed"])
 
+export function isPermanentPaystackReconciliationError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false
+  if (error.code !== "P2010") return false
+  const mysqlCode = clean((error.meta as { code?: unknown } | undefined)?.code, 20)
+  return new Set(["1054", "1146", "1265", "1267"]).has(mysqlCode)
+}
+
 export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: number; limit?: number; dryRun?: boolean }) {
   await ensurePaystackAuditTable()
   const minimumAgeHours = Math.max(24, Math.min(24 * 30, Math.round(Number(input?.minimumAgeHours || 24))))
@@ -62,7 +70,7 @@ export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: 
     SELECT co.order_uuid AS orderUuid, co.status, co.email, co.course_slug AS courseSlug, co.updated_at AS updatedAt
     FROM course_orders co
     WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
-      AND co.status IN ('failed', 'abandoned', 'reversed')
+      AND co.status = 'failed'
       AND co.updated_at < DATE_SUB(NOW(), INTERVAL ${minimumAgeHours} HOUR)
       AND NOT EXISTS (
         SELECT 1 FROM tochukwu_paystack_payment_events successful
@@ -111,7 +119,7 @@ export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: 
       return tx.$executeRaw`
         DELETE FROM course_orders
         WHERE order_uuid = ${row.orderUuid}
-          AND status IN ('failed', 'abandoned', 'reversed')
+          AND status = 'failed'
           AND updated_at < DATE_SUB(NOW(), INTERVAL ${minimumAgeHours} HOUR)
         LIMIT 1
       `
@@ -132,10 +140,10 @@ export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: 
 }
 
 async function markOrderTerminal(orderUuid: string, status: string) {
-  const terminalStatus = TERMINAL_PAYSTACK_STATUSES.has(status) ? status : "abandoned"
+  if (!TERMINAL_PAYSTACK_STATUSES.has(clean(status, 40).toLowerCase())) return
   await prisma.$executeRaw`
     UPDATE course_orders
-    SET status = ${terminalStatus}, updated_at = ${new Date()}
+    SET status = 'failed', updated_at = ${new Date()}
     WHERE order_uuid = ${orderUuid}
       AND COALESCE(status, 'pending') NOT IN ('paid', 'duplicate_payment_review')
     LIMIT 1
@@ -306,6 +314,7 @@ export async function reconcileCoursePaystackOrders(input?: {
           })
         } catch (error) {
           result.checked += 1
+          if (isPermanentPaystackReconciliationError(error)) throw error
           if (isPaystackTransactionNotFound(error)) {
             const createdAtMs = candidate.createdAt?.getTime() || 0
             const beyondGracePeriod = createdAtMs > 0 && Date.now() - createdAtMs >= MISSING_PAYSTACK_REFERENCE_GRACE_MS
@@ -321,6 +330,7 @@ export async function reconcileCoursePaystackOrders(input?: {
               source: "reconciliation",
               eventType: "transaction.verify",
               outcome: beyondGracePeriod ? "not_paid" : "processing",
+              providerStatus: "transaction_not_found",
               errorCode: "transaction_not_found",
               errorMessage: error.providerMessage || "Paystack transaction reference was not found."
             })
@@ -369,6 +379,7 @@ export async function reconcileCoursePaystackOrders(input?: {
       })
       await sendCourseOrderMetaPurchase({ orderUuid }).catch(() => null)
     } catch (error) {
+      if (isPermanentPaystackReconciliationError(error)) throw error
       if (isCourseEnrollmentConflict(error)) {
         result.duplicateReview += 1
         await recordPaystackAuditEvent({

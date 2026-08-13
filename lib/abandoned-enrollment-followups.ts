@@ -2,7 +2,10 @@ import crypto from "crypto"
 
 import { sendAbandonedEnrollmentReminderEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
-import { reconcileCoursePaystackOrders } from "@/lib/payments/paystack-reconciliation"
+import {
+  isPermanentPaystackReconciliationError,
+  reconcileCoursePaystackOrders
+} from "@/lib/payments/paystack-reconciliation"
 import { publicSiteUrl } from "@/lib/public-site-url"
 import { sendEnrollmentPaymentReminderWhatsApp } from "@/lib/transactional-whatsapp"
 
@@ -170,11 +173,30 @@ async function backfillExistingAttempts() {
            0, 0, 0, NOW(), NOW(), 0, NOW(), NOW()
     FROM course_orders co
     WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
+      AND co.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
       AND COALESCE(co.order_uuid, '') <> ''
       AND LOWER(COALESCE(co.status, 'pending')) NOT IN (
         'paid', 'duplicate_payment_review', 'cancelled', 'canceled', 'abandoned', 'failed', 'reversed', 'expired'
       )
   `
+}
+
+export async function stopStaleUnsentAbandonedEnrollmentFollowups() {
+  await ensureAbandonedEnrollmentFollowupTable()
+  const stopped = await prisma.$executeRaw`
+    UPDATE tochukwu_abandoned_enrollment_followups f
+    JOIN course_orders co
+      ON co.order_uuid COLLATE utf8mb4_unicode_ci = f.order_uuid COLLATE utf8mb4_unicode_ci
+    SET f.status = 'stopped', f.stopped_at = NOW(), f.stopped_reason = 'historical_retry_suppressed',
+        f.locked_at = NULL, f.last_error = NULL, f.updated_at = NOW()
+    WHERE f.status IN ('pending', 'retry', 'processing')
+      AND co.created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+      AND f.reminder_count = 0
+      AND f.email_cycle_sent = 0
+      AND f.whatsapp_cycle_sent = 0
+      AND f.last_error = 'Paystack verification was unavailable; the reminder was deferred.'
+  `
+  return Number(stopped || 0)
 }
 
 async function loadAttempt(orderUuid: string) {
@@ -281,6 +303,7 @@ export async function stopAbandonedEnrollmentFollowups(orderUuidInput: string, r
 export async function processAbandonedEnrollmentFollowups(input?: { limit?: number }) {
   await ensureAbandonedEnrollmentFollowupTable()
   await backfillExistingAttempts()
+  await stopStaleUnsentAbandonedEnrollmentFollowups()
   const limit = Math.max(1, Math.min(50, Math.round(Number(input?.limit || 20))))
   await prisma.$executeRaw`
     UPDATE tochukwu_abandoned_enrollment_followups
@@ -436,6 +459,11 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
       `
       sent += 1
     } catch (error) {
+      if (isPermanentPaystackReconciliationError(error)) {
+        await stopFollowup(row.id, "reconciliation_configuration_error")
+        stopped += 1
+        continue
+      }
       const message = clean(error instanceof Error ? error.message : error, 1000)
       const nextAttemptAt = new Date(Date.now() + 15 * 60_000)
       await prisma.$executeRaw`
