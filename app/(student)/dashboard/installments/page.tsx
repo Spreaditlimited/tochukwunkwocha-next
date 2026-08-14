@@ -6,8 +6,16 @@ import { getStudentProfile, requireStudent } from "@/lib/student-auth"
 
 export const dynamic = "force-dynamic"
 
-export default async function StudentInstallmentsPage() {
-  const session = await requireStudent()
+export default async function StudentInstallmentsPage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = searchParams ? await searchParams : {}
+  const requestedCourse = Array.isArray(params.course) ? params.course[0] : params.course
+  const initialCourseSlug = String(requestedCourse || "").trim().toLowerCase().slice(0, 120)
+  const returnTo = `/dashboard/installments${initialCourseSlug ? `?course=${encodeURIComponent(initialCourseSlug)}` : ""}#start-installment-plan`
+  const session = await requireStudent(returnTo)
   const profile = await getStudentProfile(session.account.id)
   const courses = await listActiveLearningCourseOptions()
   const plans = await listStudentInstallmentPlans(session.account.id)
@@ -26,6 +34,7 @@ export default async function StudentInstallmentsPage() {
           phone: profile.phone
         }}
         courses={courses}
+        initialCourseSlug={initialCourseSlug}
         plans={plans.map((plan) => ({
           ...plan,
           payments: plan.payments.map((payment) => ({

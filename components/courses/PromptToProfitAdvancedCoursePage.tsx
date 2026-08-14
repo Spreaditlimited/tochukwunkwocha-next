@@ -11,12 +11,11 @@ import {
   GitBranch,
   Github,
   Globe2,
-  Laptop,
   MonitorPlay,
-  Play,
   Rocket,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   Star,
   Terminal,
   Video
@@ -44,6 +43,27 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
     { name: "Cloud Databases", icon: Database },
     { name: "Mobile Dev Tools", icon: Smartphone },
     { name: "Deployment Platforms", icon: Rocket }
+  ]
+
+  const advancedLearnerProjects = [
+    {
+      title: "Treshatrendy — African Fashion Store",
+      url: "https://www.treshatrendy.com/",
+      host: "treshatrendy.com",
+      previewImage: "/treshatrendy-selected.png"
+    },
+    {
+      title: "Flock — Church Operations & People Care",
+      url: "https://flock-church-workforce.vercel.app/",
+      host: "flock-church-workforce.vercel.app",
+      previewImage: "/flock-church-workforce-selected.png"
+    },
+    {
+      title: "LOTrack — Inventory Management",
+      url: "https://lotrack-theta.vercel.app/",
+      host: "lotrack-theta.vercel.app",
+      previewImage: "/lotrack-selected.png"
+    }
   ]
 
   const faqs = [
@@ -128,7 +148,7 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
                 </span>
-                Applications Now Open
+                October Cohort Enrolling
               </span>
             </div>
 
@@ -146,10 +166,81 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
               <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
                 Enroll Now
               </Link>
-              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#video">
-                <Play className="mr-2 h-4 w-4" /> Learn More
+              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#learner-projects">
+                Learn More
               </Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="learner-projects" className="relative scroll-mt-20 overflow-hidden border-b border-border/60 bg-muted/20 py-16 sm:py-20 lg:py-24">
+        <div className="pointer-events-none absolute -left-28 top-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
+        <div className="pointer-events-none absolute -right-28 bottom-0 h-72 w-72 rounded-full bg-sky-400/10 blur-3xl" />
+
+        <div className={`${sectionContainer} relative`}>
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="eyebrow inline-flex items-center gap-2 text-sky-500">
+              <Sparkles className="h-4 w-4" /> Built by Advanced Learners
+            </p>
+            <h2 className="mt-4 font-heading text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+              Before We Explain the Advanced Course, See What Learners Have Already Built.
+            </h2>
+            <div className="mx-auto mt-6 max-w-3xl space-y-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
+              <p>
+                These are live applications created by <PromptToProfitMark suffix=" Advanced" /> learners who moved beyond simple websites to build structured software for real organisations and operational needs.
+              </p>
+              <p>
+                The projects solve different problems because the programme teaches a professional development workflow that learners can apply to their own products, sectors, and ideas.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-12 grid items-start gap-12 md:grid-cols-3 md:gap-6 lg:gap-10">
+            {advancedLearnerProjects.map((project) => (
+              <article key={project.url} className="group mx-auto w-full max-w-[350px] text-center">
+                <div className="relative mx-auto overflow-hidden rounded-[2.4rem] border-[9px] border-slate-950 bg-slate-950 shadow-2xl shadow-black/20 transition-transform duration-300 group-hover:-translate-y-1">
+                  <div className="relative flex h-7 items-center justify-center bg-slate-950" aria-hidden="true">
+                    <span className="h-1.5 w-16 rounded-full bg-slate-700" />
+                  </div>
+                  <div className="relative h-[540px] overflow-hidden rounded-b-[1.75rem] bg-white">
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Loading mobile preview…
+                    </div>
+                    {project.previewImage ? (
+                      <Image
+                        src={project.previewImage}
+                        alt={`Mobile preview of ${project.title}`}
+                        fill
+                        sizes="(min-width: 768px) 30vw, 350px"
+                        className="relative z-10 object-cover object-[center_27%]"
+                      />
+                    ) : (
+                      <iframe
+                        src={project.url}
+                        title={`Mobile preview of ${project.title}`}
+                        className="pointer-events-none relative z-10 h-full w-full border-0 bg-white"
+                        loading="lazy"
+                        tabIndex={-1}
+                        referrerPolicy="no-referrer-when-downgrade"
+                        sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="px-3 pt-6">
+                  <span className="inline-flex rounded-full bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-sky-600 dark:text-sky-400">
+                    Advanced Learner Project
+                  </span>
+                  <h3 className="mt-3 font-heading text-xl font-black leading-tight text-foreground">{project.title}</h3>
+                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{project.host}</p>
+                  <a href={project.url} target="_blank" rel="noreferrer" className="btn-primary mt-5 gap-2 px-5 py-3">
+                    Visit Project <Globe2 className="h-4 w-4" />
+                  </a>
+                </div>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -159,11 +250,11 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
             {[
               { label: "Duration", value: "4 Weeks", icon: Calendar },
-              { label: "Delivery", value: "Recorded + Live", icon: Video },
-              { label: "Project", value: "Expense Tracker", icon: Laptop },
+              { label: "Delivery", value: "46 Recorded + 4 Live Classes", icon: Video },
               { label: "Skill Level", value: "Intermediate", icon: ShieldCheck },
               { label: "Access", value: "One Full Year", icon: MonitorPlay },
-              { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 }
+              { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 },
+              { label: "Course Cost", value: "₦150,000", icon: CreditCard }
             ].map((stat) => {
               const Icon = stat.icon
               return (
@@ -396,7 +487,7 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
               What our builders are saying
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
-              Join hundreds of learners who have transformed their ideas into live platforms.
+              Join 800+ learners who have transformed their ideas into live platforms.
             </p>
           </div>
 
@@ -469,6 +560,9 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Your place is reserved while you complete your payments.</p>
                 <p>This gives you the flexibility to plan your learning around your finances without missing the opportunity to join.</p>
               </div>
+              <Link href="/dashboard/installments?course=prompt-to-production#start-installment-plan" className="btn-primary mt-7 px-6 py-3">
+                Start an Installment Plan
+              </Link>
             </div>
           </div>
         </div>
@@ -541,8 +635,11 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
             <Link className="btn-primary px-8 py-4 text-base shadow-lg shadow-primary/20" href={course.checkoutHref}>
               Enroll Now
             </Link>
-            <Link className="btn-inverse-secondary px-8 py-4 text-base" href="#video">
-              <Play className="mr-2 h-4 w-4" /> Learn More
+            <Link
+              className="btn-inverse-secondary px-8 py-4 text-base"
+              href="/dashboard/installments?course=prompt-to-production#start-installment-plan"
+            >
+              <CreditCard className="mr-2 h-4 w-4" /> Pay In Installments
             </Link>
           </div>
         </div>

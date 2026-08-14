@@ -18,15 +18,20 @@ import { studentLoginAction } from "../actions"
 
 export const dynamic = "force-dynamic"
 
+function safeDashboardPath(value: unknown) {
+  const path = String(value || "").trim()
+  return path.startsWith("/dashboard/") && !path.startsWith("//") ? path.slice(0, 1000) : "/dashboard"
+}
+
 export default async function StudentLoginPage({
   searchParams
 }: {
-  searchParams?: Promise<{ error?: string; code?: string }>
+  searchParams?: Promise<{ error?: string; code?: string; next?: string }>
 }) {
-  const session = await getStudentSession()
-  if (session) redirect("/dashboard")
-  
   const params = searchParams ? await searchParams : {}
+  const nextPath = safeDashboardPath(params.next)
+  const session = await getStudentSession()
+  if (session) redirect(nextPath)
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-muted/20 p-5 sm:p-6 lg:p-8">
@@ -60,6 +65,7 @@ export default async function StudentLoginPage({
         {/* Login Card */}
         <div className="surface-raised overflow-hidden bg-card p-6 shadow-xl sm:p-10">
           <form action={studentLoginAction} className="grid gap-6">
+            <input type="hidden" name="next" value={nextPath} />
             
             {/* Error Callout */}
             {params.error ? (

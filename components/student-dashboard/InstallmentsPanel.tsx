@@ -20,6 +20,7 @@ type Props = {
   }
   courses: LearningCourseOption[]
   plans: StudentInstallmentPlan[]
+  initialCourseSlug?: string
 }
 
 const countryOptions = [
@@ -56,9 +57,10 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   return json as T
 }
 
-export function InstallmentsPanel({ account, courses, plans }: Props) {
-  const [courseSlug, setCourseSlug] = useState(courses[0]?.courseSlug || "")
-  const [batchKey, setBatchKey] = useState(courses[0]?.batches[0]?.batchKey || "")
+export function InstallmentsPanel({ account, courses, plans, initialCourseSlug = "" }: Props) {
+  const initialCourse = courses.find((course) => course.courseSlug === initialCourseSlug) || courses[0]
+  const [courseSlug, setCourseSlug] = useState(initialCourse?.courseSlug || "")
+  const [batchKey, setBatchKey] = useState(initialCourse?.batches[0]?.batchKey || "")
   const [country, setCountry] = useState("NG")
   const [buyerType, setBuyerType] = useState<"student" | "family">("student")
   const [seatCount, setSeatCount] = useState(2)
@@ -150,7 +152,7 @@ export function InstallmentsPanel({ account, courses, plans }: Props) {
 
   return (
     <div className="grid gap-8">
-      <section className="surface-raised bg-card p-6 sm:p-8">
+      <section id="start-installment-plan" className="surface-raised scroll-mt-24 bg-card p-6 sm:p-8">
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <WalletCards className="h-5 w-5" />

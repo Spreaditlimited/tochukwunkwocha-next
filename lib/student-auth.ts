@@ -882,8 +882,13 @@ export async function getStudentSession() {
   }
 }
 
-export async function requireStudent() {
+export async function requireStudent(returnTo = "") {
   const session = await getStudentSession()
-  if (!session) redirect("/dashboard/login")
+  if (!session) {
+    const safeReturnTo = returnTo.startsWith("/dashboard/") && !returnTo.startsWith("//")
+      ? returnTo.slice(0, 1000)
+      : ""
+    redirect(safeReturnTo ? `/dashboard/login?next=${encodeURIComponent(safeReturnTo)}` : "/dashboard/login")
+  }
   return session
 }

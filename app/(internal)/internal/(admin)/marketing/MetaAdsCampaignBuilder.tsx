@@ -49,7 +49,7 @@ See the programme and choose your August cohort.`
     angle: "Proof and credibility",
     text: `Can a complete beginner really build useful things with AI?
 
-700+ learners across three cohorts have already taken this practical path. Students have published business websites, portfolio pages, games and simple digital tools. One parent reported that her 8-year-old had built three practice websites by Day 3.
+800+ learners across three cohorts have already taken this practical path. Students have published business websites, portfolio pages, games and simple digital tools. One parent reported that her 8-year-old had built three practice websites by Day 3.
 
 Prompt to Profit is a 5-day, beginner-friendly programme with recorded lessons, two live Zoom classes, project support, one year of access and a verified certificate after completing and submitting your project.
 

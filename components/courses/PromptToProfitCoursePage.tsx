@@ -106,6 +106,30 @@ export async function PromptToProfitCoursePage({
     }
   ]
 
+  const featuredTransformationProjects = [
+    {
+      title: "M-Philz Wears",
+      badge: "Learner Project",
+      isYoungLearner: false,
+      url: "https://splendorous-marzipan-6befc0.netlify.app/",
+      host: "splendorous-marzipan-6befc0.netlify.app"
+    },
+    {
+      title: "Hybrid Academy Inventory & Fee Manager",
+      badge: "Learner Project",
+      isYoungLearner: false,
+      url: "https://legendary-mochi-24add5.netlify.app/",
+      host: "legendary-mochi-24add5.netlify.app"
+    },
+    {
+      title: "Bear & Harvest: Cozy Kitchen",
+      badge: "Young Learner Project",
+      isYoungLearner: true,
+      url: "https://bear-harest.netlify.app/",
+      host: "bear-harest.netlify.app"
+    }
+  ]
+
   const learnerWebsiteTitles: Record<string, string> = {
     "splendorous-marzipan-6befc0.netlify.app": "M-Philz Wears",
     "themancavenaija.com": "The ManCave Naija"
@@ -393,8 +417,8 @@ export async function PromptToProfitCoursePage({
                 <Link className="btn-primary w-full px-8 py-4 text-center text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
                   Enroll Now
                 </Link>
-                <Link className="btn-secondary w-full px-8 py-4 text-center text-base sm:w-auto" href="#video">
-                  <Play className="mr-2 h-4 w-4" /> Learn More
+                <Link className="btn-secondary w-full px-8 py-4 text-center text-base sm:w-auto" href="#learner-projects">
+                  Learn More
                 </Link>
               </div>
 
@@ -412,7 +436,7 @@ export async function PromptToProfitCoursePage({
                   ))}
                 </div>
                 <div className="w-full text-left sm:w-auto">
-                  <p className="text-sm font-black uppercase tracking-[0.18em] text-white">Join 700+ builders</p>
+                  <p className="text-sm font-black uppercase tracking-[0.18em] text-white">Join 800+ Learners</p>
                   <p className="mt-1 text-sm font-medium text-slate-400">Learning to build practical websites and digital tools with AI.</p>
                 </div>
               </div>
@@ -502,6 +526,64 @@ export async function PromptToProfitCoursePage({
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="learner-projects" className="relative scroll-mt-20 overflow-hidden border-b border-border/60 bg-muted/20 py-16 sm:py-20 lg:py-24">
+        <div className="pointer-events-none absolute -left-28 top-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
+        <div className="pointer-events-none absolute -right-28 bottom-0 h-72 w-72 rounded-full bg-sky-400/10 blur-3xl" />
+
+        <div className={`${sectionContainer} relative`}>
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="eyebrow inline-flex items-center gap-2 text-primary">
+              <Sparkles className="h-4 w-4" /> Built by Our Learners
+            </p>
+            <h2 className="mt-4 font-heading text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+              Before We Explain the Course, See What Learners Have Already Built.
+            </h2>
+            <div className="mx-auto mt-6 max-w-3xl space-y-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
+              <p>
+                These are live projects created by people who learned through <PromptToProfitMark />—from adults building practical business solutions to young learners turning their ideas into interactive digital experiences.
+              </p>
+              <p>
+                The projects are different because the programme does not teach people to reproduce one template. It teaches practical principles they can apply to their own interests, problems, and ideas.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-12 grid items-start gap-12 md:grid-cols-3 md:gap-6 lg:gap-10">
+            {featuredTransformationProjects.map((project) => (
+              <article key={project.url} className="group mx-auto w-full max-w-[350px] text-center">
+                <div className="relative mx-auto overflow-hidden rounded-[2.4rem] border-[9px] border-slate-950 bg-slate-950 shadow-2xl shadow-black/20 transition-transform duration-300 group-hover:-translate-y-1">
+                  <div className="relative flex h-7 items-center justify-center bg-slate-950" aria-hidden="true">
+                    <span className="h-1.5 w-16 rounded-full bg-slate-700" />
+                  </div>
+                  <div className="relative h-[540px] overflow-hidden rounded-b-[1.75rem] bg-white">
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Loading mobile preview…
+                    </div>
+                    <iframe
+                      src={project.url}
+                      title={`Mobile preview of ${project.title}`}
+                      className="pointer-events-none relative z-10 h-full w-full border-0 bg-white"
+                      loading="lazy"
+                      tabIndex={-1}
+                      referrerPolicy="no-referrer-when-downgrade"
+                      sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
+                    />
+                  </div>
+                </div>
+                <div className="px-3 pt-6">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${project.isYoungLearner ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" : "bg-sky-500/10 text-sky-600 dark:text-sky-400"}`}>
+                    {project.badge}
+                  </span>
+                  <h3 className="mt-3 font-heading text-xl font-black leading-tight text-foreground">{project.title}</h3>
+                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{project.host}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+
         </div>
       </section>
 
@@ -886,7 +968,7 @@ export async function PromptToProfitCoursePage({
               What our builders are saying
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
-              Join hundreds of learners who have transformed their ideas into live platforms.
+              Join 800+ learners who have transformed their ideas into live platforms.
             </p>
           </div>
 
@@ -959,6 +1041,9 @@ export async function PromptToProfitCoursePage({
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Once your payment has been completed, your enrolment is automatically activated and you will receive full access.</p>
                 <p>Begin planning your learning journey immediately while paying at a pace that works for you.</p>
               </div>
+              <Link href="/dashboard/installments?course=prompt-to-profit-holiday#start-installment-plan" className="btn-primary mt-7 px-6 py-3">
+                Start an Installment Plan
+              </Link>
             </div>
           </div>
         </div>
