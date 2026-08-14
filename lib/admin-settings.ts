@@ -265,15 +265,11 @@ export async function upsertAdminSettings(entries: Array<{ key: string; value: s
     const value = clean(entry.value, 5000)
     const oldValue = existing.get(key) || ""
     if (!value) {
-      await prisma.$executeRaw`DELETE FROM tochukwu_admin_settings WHERE setting_key = ${key}`
-      if (oldValue) {
-        await prisma.$executeRaw`
-          INSERT INTO tochukwu_admin_settings_audit (setting_key, action_type, old_is_set, new_is_set, updated_by, created_at)
-          VALUES (${key}, 'deleted', 1, 0, ${updatedBy}, ${now})
-        `
-      }
-      delete process.env[key]
-      settingCache.delete(key)
+      // Secret fields are intentionally rendered blank, and a global settings
+      // save submits those blanks alongside the field the owner edited. Blank
+      // values must therefore mean "preserve current value" for every setting.
+      // Deletion requires a separate, explicit operation and must never be an
+      // accidental side effect of saving this form.
       continue
     }
 

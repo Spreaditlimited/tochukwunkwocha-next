@@ -174,7 +174,7 @@ export default async function InternalSettingsPage() {
                 Unsaved Configuration Changes
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Apply your overrides to update the live environment state.
+                Apply your overrides to update the live environment state. Blank fields preserve their current values.
               </p>
             </div>
             <button className="btn-primary w-full justify-center shadow-lg sm:w-auto" type="submit">
