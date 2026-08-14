@@ -41,10 +41,14 @@ type StudentProjectsPageProps = {
 export default async function StudentProjectsPage({ searchParams }: StudentProjectsPageProps) {
   const params = searchParams ? await searchParams : {}
   const source = Array.isArray(params.from) ? params.from[0] : params.from
+  const audience = Array.isArray(params.audience) ? params.audience[0] : params.audience
   const buildYoursHref = source === "prompt-to-profit"
     ? "/checkout/prompt-to-profit"
     : "/courses/prompt-to-profit"
-  const projects = await listPublicStudentProjects(90)
+  const publicProjects = await listPublicStudentProjects(90)
+  const projects = audience === "young"
+    ? publicProjects.filter((project) => project.sourceType !== "individual")
+    : publicProjects
 
   return (
     <main className="bg-background">

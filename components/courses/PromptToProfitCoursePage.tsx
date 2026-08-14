@@ -12,9 +12,12 @@ import {
   Globe2,
   Laptop,
   LayoutDashboard,
+  Lightbulb,
   MonitorPlay,
   Play,
+  Rocket,
   ShieldCheck,
+  Sparkles,
   Star,
   Users,
   Video
@@ -65,6 +68,10 @@ export async function PromptToProfitCoursePage({
   const buildProjects = [
     "Business websites",
     "Personal portfolio websites",
+    "Interactive Web Games",
+    "Quiz and Learning Games",
+    "Creative Story Experiences",
+    "Educational Tools",
     "Inventory Management Systems",
     "Expense Trackers",
     "Invoice Generators",
@@ -80,6 +87,50 @@ export async function PromptToProfitCoursePage({
     "Internal Company Tools",
     "Simple Client Portals"
   ]
+
+  const youngLearnerProjects = [
+    {
+      title: "Bear & Harvest: Cozy Kitchen",
+      url: "https://bear-harest.netlify.app/",
+      host: "bear-harest.netlify.app"
+    },
+    {
+      title: "Wellness Garden",
+      url: "https://welfareworld.netlify.app/wellness",
+      host: "welfareworld.netlify.app/wellness"
+    },
+    {
+      title: "SmartStock",
+      url: "https://exquisite-cajeta-af63da.netlify.app/",
+      host: "exquisite-cajeta-af63da.netlify.app"
+    }
+  ]
+
+  const learnerWebsiteTitles: Record<string, string> = {
+    "splendorous-marzipan-6befc0.netlify.app": "M-Philz Wears",
+    "themancavenaija.com": "The ManCave Naija"
+  }
+
+  const visibleStudentWebsites = studentWebsites.flatMap((site) => {
+    try {
+      const hostname = new URL(site.url).hostname.replace(/^www\./i, "").toLowerCase()
+      if (hostname === "olytribe.com.ng") return []
+      if (hostname === "treshatrendy.vercel.app") {
+        return [{
+          ...site,
+          title: "Hybrid Academy Inventory & Fee Manager",
+          url: "https://legendary-mochi-24add5.netlify.app/",
+          displayUrl: "legendary-mochi-24add5.netlify.app"
+        }]
+      }
+      return [{
+        ...site,
+        title: learnerWebsiteTitles[hostname] || site.title
+      }]
+    } catch {
+      return site.url.toLowerCase().includes("olytribe.com.ng") ? [] : [site]
+    }
+  })
 
   const softwareWorkbooks = [
     {
@@ -540,9 +591,11 @@ export async function PromptToProfitCoursePage({
               <p className="eyebrow">Practical Output</p>
               <h2 className="mt-3 font-heading text-3xl font-black tracking-tight sm:text-4xl">What You Will Build</h2>
               <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-                The central class project is a complete <strong className="text-foreground">Inventory Management System</strong>. You will build both the public-facing website and a functional business dashboard, giving you practical experience with how real digital systems come together.
+                The guided class project is a complete <strong className="text-foreground">Inventory Management System</strong>. By building its public website and functional business dashboard, you will learn how the different parts of a real digital product come together.
               </p>
-              <p className="mt-4 text-lg leading-relaxed text-muted-foreground">More importantly, the same principles you learn can be applied to many other projects.</p>
+              <p className="mt-4 text-lg leading-relaxed text-muted-foreground">
+                The inventory system is the teaching project, not the limit of what you can create. Once you understand the underlying principles, you can apply them to business tools, interactive web games, educational experiences, creative projects, and many other ideas. Adults and young learners can each use the same foundation to build around their own interests and goals.
+              </p>
             </div>
 
             <div className="surface-raised bg-brand-ink p-8 sm:p-10">
@@ -642,7 +695,7 @@ export async function PromptToProfitCoursePage({
               </div>
               <div className="shrink-0">
                 <Link href={course.checkoutHref} className="btn-primary flex w-full items-center justify-center px-8 py-4 text-base sm:w-auto">
-                  Enroll and Get the Workbooks <ArrowRight className="ml-2 h-5 w-5" />
+                  Enroll Now <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </div>
             </div>
@@ -661,61 +714,155 @@ export async function PromptToProfitCoursePage({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-500" />
               </span>
-              Proof of Concept
+              Proof Through Projects
             </p>
             <h2 className="mt-4 font-heading text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
-              Real students. <span className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Real websites.</span>
+              Different learners. Different ideas. <span className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Real projects.</span>
             </h2>
             <p className="mt-6 text-lg leading-relaxed text-slate-300 sm:text-xl">
-              Previous students have used this exact method to build business platforms, personal projects, and portfolio pieces. This programme works because it is highly practical.
+              Adults and children learn the same practical building principles, then apply them to ideas that reflect their own goals and interests—from business platforms and portfolio websites to games, learning experiences, and creative digital projects.
             </p>
           </div>
 
-          <div className="grid min-w-0 gap-8 lg:grid-cols-2 lg:gap-12">
-            {studentWebsites.map((site, index) => (
-              <div key={site.url} className={`group min-w-0 max-w-full ${index % 2 === 1 ? "lg:mt-16" : ""}`}>
-                <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:border-white/20 hover:shadow-sky-500/10">
-                  <div className="flex h-14 min-w-0 items-center gap-3 border-b border-white/10 bg-[#161b22] px-3 sm:gap-4 sm:px-5">
-                    <div className="flex shrink-0 gap-2 sm:gap-2.5">
-                      <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ff5f56]" />
-                      <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#ffbd2e]" />
-                      <span className="h-3.5 w-3.5 rounded-full border border-black/20 bg-[#27c93f]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mx-auto flex min-w-0 max-w-full items-center justify-center gap-2 truncate rounded-lg border border-white/5 bg-[#0d1117] px-3 py-1.5 text-center font-mono text-xs tracking-wide text-slate-400 shadow-inner sm:max-w-[320px] sm:px-4">
-                        <Globe2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                        <span className="truncate">{site.displayUrl}</span>
-                      </div>
-                    </div>
-                    <div className="hidden w-12 shrink-0 sm:block" />
+          <div className="mb-9 max-w-3xl">
+            <p className="eyebrow text-sky-400">Websites and Digital Tools</p>
+            <h3 className="mt-2 font-heading text-2xl font-black tracking-tight text-white sm:text-3xl">
+              Built for real needs and real audiences.
+            </h3>
+            <p className="mt-4 leading-relaxed text-slate-400">
+              These live projects show how learners have turned the course foundation into business websites, personal platforms, and practical tools they can share with the world.
+            </p>
+          </div>
+
+          <div className="grid items-start gap-12 md:grid-cols-3 md:gap-6 lg:gap-10">
+            {visibleStudentWebsites.map((site) => (
+              <article key={site.url} className="group mx-auto w-full max-w-[350px] text-center">
+                <div className="relative mx-auto overflow-hidden rounded-[2.4rem] border-[9px] border-slate-950 bg-slate-950 shadow-2xl shadow-black/30 transition-transform duration-300 group-hover:-translate-y-1">
+                  <div className="relative flex h-7 items-center justify-center bg-slate-950" aria-hidden="true">
+                    <span className="h-1.5 w-16 rounded-full bg-slate-700" />
                   </div>
-                  <div className="relative h-[380px] w-full bg-white md:h-[450px]">
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
-                      <span className="animate-pulse text-xs font-bold uppercase tracking-widest text-slate-400">Loading Site...</span>
+                  <div className="relative h-[540px] overflow-hidden rounded-b-[1.75rem] bg-white">
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Loading mobile preview…
                     </div>
                     <iframe
                       src={site.url}
-                      title={site.title}
-                      className="relative z-10 block h-full w-full border-0"
+                      title={`Mobile preview of ${site.title}`}
+                      className="pointer-events-none relative z-10 h-full w-full border-0 bg-white"
                       loading="lazy"
+                      tabIndex={-1}
                       referrerPolicy="no-referrer-when-downgrade"
                       sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
                     />
                   </div>
                 </div>
-              </div>
+
+                <div className="px-3 pt-6">
+                  <span className="inline-flex rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-sky-300">
+                    Learner Project
+                  </span>
+                  <h4 className="mt-3 font-heading text-xl font-black text-white">{site.title}</h4>
+                  <p className="mt-1 truncate font-mono text-[11px] text-slate-500">{site.displayUrl}</p>
+                </div>
+              </article>
             ))}
           </div>
 
-          <div className="mx-auto mt-20 min-h-[260px] max-w-5xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-md sm:p-12 lg:mt-32">
+          <div id="young-learners" className="mt-24 scroll-mt-24 border-t border-white/10 pt-20 lg:mt-32 lg:pt-24">
+            <div className="grid items-end gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+              <div>
+                <p className="eyebrow inline-flex items-center gap-2 text-sky-400">
+                  <Sparkles className="h-4 w-4" /> Built by Young Learners
+                </p>
+                <h3 className="mt-3 font-heading text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+                  From screen time to building time.
+                </h3>
+              </div>
+              <div className="space-y-4 text-base leading-relaxed text-slate-300 sm:text-lg">
+                <p>
+                  Young learners can use the same foundation to turn hobbies, stories, school interests, and everyday ideas into live digital projects. No previous coding experience is required.
+                </p>
+                <p>
+                  They learn to explain what they want to create, guide AI, review and improve the result, and publish something real that other people can use.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  title: "Imagine",
+                  description: "Begin with an idea they genuinely care about.",
+                  icon: Lightbulb
+                },
+                {
+                  title: "Build and Improve",
+                  description: "Guide AI, test the result, and refine the experience.",
+                  icon: Code2
+                },
+                {
+                  title: "Publish",
+                  description: "Put the project online with a link they can share.",
+                  icon: Rocket
+                }
+              ].map((item) => {
+                const Icon = item.icon
+                return (
+                  <article key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-sm sm:p-6">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-400/10 text-sky-400">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h4 className="mt-4 font-heading text-lg font-black text-white">{item.title}</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-400">{item.description}</p>
+                  </article>
+                )
+              })}
+            </div>
+
+            <div className="mt-14 grid items-start gap-12 md:grid-cols-3 md:gap-6 lg:gap-10">
+              {youngLearnerProjects.map((project) => (
+                <article key={project.url} className="group mx-auto w-full max-w-[350px] text-center">
+                  <div className="relative mx-auto overflow-hidden rounded-[2.4rem] border-[9px] border-slate-950 bg-slate-950 shadow-2xl shadow-black/30 transition-transform duration-300 group-hover:-translate-y-1">
+                    <div className="relative flex h-7 items-center justify-center bg-slate-950" aria-hidden="true">
+                      <span className="h-1.5 w-16 rounded-full bg-slate-700" />
+                    </div>
+                    <div className="relative h-[540px] overflow-hidden rounded-b-[1.75rem] bg-white">
+                      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Loading mobile preview…
+                      </div>
+                      <iframe
+                        src={project.url}
+                        title={`Mobile preview of ${project.title}`}
+                        className="pointer-events-none relative z-10 h-full w-full border-0 bg-white"
+                        loading="lazy"
+                        tabIndex={-1}
+                        referrerPolicy="no-referrer-when-downgrade"
+                        sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="px-3 pt-6">
+                    <span className="inline-flex rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-violet-300">
+                      Young Learner Project
+                    </span>
+                    <h4 className="mt-3 font-heading text-xl font-black text-white">{project.title}</h4>
+                    <p className="mt-1 truncate font-mono text-[11px] text-slate-500">{project.host}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="mx-auto mt-20 min-h-[260px] max-w-5xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-md sm:p-12 lg:mt-28">
             <div className="flex h-full flex-col items-center gap-8 text-center md:flex-row md:text-left">
               <div className="flex-1">
                 <p className="eyebrow text-sky-400">The Gallery</p>
                 <h3 className="mt-2 font-heading text-2xl font-black tracking-tight text-white sm:text-3xl">
-                  Browse the wider student project gallery.
+                  Explore more projects from our learners.
                 </h3>
                 <p className="mt-4 text-base leading-relaxed text-slate-400">
-                  See more websites and web apps built by past learners, including certificate projects and additional work students continued to create after the programme.
+                  Browse approved websites, web apps, games, and additional projects created by adult, young, and school learners.
                 </p>
               </div>
               <div className="shrink-0">

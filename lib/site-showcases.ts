@@ -26,7 +26,7 @@ const defaultShowcases: Array<Omit<SiteShowcase, "id" | "createdAt" | "updatedAt
   {
     showcaseUuid: "ptp-showcase-01",
     placementKey: "prompt-to-profit",
-    title: "Student website 1",
+    title: "M-Philz Wears",
     url: "https://splendorous-marzipan-6befc0.netlify.app/",
     displayUrl: "splendorous-marzipan-6befc0.netlify.app",
     sortOrder: 10,
@@ -44,7 +44,7 @@ const defaultShowcases: Array<Omit<SiteShowcase, "id" | "createdAt" | "updatedAt
   {
     showcaseUuid: "ptp-showcase-03",
     placementKey: "prompt-to-profit",
-    title: "Student website 3",
+    title: "The ManCave Naija",
     url: "https://themancavenaija.com/",
     displayUrl: "themancavenaija.com",
     sortOrder: 30,
@@ -53,9 +53,9 @@ const defaultShowcases: Array<Omit<SiteShowcase, "id" | "createdAt" | "updatedAt
   {
     showcaseUuid: "ptp-showcase-04",
     placementKey: "prompt-to-profit",
-    title: "Student website 4",
-    url: "https://treshatrendy.vercel.app/",
-    displayUrl: "treshatrendy.vercel.app",
+    title: "Hybrid Academy Inventory & Fee Manager",
+    url: "https://legendary-mochi-24add5.netlify.app/",
+    displayUrl: "legendary-mochi-24add5.netlify.app",
     sortOrder: 40,
     isActive: true
   },
