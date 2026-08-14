@@ -16,7 +16,7 @@ import {
 import { ensureLearningSupportNotificationTable, sendLearningSupportNotification } from "@/lib/learning-support-notifications"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
-import { publicSiteUrl } from "@/lib/public-site-url"
+import { publicActionLinkVariants, publicSiteUrl } from "@/lib/public-site-url"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 import { ensureStudentProjectLinkTables } from "@/lib/student-project-links"
 
@@ -856,12 +856,12 @@ export async function resendStudentResetLink(input: { accountId?: string; email?
   if (!student?.email) throw new Error("Student account not found.")
   const reset = await createStudentPasswordResetToken(student.email)
   if (!reset?.token) throw new Error("Could not create password reset token.")
-  const link = `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+  const links = publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`)
   await sendEmail({
     to: student.email,
     subject: "Your Dashboard Password Reset Link",
-    html: `<p>Hello ${student.fullName || "there"},</p><p>Use the link below to reset your dashboard password:</p><p><a href="${link}">${link}</a></p><p>This link expires in 1 hour.</p>`,
-    text: `Hello ${student.fullName || "there"},\n\nUse the link below to reset your dashboard password:\n${link}\n\nThis link expires in 1 hour.`
+    html: `<p>Hello ${student.fullName || "there"},</p><p>Use either link below to reset your dashboard password:</p><p><strong>Primary link:</strong><br/><a href="${links.primary}">${links.primary}</a></p><p><strong>Alternative link:</strong> Use this if the primary website does not open.<br/><a href="${links.alternative}">${links.alternative}</a></p><p>Both links perform the same secure action. This link expires in 1 hour.</p>`,
+    text: `Hello ${student.fullName || "there"},\n\nUse either link below to reset your dashboard password:\nPrimary link: ${links.primary}\nAlternative link (if the primary website does not open): ${links.alternative}\n\nBoth links perform the same secure action. This link expires in 1 hour.`
   })
 }
 

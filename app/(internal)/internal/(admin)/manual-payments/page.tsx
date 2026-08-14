@@ -177,6 +177,9 @@ export default async function ManualPaymentsPage({ searchParams }: PageProps) {
     "Here is your secure dashboard access link:",
     "{{reset_link}}",
     "",
+    "Alternative link (use this if the primary website does not open):",
+    "{{alternative_reset_link}}",
+    "",
     "Use this link to set or reset your password and access your learning dashboard.",
     "",
     "Tochukwu Tech and AI Academy"

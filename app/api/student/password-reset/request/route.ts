@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { sendEmail } from "@/lib/email"
-import { publicSiteUrl } from "@/lib/public-site-url"
+import { publicActionLinkVariants } from "@/lib/public-site-url"
 import { allowStudentPasswordResetRequest, createStudentPasswordResetToken } from "@/lib/student-auth"
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
-}
-
-function siteBaseUrl() {
-  return publicSiteUrl()
 }
 
 function escapeHtml(value: string) {
@@ -26,20 +22,30 @@ export async function POST(request: Request) {
   const allowed = await allowStudentPasswordResetRequest(email)
   const reset = allowed ? await createStudentPasswordResetToken(email) : null
   if (reset?.token) {
-    const link = `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+    const links = publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`)
     const greeting = clean(reset.fullName, 120) || "there"
     const safeGreeting = escapeHtml(greeting)
-    const safeLink = escapeHtml(link)
+    const safePrimaryLink = escapeHtml(links.primary)
+    const safeAlternativeLink = escapeHtml(links.alternative)
     await sendEmail({
       to: email,
       subject: "Reset Your Dashboard Password",
       html: [
         `<p>Hello ${safeGreeting},</p>`,
-        "<p>Use the link below to reset your dashboard password:</p>",
-        `<p><a href="${safeLink}">${safeLink}</a></p>`,
+        "<p>Use either link below to reset your dashboard password:</p>",
+        `<p><strong>Primary link:</strong><br/><a href="${safePrimaryLink}">${safePrimaryLink}</a></p>`,
+        `<p><strong>Alternative link:</strong> <span style="color:#64748b;">Use this if the primary website does not open.</span><br/><a href="${safeAlternativeLink}">${safeAlternativeLink}</a></p>`,
         "<p>This link expires in 1 hour.</p>"
       ].join("\n"),
-      text: [`Hello ${greeting},`, "", "Use the link below to reset your dashboard password:", link, "", "This link expires in 1 hour."].join("\n")
+      text: [
+        `Hello ${greeting},`,
+        "",
+        "Use either link below to reset your dashboard password:",
+        `Primary link: ${links.primary}`,
+        `Alternative link (if the primary website does not open): ${links.alternative}`,
+        "",
+        "Both links perform the same secure action. This link expires in 1 hour."
+      ].join("\n")
     }).catch(() => null)
   }
 

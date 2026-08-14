@@ -3,7 +3,7 @@ import Link from "next/link"
 import { ArrowLeft, Mail, ShieldCheck } from "lucide-react"
 
 import { sendEmail } from "@/lib/email"
-import { siteBaseUrl } from "@/lib/payments/course-checkout"
+import { publicActionLinkVariants } from "@/lib/public-site-url"
 import { createSchoolAdminPasswordResetToken } from "@/lib/school-auth"
 import { buildMetadata } from "@/lib/site-seo"
 
@@ -26,9 +26,17 @@ async function requestSchoolPasswordReset(formData: FormData) {
   if (!email) return
   const reset = await createSchoolAdminPasswordResetToken(email)
   if (!reset?.token) return
-  const link = `${siteBaseUrl()}/schools/reset-password?token=${encodeURIComponent(reset.token)}`
+  const links = publicActionLinkVariants(`/schools/reset-password?token=${encodeURIComponent(reset.token)}`)
   const name = clean(reset.fullName, 120) || "School Admin"
-  const text = [`Hello ${name},`, "", "Use the link below to reset your school dashboard password:", link].join("\n")
+  const text = [
+    `Hello ${name},`,
+    "",
+    "Use either link below to reset your school dashboard password:",
+    `Primary link: ${links.primary}`,
+    `Alternative link (if the primary website does not open): ${links.alternative}`,
+    "",
+    "Both links perform the same secure action."
+  ].join("\n")
   await sendEmail({
     to: email,
     subject: "Reset Your School Dashboard Password",

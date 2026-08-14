@@ -10,7 +10,6 @@ import {
   findOrCreateStudentAccount,
   normalizeEmail,
   recordAffiliateAttribution,
-  siteBaseUrl,
   upsertWhatsAppContact
 } from "@/lib/payments/course-checkout"
 import { reviewManualPayment } from "@/lib/payments/manual-payment-review"
@@ -22,6 +21,7 @@ import { normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family
 import { familyEnrollmentEnabledForCourse } from "@/lib/payments/course-checkout"
 import { ensurePaystackAuditTable } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
+import { publicActionLinkVariants } from "@/lib/public-site-url"
 
 export type EnrollmentPaymentRow = {
   paymentUuid: string
@@ -886,13 +886,21 @@ function activationEmailBody(input: {
   fullName: string
   email: string
   resetLink: string
+  alternativeResetLink: string
   temporaryPassword?: string
   vars: Record<string, string>
   createdAccount: boolean
 }) {
   const messageTemplate = clean(input.messageTemplate, 8000)
   if (messageTemplate) {
-    const text = applyActivationTemplate(messageTemplate, input.vars)
+    const customText = applyActivationTemplate(messageTemplate, input.vars)
+    const text = customText.includes(input.alternativeResetLink)
+      ? customText
+      : [
+          customText,
+          "",
+          `Alternative link (if the primary website does not open): ${input.alternativeResetLink}`
+        ].join("\n")
     return {
       text,
       html: `<div>${escapeHtml(text).replace(/\n/g, "<br/>")}</div>`
@@ -907,7 +915,8 @@ function activationEmailBody(input: {
         `Email: ${input.email}`,
         "",
         `Temporary password: ${input.temporaryPassword || ""}`,
-        `Sign in here: ${siteBaseUrl()}/dashboard/login`,
+        `Primary sign-in link: ${input.resetLink}`,
+        `Alternative sign-in link (if the primary website does not open): ${input.alternativeResetLink}`,
         "",
         "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password."
       ].join("\n"),
@@ -916,7 +925,8 @@ function activationEmailBody(input: {
         "<p>Your dashboard account has been created.</p>",
         `<p><strong>Email:</strong> ${escapeHtml(input.email)}</p>`,
         `<p><strong>Temporary password:</strong> <span style="font-family:monospace;">${escapeHtml(input.temporaryPassword || "")}</span></p>`,
-        `<p><a href="${escapeHtml(`${siteBaseUrl()}/dashboard/login`)}">Sign in to your learning dashboard</a></p>`,
+        `<p><strong>Primary sign-in link:</strong><br/><a href="${escapeHtml(input.resetLink)}">Sign in to your learning dashboard</a></p>`,
+        `<p><strong>Alternative sign-in link:</strong> Use this if the primary website does not open.<br/><a href="${escapeHtml(input.alternativeResetLink)}">Sign in through the alternative website</a></p>`,
         "<p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>"
       ].join("\n")
     }
@@ -925,15 +935,17 @@ function activationEmailBody(input: {
     text: [
       `Hello ${input.fullName || "there"},`,
       "",
-      "Here is your dashboard password reset link:",
-      input.resetLink,
+      "Here are two links for the same dashboard password reset:",
+      `Primary link: ${input.resetLink}`,
+      `Alternative link (if the primary website does not open): ${input.alternativeResetLink}`,
       "",
       "If you can no longer access your email, contact support."
     ].join("\n"),
     html: [
       `<p>Hello ${escapeHtml(input.fullName || "there")},</p>`,
-      "<p>Here is your dashboard password reset link:</p>",
-      `<p><a href="${escapeHtml(input.resetLink)}">${escapeHtml(input.resetLink)}</a></p>`,
+      "<p>Use either link below for the same dashboard password reset:</p>",
+      `<p><strong>Primary link:</strong><br/><a href="${escapeHtml(input.resetLink)}">${escapeHtml(input.resetLink)}</a></p>`,
+      `<p><strong>Alternative link:</strong> Use this if the primary website does not open.<br/><a href="${escapeHtml(input.alternativeResetLink)}">${escapeHtml(input.alternativeResetLink)}</a></p>`,
       "<p>If you can no longer access your email, contact support.</p>"
     ].join("\n")
   }
@@ -1012,15 +1024,18 @@ async function sendActivationEmailToStudent(input: {
   const reset = createdAccount ? null : await createStudentPasswordResetToken(email, { neverExpires: true })
   if (createdAccount && !temporary?.password) throw new Error("Could not generate a temporary password.")
   if (!createdAccount && !reset?.token) throw new Error("Could not generate password reset token.")
-  const resetLink = reset?.token
-    ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
-    : `${siteBaseUrl()}/dashboard/login`
+  const actionPath = reset?.token
+    ? `/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+    : "/dashboard/login"
+  const actionLinks = publicActionLinkVariants(actionPath)
+  const resetLink = actionLinks.primary
   const batchLabel = clean(input.batchLabel, 120) || "Batch"
   const vars = {
     first_name: firstNameFromFullName(fullName, email),
     full_name: fullName,
     email,
     reset_link: resetLink,
+    alternative_reset_link: actionLinks.alternative,
     course_slug: clean(input.courseSlug, 120),
     batch_key: clean(input.batchKey, 80),
     batch_label: batchLabel,
@@ -1036,6 +1051,7 @@ async function sendActivationEmailToStudent(input: {
     fullName,
     email,
     resetLink,
+    alternativeResetLink: actionLinks.alternative,
     temporaryPassword: temporary?.password,
     vars,
     createdAccount
@@ -1263,12 +1279,12 @@ export async function updateManualPaymentEmail(input: { paymentUuid: string; new
   if (account) {
     const reset = await createStudentPasswordResetToken(newEmail, { neverExpires: true }).catch(() => null)
     if (reset?.token) {
-      const link = `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`
+      const links = publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`)
       await sendEmail({
         to: newEmail,
         subject: "Your Dashboard Password Reset Link",
-        text: `Hello ${payment.firstName || "there"},\n\nHere is your dashboard password reset link:\n${link}`,
-        html: `<p>Hello ${payment.firstName || "there"},</p><p>Here is your dashboard password reset link:</p><p><a href="${link}">${link}</a></p>`
+        text: `Hello ${payment.firstName || "there"},\n\nUse either link below for the same dashboard password reset:\nPrimary link: ${links.primary}\nAlternative link (if the primary website does not open): ${links.alternative}`,
+        html: `<p>Hello ${payment.firstName || "there"},</p><p>Use either link below for the same dashboard password reset:</p><p><strong>Primary link:</strong><br/><a href="${links.primary}">${links.primary}</a></p><p><strong>Alternative link:</strong> Use this if the primary website does not open.<br/><a href="${links.alternative}">${links.alternative}</a></p>`
       }).catch(() => null)
     }
   }

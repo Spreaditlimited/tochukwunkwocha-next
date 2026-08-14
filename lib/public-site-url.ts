@@ -1,4 +1,5 @@
 export const PRODUCTION_SITE_URL = "https://tochukwunkwocha.com"
+export const VERCEL_FALLBACK_SITE_URL = "https://tochukwunkwocha-next.vercel.app"
 
 function isLocalHostname(hostname: string) {
   const normalized = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "")
@@ -34,4 +35,20 @@ export function publicSiteUrl() {
 export function publicAbsoluteUrl(path: string) {
   const normalizedPath = String(path || "").trim()
   return `${publicSiteUrl()}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`
+}
+
+/**
+ * Produces equivalent links on both public production hosts. Use this for
+ * emailed account actions so a recipient can use the Vercel hostname when
+ * their network cannot reach the custom domain.
+ */
+export function publicActionLinkVariants(path: string) {
+  const rawPath = String(path || "").trim()
+  const normalizedPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
+  const parsed = new URL(normalizedPath, PRODUCTION_SITE_URL)
+  const route = `${parsed.pathname}${parsed.search}${parsed.hash}`
+  return {
+    primary: `${PRODUCTION_SITE_URL}${route}`,
+    alternative: `${VERCEL_FALLBACK_SITE_URL}${route}`
+  }
 }

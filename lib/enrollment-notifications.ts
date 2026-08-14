@@ -1,7 +1,7 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
-import { publicSiteUrl } from "@/lib/public-site-url"
+import { publicActionLinkVariants, publicSiteUrl } from "@/lib/public-site-url"
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
@@ -317,11 +317,11 @@ export async function sendStudentAccountReadyEmail(input: {
   const email = normalizeEmail(input.email)
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
-  const dashboardUrl = `${siteBaseUrl()}/dashboard`
-  const loginUrl = `${siteBaseUrl()}/dashboard/login`
-  const setupUrl = input.resetToken
-    ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`
-    : dashboardUrl
+  const dashboardLinks = publicActionLinkVariants("/dashboard")
+  const loginLinks = publicActionLinkVariants("/dashboard/login")
+  const setupLinks = input.resetToken
+    ? publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`)
+    : dashboardLinks
   const subject = "Your Tochukwu Tech learning account is ready"
   await sendEmail({
     to: email,
@@ -332,7 +332,8 @@ export async function sendStudentAccountReadyEmail(input: {
       `Your enrollment${course ? ` for ${course}` : ""} is confirmed and your learning account is ready.`,
       input.temporaryPassword ? `Sign-in email: ${email}` : "",
       input.temporaryPassword ? `Temporary password: ${input.temporaryPassword}` : "",
-      input.temporaryPassword ? `Sign in here: ${loginUrl}` : input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      input.temporaryPassword ? `Primary sign-in link: ${loginLinks.primary}` : input.resetToken ? `Primary password setup link: ${setupLinks.primary}` : `Primary dashboard link: ${dashboardLinks.primary}`,
+      input.temporaryPassword ? `Alternative sign-in link (if the primary website does not open): ${loginLinks.alternative}` : input.resetToken ? `Alternative password setup link (if the primary website does not open): ${setupLinks.alternative}` : `Alternative dashboard link (if the primary website does not open): ${dashboardLinks.alternative}`,
       input.temporaryPassword ? "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password." : "",
       input.temporaryPassword ? "Keep these details private." : "",
       "",
@@ -346,10 +347,11 @@ export async function sendStudentAccountReadyEmail(input: {
           <p style="margin:0 0 8px;"><strong>Sign-in email:</strong> ${email}</p>
           <p style="margin:0;"><strong>Temporary password:</strong> <span style="font-family:monospace;font-size:16px;">${input.temporaryPassword}</span></p>
         </div>
-        <p><a href="${loginUrl}">Sign in to your learning dashboard</a></p>
+        <p><strong>Primary sign-in link:</strong><br/><a href="${loginLinks.primary}">Sign in to your learning dashboard</a></p>
+        <p><strong>Alternative sign-in link:</strong> Use this if the primary website does not open.<br/><a href="${loginLinks.alternative}">Sign in through the alternative website</a></p>
         <p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>
         <p>Keep these details private.</p>
-      ` : `<p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>`}
+      ` : `<p><strong>Primary link:</strong><br/><a href="${setupLinks.primary}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p><p><strong>Alternative link:</strong> Use this if the primary website does not open.<br/><a href="${setupLinks.alternative}">${input.resetToken ? "Set your password through the alternative website" : "Open the alternative website"}</a></p>`}
       <p>Tochukwu Tech and AI Academy</p>
     `
   })
@@ -368,11 +370,12 @@ export async function sendStudentPendingManualPaymentEmail(input: {
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
   const dashboardPath = clean(input.dashboardPath || "/dashboard/courses?manual_payment=pending", 180)
-  const dashboardUrl = `${siteBaseUrl()}${dashboardPath.startsWith("/") ? dashboardPath : "/dashboard/courses?manual_payment=pending"}`
-  const loginUrl = `${siteBaseUrl()}/dashboard/login`
-  const setupUrl = input.resetToken
-    ? `${siteBaseUrl()}/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`
-    : dashboardUrl
+  const normalizedDashboardPath = dashboardPath.startsWith("/") ? dashboardPath : "/dashboard/courses?manual_payment=pending"
+  const dashboardLinks = publicActionLinkVariants(normalizedDashboardPath)
+  const loginLinks = publicActionLinkVariants("/dashboard/login")
+  const setupLinks = input.resetToken
+    ? publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`)
+    : dashboardLinks
   const subject = "Your manual payment is awaiting verification"
   await sendEmail({
     to: email,
@@ -384,7 +387,8 @@ export async function sendStudentPendingManualPaymentEmail(input: {
       "Your student account has been created so you can track the enrollment status from your dashboard.",
       input.temporaryPassword ? `Sign-in email: ${email}` : "",
       input.temporaryPassword ? `Temporary password: ${input.temporaryPassword}` : "",
-      input.temporaryPassword ? `Sign in here: ${loginUrl}` : input.resetToken ? `Set your password here: ${setupUrl}` : `Open your dashboard here: ${dashboardUrl}`,
+      input.temporaryPassword ? `Primary sign-in link: ${loginLinks.primary}` : input.resetToken ? `Primary password setup link: ${setupLinks.primary}` : `Primary dashboard link: ${dashboardLinks.primary}`,
+      input.temporaryPassword ? `Alternative sign-in link (if the primary website does not open): ${loginLinks.alternative}` : input.resetToken ? `Alternative password setup link (if the primary website does not open): ${setupLinks.alternative}` : `Alternative dashboard link (if the primary website does not open): ${dashboardLinks.alternative}`,
       input.temporaryPassword ? "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password." : "",
       "",
       "Course access will open after your payment has been approved.",
@@ -400,9 +404,10 @@ export async function sendStudentPendingManualPaymentEmail(input: {
           <p style="margin:0 0 8px;"><strong>Sign-in email:</strong> ${email}</p>
           <p style="margin:0;"><strong>Temporary password:</strong> <span style="font-family:monospace;font-size:16px;">${input.temporaryPassword}</span></p>
         </div>
-        <p><a href="${loginUrl}">Sign in to your learning dashboard</a></p>
+        <p><strong>Primary sign-in link:</strong><br/><a href="${loginLinks.primary}">Sign in to your learning dashboard</a></p>
+        <p><strong>Alternative sign-in link:</strong> Use this if the primary website does not open.<br/><a href="${loginLinks.alternative}">Sign in through the alternative website</a></p>
         <p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>
-      ` : `<p><a href="${setupUrl}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p>`}
+      ` : `<p><strong>Primary link:</strong><br/><a href="${setupLinks.primary}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p><p><strong>Alternative link:</strong> Use this if the primary website does not open.<br/><a href="${setupLinks.alternative}">${input.resetToken ? "Set your password through the alternative website" : "Open the alternative website"}</a></p>`}
       <p>Course access will open after your payment has been approved.</p>
       <p>Tochukwu Tech and AI Academy</p>
     `
