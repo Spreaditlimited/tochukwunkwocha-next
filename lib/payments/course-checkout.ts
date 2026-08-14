@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client"
 import { getAdminSettingValues } from "@/lib/admin-settings"
 import { buildAffiliateSeatCommissions } from "@/lib/affiliate-commission-calculator"
 import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
+import { BASIC_ADVANCED_COUPON_CODE, emailHasBasicCourseAccess } from "@/lib/basic-advanced-offer"
 import {
   CourseEnrollmentConflictError,
   claimIndividualCourseEnrollment,
@@ -575,6 +576,12 @@ export async function evaluateCoupon(input: {
 
   const scopedCourse = String(coupon.course_slug || "").trim().toLowerCase()
   if (scopedCourse && scopedCourse !== input.courseSlug) throw new Error("This coupon is not valid for this course.")
+  if (code === BASIC_ADVANCED_COUPON_CODE) {
+    if (!email) throw new Error("Enter the email address used for your completed Prompt to Profit Basic enrollment.")
+    if (!await emailHasBasicCourseAccess(email)) {
+      throw new Error("This discount is only available to learners whose Prompt to Profit Basic cohort has finished.")
+    }
+  }
 
   const usage = await prisma.$queryRaw<Array<{ total_uses: bigint; email_uses: bigint }>>`
     SELECT

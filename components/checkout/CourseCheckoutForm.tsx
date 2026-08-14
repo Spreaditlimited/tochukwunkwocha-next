@@ -388,12 +388,14 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get("ref") || params.get("affiliate") || params.get("affiliateCode") || ""
+    const initialCoupon = String(params.get("coupon") || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40)
     try {
       if (code) storeAffiliateReferralCode(code)
       setAffiliateCode((code || readAffiliateReferralCode()).trim().toUpperCase().slice(0, 40))
     } catch {
       if (code) setAffiliateCode(code.toUpperCase().slice(0, 40))
     }
+    if (initialCoupon) setCouponCode(initialCoupon)
   }, [])
 
   useEffect(() => {
@@ -436,7 +438,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
         country,
         provider: cardProvider,
         email: pricingEmail,
-        couponCode,
+        couponCode: pricingEmail ? couponCode : "",
         buyerType,
         seatCount: buyerType === "family" ? seatCount : 1,
         batchKey,
@@ -477,7 +479,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
         returnSlug: publicCourseSlug,
         country,
         email: pricingEmail,
-        couponCode,
+        couponCode: pricingEmail ? couponCode : "",
         buyerType,
         seatCount: buyerType === "family" ? seatCount : 1,
         batchKey

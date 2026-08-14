@@ -21,6 +21,7 @@ type Props = {
   courses: LearningCourseOption[]
   plans: StudentInstallmentPlan[]
   initialCourseSlug?: string
+  initialCouponCode?: string
 }
 
 const countryOptions = [
@@ -57,14 +58,14 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   return json as T
 }
 
-export function InstallmentsPanel({ account, courses, plans, initialCourseSlug = "" }: Props) {
+export function InstallmentsPanel({ account, courses, plans, initialCourseSlug = "", initialCouponCode = "" }: Props) {
   const initialCourse = courses.find((course) => course.courseSlug === initialCourseSlug) || courses[0]
   const [courseSlug, setCourseSlug] = useState(initialCourse?.courseSlug || "")
   const [batchKey, setBatchKey] = useState(initialCourse?.batches[0]?.batchKey || "")
   const [country, setCountry] = useState("NG")
   const [buyerType, setBuyerType] = useState<"student" | "family">("student")
   const [seatCount, setSeatCount] = useState(2)
-  const [couponCode, setCouponCode] = useState("")
+  const [couponCode, setCouponCode] = useState(initialCouponCode)
   const [firstAmount, setFirstAmount] = useState("")
   const [topUpAmounts, setTopUpAmounts] = useState<Record<string, string>>({})
   const [busyKey, setBusyKey] = useState("")

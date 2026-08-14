@@ -13,8 +13,13 @@ export default async function StudentInstallmentsPage({
 }) {
   const params = searchParams ? await searchParams : {}
   const requestedCourse = Array.isArray(params.course) ? params.course[0] : params.course
+  const requestedCoupon = Array.isArray(params.coupon) ? params.coupon[0] : params.coupon
   const initialCourseSlug = String(requestedCourse || "").trim().toLowerCase().slice(0, 120)
-  const returnTo = `/dashboard/installments${initialCourseSlug ? `?course=${encodeURIComponent(initialCourseSlug)}` : ""}#start-installment-plan`
+  const initialCouponCode = String(requestedCoupon || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40)
+  const query = new URLSearchParams()
+  if (initialCourseSlug) query.set("course", initialCourseSlug)
+  if (initialCouponCode) query.set("coupon", initialCouponCode)
+  const returnTo = `/dashboard/installments${query.size ? `?${query.toString()}` : ""}#start-installment-plan`
   const session = await requireStudent(returnTo)
   const profile = await getStudentProfile(session.account.id)
   const courses = await listActiveLearningCourseOptions()
@@ -35,6 +40,7 @@ export default async function StudentInstallmentsPage({
         }}
         courses={courses}
         initialCourseSlug={initialCourseSlug}
+        initialCouponCode={initialCouponCode}
         plans={plans.map((plan) => ({
           ...plan,
           payments: plan.payments.map((payment) => ({

@@ -9,6 +9,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/advanced-upgrade-campaign",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/affiliate-commissions",
       "schedule": "0 * * * *"
     },
