@@ -166,10 +166,34 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
               <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
                 Enroll Now
               </Link>
-              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#learner-projects">
+              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#course-overview">
                 Learn More
               </Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="course-overview" className="scroll-mt-20 bg-background py-10">
+        <div className={sectionContainer}>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: "Duration", value: "4 Weeks", icon: Calendar },
+              { label: "Delivery", value: "46 Recorded + 4 Live Classes", icon: Video },
+              { label: "Skill Level", value: "Intermediate", icon: ShieldCheck },
+              { label: "Access", value: "One Full Year", icon: MonitorPlay },
+              { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 },
+              { label: "Course Cost", value: "₦150,000", icon: CreditCard }
+            ].map((stat) => {
+              const Icon = stat.icon
+              return (
+                <div key={stat.label} className="surface-raised flex flex-col items-center justify-center bg-card p-6 text-center">
+                  <Icon className="mb-3 h-6 w-6 text-sky-500" />
+                  <p className="font-heading font-bold text-foreground">{stat.value}</p>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</p>
+                </div>
+              )
+            })}
           </div>
         </div>
       </section>
@@ -241,30 +265,6 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
                 </div>
               </article>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-background py-10">
-        <div className={sectionContainer}>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-            {[
-              { label: "Duration", value: "4 Weeks", icon: Calendar },
-              { label: "Delivery", value: "46 Recorded + 4 Live Classes", icon: Video },
-              { label: "Skill Level", value: "Intermediate", icon: ShieldCheck },
-              { label: "Access", value: "One Full Year", icon: MonitorPlay },
-              { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 },
-              { label: "Course Cost", value: "₦150,000", icon: CreditCard }
-            ].map((stat) => {
-              const Icon = stat.icon
-              return (
-                <div key={stat.label} className="surface-raised flex flex-col items-center justify-center bg-card p-6 text-center">
-                  <Icon className="mb-3 h-6 w-6 text-sky-500" />
-                  <p className="font-heading font-bold text-foreground">{stat.value}</p>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</p>
-                </div>
-              )
-            })}
           </div>
         </div>
       </section>
