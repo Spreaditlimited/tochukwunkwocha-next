@@ -8,7 +8,9 @@ import { validateExternalLinkContinuity } from "../lib/seo/external-link-policy.
 const review = await readFile(new URL("../lib/seo-review.ts", import.meta.url), "utf8")
 const statusRoute = await readFile(new URL("../app/api/seo/changes/[pidChange]/rewrite-status/route.ts", import.meta.url), "utf8")
 const importRoute = await readFile(new URL("../app/api/seo/search-console/import/route.ts", import.meta.url), "utf8")
+const cronImportRoute = await readFile(new URL("../app/api/cron/search-console/route.ts", import.meta.url), "utf8")
 const importer = await readFile(new URL("../lib/search-console.ts", import.meta.url), "utf8")
+const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"))
 const seoWorkflow = await readFile(new URL("../lib/seo.ts", import.meta.url), "utf8")
 const seoQueue = await readFile(new URL("../app/(internal)/internal/(admin)/seo/page.tsx", import.meta.url), "utf8")
 const newBlogPage = await readFile(new URL("../app/(internal)/internal/(admin)/blog/new/page.tsx", import.meta.url), "utf8")
@@ -71,6 +73,16 @@ test("status polling resumes only and manual GSC imports require admin authoriza
   assert.match(statusRoute, /allowStart: false/)
   assert.match(importRoute, /getAdminSession/)
   assert.doesNotMatch(importRoute, /manual_json|body\?\.rows/)
+})
+
+test("Search Console imports run daily through an authenticated Vercel cron", () => {
+  assert.deepEqual(
+    vercelConfig.crons.find((cron) => cron.path === "/api/cron/search-console"),
+    { path: "/api/cron/search-console", schedule: "15 6 * * *" }
+  )
+  assert.match(cronImportRoute, /process\.env\.CRON_SECRET/)
+  assert.match(cronImportRoute, /process\.env\.GOOGLE_SEARCH_CONSOLE_CRON_SECRET/)
+  assert.match(cronImportRoute, /authorization === `Bearer \$\{secret\}`/)
 })
 
 test("actionable queries are reduced to one highest-impression opportunity per blog page", () => {
