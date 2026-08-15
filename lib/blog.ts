@@ -2,8 +2,10 @@ import { Prisma } from "@prisma/client"
 import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
+import { primaryBlogAuthor } from "@/lib/blog-author"
 import { excerptFrom, safeJsonParse, slugify } from "@/lib/utils"
 import { blogSearchTerms, estimateReadingMinutes, normalizeBlogSearchQuery, scoreBlogSearchResult } from "@/lib/blog-search"
+import { normalizeBlogContentForStorage } from "@/lib/blog-content-html"
 
 export interface BlogSeo {
   metaTitle?: string
@@ -11,6 +13,11 @@ export interface BlogSeo {
   metaDescription?: string
   focusKeyword?: string
   imageAlt?: string
+  keywords?: string[]
+  ogTitle?: string
+  ogDescription?: string
+  twitterTitle?: string
+  twitterDescription?: string
 }
 
 export function parseBlogSeo(post: {
@@ -95,6 +102,29 @@ export const getPublishedPosts = unstable_cache(async (limit = 24) => {
   })
 }, ["published-blog-posts"], { revalidate: 300 })
 
+export async function getPublishedFeaturedPosts(limit = 3) {
+  const posts = await prisma.tochukwuBlogPost.findMany({
+    where: {
+      blogPublished: true,
+      blogFeatured: true,
+      createdAt: { lte: new Date() }
+    },
+    select: {
+      pidBlog: true,
+      blogSlug: true,
+      blogTitle: true,
+      blogImage: true,
+      excerpt: true,
+      createdAt: true,
+      blogContent: true
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    take: Math.max(1, Math.min(3, Math.round(limit)))
+  })
+
+  return posts.map(({ blogContent, ...post }) => ({ ...post, readingMinutes: estimateReadingMinutes(blogContent) }))
+}
+
 export const getPublishedPostsPage = unstable_cache(async (input: { page?: number; pageSize?: number; search?: string }) => {
   const pageSize = Math.max(1, Math.min(48, Math.round(Number(input.pageSize || 12))))
   const requestedPage = Math.max(1, Math.round(Number(input.page || 1)))
@@ -104,6 +134,7 @@ export const getPublishedPostsPage = unstable_cache(async (input: { page?: numbe
   const where = {
     blogPublished: true,
     createdAt: { lte: new Date() },
+    ...(!terms.length ? { blogFeatured: false } : {}),
     ...(terms.length ? {
       AND: terms.map((term) => ({ OR: [
         { blogTitle: { contains: term } }, { blogSlug: { contains: term } }, { excerpt: { contains: term } },
@@ -299,7 +330,6 @@ export async function upsertBlogPost(input: {
   blogPublished: boolean
   blogFeatured: boolean
   blogImage?: string
-  blogBy?: string
   excerpt?: string
   tags?: string[]
   seo?: BlogSeo
@@ -310,15 +340,15 @@ export async function upsertBlogPost(input: {
     : null
   const pidBlog = existing?.pidBlog || input.pidBlog || `BLOG${Date.now()}`
   const blogSlug = await makeUniqueBlogSlug(input.blogSlug || input.blogTitle, existing?.pidBlog)
-  const seoJson = JSON.stringify(input.seo || {})
+  const seoJson = JSON.stringify({ ...(existing ? parseBlogSeo(existing) : {}), ...(input.seo || {}) })
   const data = {
     blogTitle: input.blogTitle.trim(),
     blogSlug,
-    blogContent: input.blogContent.trim(),
+    blogContent: normalizeBlogContentForStorage(input.blogContent),
     blogPublished: input.blogPublished,
     blogFeatured: input.blogFeatured,
     blogImage: input.blogImage?.trim() || null,
-    blogBy: input.blogBy?.trim() || "Tochukwu Nkwocha",
+    blogBy: primaryBlogAuthor.name,
     excerpt: excerptFrom(input.blogContent, input.excerpt),
     tagsJson: JSON.stringify(input.tags || []),
     seoJson,

@@ -2,15 +2,18 @@ import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, Clock3, Download, FileText, Sparkles, User } from "lucide-react"
+import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, Clock3, Download, FileText, Sparkles } from "lucide-react"
 
+import { BlogAuthorByline, BlogAuthorCard } from "@/components/blog/BlogAuthor"
 import { JsonLd } from "@/components/JsonLd"
 import { getBlogImageSrc, getContinueReadingPosts, getPostBySlug, parseBlogSeo } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
 import { brand } from "@/lib/brand"
 import { normalizeLeadMagnetDownloadUrl } from "@/lib/marketing"
-import { articleJsonLd, breadcrumbJsonLd, buildMetadata } from "@/lib/site-seo"
+import { articleJsonLd, blogAuthorJsonLd, breadcrumbJsonLd, buildMetadata } from "@/lib/site-seo"
 import { estimateReadingMinutes } from "@/lib/blog-search"
+import { prepareBlogContentHtml } from "@/lib/blog-content-html"
+import { primaryBlogAuthor } from "@/lib/blog-author"
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>
@@ -49,13 +52,21 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
   const seo = parseBlogSeo(post)
   const imageSrc = getBlogImageSrc(post.blogImage)
   
-  return buildMetadata({
+  const metadata = buildMetadata({
     title: seo.metaTitle || seo.seoTitle || post.blogTitle,
     description: seo.metaDescription || post.excerpt || brand.description,
     path: `/blog/${post.blogSlug}`,
     image: imageSrc,
+    imageAlt: seo.imageAlt || `Cover image for ${post.blogTitle}`,
     type: "article"
   })
+  return {
+    ...metadata,
+    keywords: seo.keywords?.length ? seo.keywords : seo.focusKeyword ? [seo.focusKeyword] : undefined,
+    authors: [{ name: primaryBlogAuthor.name, url: primaryBlogAuthor.profilePath }],
+    creator: primaryBlogAuthor.name,
+    publisher: brand.name
+  }
 }
 
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
@@ -76,7 +87,8 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     <main className="bg-background pb-24">
       <JsonLd
         data={[
-          articleJsonLd(post, imageSrc),
+          articleJsonLd({ ...post, excerpt: seo.metaDescription || post.excerpt }, imageSrc),
+          blogAuthorJsonLd(),
           breadcrumbJsonLd([
             { name: "Home", path: "/" },
             { name: "Blog", path: "/blog" },
@@ -116,10 +128,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                 <Calendar className="h-4 w-4 text-primary" />
                 {formatDate(post.createdAt)}
               </div>
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" />
-                {post.blogBy || brand.personalName}
-              </div>
+              <BlogAuthorByline />
               <div className="flex items-center gap-2">
                 <Clock3 className="h-4 w-4 text-primary" />
                 {readingMinutes} min read
@@ -135,7 +144,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           <div className="relative mx-auto aspect-video max-w-5xl overflow-hidden rounded-xl border border-border bg-card shadow-lg sm:aspect-[21/9]">
             <Image
               src={imageSrc} 
-              alt={`Cover image for ${post.blogTitle}`} 
+              alt={seo.imageAlt || `Cover image for ${post.blogTitle}`}
               fill
               sizes="(min-width: 1280px) 1024px, 100vw"
               className="object-cover"
@@ -243,8 +252,10 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         {/* The 'blog-content' class from globals.css will style the nested tags automatically */}
         <div
           className="blog-content"
-          dangerouslySetInnerHTML={{ __html: post.blogContent || "" }}
+          dangerouslySetInnerHTML={{ __html: prepareBlogContentHtml(post.blogContent) }}
         />
+
+        <BlogAuthorCard />
 
         {continueReadingPosts.length ? (
           <section className="mt-16 pt-10">

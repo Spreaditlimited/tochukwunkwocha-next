@@ -209,6 +209,41 @@
     @apply text-sky-200 decoration-sky-300/80 hover:text-white hover:decoration-white focus-visible:ring-sky-300 focus-visible:ring-offset-brand-ink;
   }
 
+  .blog-content .blog-table-scroll {
+    @apply my-8 w-full overflow-x-auto rounded-xl border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .blog-content table {
+    @apply m-0 w-full min-w-[42rem] border-separate border-spacing-0 text-left text-[15px] leading-relaxed;
+  }
+
+  .blog-content caption {
+    @apply border-b border-border bg-muted/40 px-5 py-3 text-left text-sm font-bold text-foreground;
+  }
+
+  .blog-content th,
+  .blog-content td {
+    @apply whitespace-normal break-words border-b border-border px-4 py-3 align-top sm:px-5 sm:py-4;
+  }
+
+  .blog-content th {
+    @apply bg-muted/70 font-heading text-sm font-black text-foreground;
+  }
+
+  .blog-content th + th,
+  .blog-content td + td {
+    @apply border-l border-border;
+  }
+
+  .blog-content tbody tr:nth-child(even) td {
+    @apply bg-muted/20;
+  }
+
+  .blog-content tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
   .student-dashboard {
     --sd-bg: #c7ebf8;
     --sd-text: hsl(var(--foreground));

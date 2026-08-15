@@ -1,5 +1,6 @@
 import crypto from "crypto"
 
+import { normalizeDeliverableEmail } from "@/lib/email-address"
 import { sendAbandonedEnrollmentReminderEmail } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
 import {
@@ -25,6 +26,9 @@ type AttemptRow = {
   email: string | null
   firstName: string | null
   phone: string | null
+  recipientEmail: string | null
+  recipientName: string | null
+  recipientPhone: string | null
   courseSlug: string | null
   batchKey: string | null
   batchLabel: string | null
@@ -202,7 +206,11 @@ export async function stopStaleUnsentAbandonedEnrollmentFollowups() {
 async function loadAttempt(orderUuid: string) {
   const rows = await prisma.$queryRaw<AttemptRow[]>`
     SELECT co.order_uuid AS orderUuid, co.status, co.provider_reference AS providerReference,
-           co.email, co.first_name AS firstName, co.phone, co.course_slug AS courseSlug,
+           co.email, co.first_name AS firstName, co.phone,
+           COALESCE(NULLIF(fa.parent_email, ''), co.email) AS recipientEmail,
+           COALESCE(NULLIF(fa.parent_name, ''), co.first_name) AS recipientName,
+           COALESCE(NULLIF(fa.parent_phone, ''), co.phone) AS recipientPhone,
+           co.course_slug AS courseSlug,
            co.batch_key AS batchKey, co.batch_label AS batchLabel,
            cb.status AS batchStatus, cb.batch_start_at AS batchStartAt,
            lc.enrollment_mode AS enrollmentMode, lc.is_enrollment_locked AS enrollmentLocked,
@@ -213,6 +221,11 @@ async function loadAttempt(orderUuid: string) {
      AND cb.batch_key COLLATE utf8mb4_unicode_ci = co.batch_key COLLATE utf8mb4_unicode_ci
     LEFT JOIN tochukwu_learning_courses lc
       ON lc.course_slug COLLATE utf8mb4_unicode_ci = co.course_slug COLLATE utf8mb4_unicode_ci
+    LEFT JOIN family_children fc
+      ON LOWER(fc.email) COLLATE utf8mb4_unicode_ci = LOWER(co.email) COLLATE utf8mb4_unicode_ci
+     AND fc.status = 'active'
+    LEFT JOIN family_accounts fa
+      ON fa.id = fc.family_id AND fa.status = 'active'
     WHERE co.order_uuid = ${orderUuid}
     LIMIT 1
   `
@@ -372,6 +385,12 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
         stopped += 1
         continue
       }
+      const recipientEmail = normalizeDeliverableEmail(attempt.recipientEmail, 190)
+      if (!recipientEmail) {
+        await stopFollowup(row.id, "undeliverable_recipient")
+        stopped += 1
+        continue
+      }
       if (attemptStatus === "paid" || await matchingPaidOrderExists(attempt)) {
         await stopFollowup(row.id, "payment_confirmed")
         stopped += 1
@@ -392,7 +411,7 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
         MAX_ABANDONED_ENROLLMENT_REMINDERS,
         Number(row.reminderCount || 0)
       )
-      const whatsappRequired = Boolean(Number(row.whatsappOptedIn || 0)) && Boolean(clean(attempt.phone, 80))
+      const whatsappRequired = Boolean(Number(row.whatsappOptedIn || 0)) && Boolean(clean(attempt.recipientPhone, 80))
       const currentCycleIncomplete = currentReminderCount > 0 && (
         Number(row.emailCycleSent || 0) < currentReminderCount
         || (whatsappRequired && Number(row.whatsappCycleSent || 0) < currentReminderCount)
@@ -405,8 +424,8 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
       let emailCycleSent = Number(row.emailCycleSent || 0)
       if (emailCycleSent < reminderNumber) {
         await sendAbandonedEnrollmentReminderEmail({
-          email: clean(attempt.email, 190),
-          fullName: attempt.firstName,
+          email: recipientEmail,
+          fullName: attempt.recipientName,
           courseSlug: attempt.courseSlug,
           batchLabel: attempt.batchLabel,
           checkoutUrl,
@@ -425,8 +444,8 @@ export async function processAbandonedEnrollmentFollowups(input?: { limit?: numb
       if (whatsappRequired && whatsappCycleSent < reminderNumber) {
         try {
           await sendEnrollmentPaymentReminderWhatsApp({
-            phone: attempt.phone,
-            fullName: attempt.firstName,
+            phone: attempt.recipientPhone,
+            fullName: attempt.recipientName,
             courseSlug: attempt.courseSlug,
             batchLabel: attempt.batchLabel,
             checkoutUrl,

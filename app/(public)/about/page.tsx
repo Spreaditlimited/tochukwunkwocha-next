@@ -20,9 +20,10 @@ import {
 } from "lucide-react"
 
 import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
+import { JsonLd } from "@/components/JsonLd"
 import { brand } from "@/lib/brand"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
-import { buildMetadata } from "@/lib/site-seo"
+import { blogAuthorJsonLd, buildMetadata } from "@/lib/site-seo"
 
 export const dynamic = "force-dynamic"
 
@@ -57,6 +58,7 @@ export default async function AboutPage() {
 
   return (
     <main>
+      <JsonLd data={blogAuthorJsonLd()} />
       {/* 1. Hero Section (Immersive Dark) */}
       <section className="relative overflow-hidden bg-brand-ink pt-16 text-white lg:pt-24">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px]"></div>
@@ -256,7 +258,7 @@ export default async function AboutPage() {
       </section>
 
       {/* 6. Founder Section */}
-      <section className="bg-background py-20 lg:py-28">
+      <section id="tochukwu-nkwocha" className="scroll-mt-24 bg-background py-20 lg:py-28">
         <div className={sectionContainer}>
           <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16 items-center">
             
@@ -281,7 +283,10 @@ export default async function AboutPage() {
                   Tochukwu Nkwocha is the Founder and Lead Instructor of {brand.name}. He builds real digital products for real businesses, but his greatest passion is making complex technology simple enough for ordinary people to understand and use.
                 </p>
                 <p>
-                  Long before Artificial Intelligence became mainstream, he built platforms including Sure Imports and Effiko. Sure Imports has grown to serve more than <strong className="text-foreground">40,000 users</strong>, while Effiko has recorded more than <strong className="text-foreground">10,000 app downloads</strong> and over <strong className="text-foreground">500,000 yearly Google impressions</strong>.
+                  Long before Artificial Intelligence became mainstream, he founded Sure Imports and built platforms including Sure Imports and Effiko. Sure Imports has grown to serve more than <strong className="text-foreground">40,000 users</strong>, while Effiko has recorded more than <strong className="text-foreground">10,000 app downloads</strong> and over <strong className="text-foreground">500,000 yearly Google impressions</strong>.
+                </p>
+                <p>
+                  In the UK, he works as a <strong className="text-foreground">Digital Marketing Executive at a technology consulting firm</strong>, bringing professional experience in digital strategy and technology to his work as a founder, builder, writer and educator.
                 </p>
                 <p>
                   Today, he works alongside AI to design and build modern digital products, including LineScout and the technology platform that powers this academy.

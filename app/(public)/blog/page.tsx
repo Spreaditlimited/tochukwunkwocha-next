@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 
 import { BlogNewsletterForm } from "@/components/blog/BlogNewsletterForm"
-import { getBlogImageSrc, getPublishedPostsPage } from "@/lib/blog"
+import { getBlogImageSrc, getPublishedFeaturedPosts, getPublishedPostsPage } from "@/lib/blog"
 import { absoluteUrl, buildMetadata } from "@/lib/site-seo"
 import { formatDate } from "@/lib/utils"
 
@@ -64,10 +64,12 @@ export default async function BlogPage({
   const params = searchParams ? await searchParams : {}
   const requestedPage = normalizePage(params.page)
   const rawSearch = Array.isArray(params.q) ? params.q[0] : params.q
-  const { posts, total, page, totalPages, search } = await getPublishedPostsPage({ page: requestedPage, pageSize: BLOG_PAGE_SIZE, search: rawSearch })
-  const featuredPost = posts.length > 0 ? posts[0] : null
-  const gridPosts = posts.length > 1 ? posts.slice(1) : []
+  const [{ posts, total, page, totalPages, search }, featuredPosts] = await Promise.all([
+    getPublishedPostsPage({ page: requestedPage, pageSize: BLOG_PAGE_SIZE, search: rawSearch }),
+    getPublishedFeaturedPosts(3)
+  ])
   const currentPage = Math.min(page, totalPages)
+  const showFeatured = !search && currentPage === 1 && featuredPosts.length > 0
   const paginationPages = Array.from(
     new Set([1, currentPage - 1, currentPage, currentPage + 1, totalPages].filter((item) => item >= 1 && item <= totalPages))
   )
@@ -115,12 +117,39 @@ export default async function BlogPage({
         </div>
       </section>
 
-      {/* 2. Latest Articles (Featured + Grid) */}
+      {/* 2. Featured and latest articles */}
       <section className="bg-muted/20 py-20 lg:py-28">
         <div className={sectionContainer}>
+          {showFeatured ? (
+            <section className="mb-16" aria-labelledby="featured-articles-heading">
+              <div className="mb-8">
+                <p className="eyebrow">Editor&apos;s Picks</p>
+                <h2 id="featured-articles-heading" className="mt-2 font-heading text-3xl font-black tracking-tight">Featured Articles</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">Start with these practical guides selected from our most useful AI learning resources.</p>
+              </div>
+              <div className="grid gap-6 lg:grid-cols-3">
+                {featuredPosts.map((post) => (
+                  <Link key={post.pidBlog} href={`/blog/${post.blogSlug}`} className="group surface-raised flex flex-col overflow-hidden bg-card no-underline transition-all hover:border-primary/50 hover:shadow-lg">
+                    {getBlogImageSrc(post.blogImage) ? (
+                      <div className="relative aspect-[16/10] overflow-hidden">
+                        <Image src={getBlogImageSrc(post.blogImage) || ""} alt={post.blogTitle} fill sizes="(min-width: 1024px) 33vw, 100vw" className="object-cover transition-transform duration-300 group-hover:scale-105" priority />
+                      </div>
+                    ) : null}
+                    <div className="flex flex-1 flex-col p-6">
+                      <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-wider text-primary"><span>Featured</span><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{post.readingMinutes} min read</span></div>
+                      <h3 className="mt-4 font-heading text-xl font-black leading-snug text-foreground transition-colors group-hover:text-primary">{post.blogTitle}</h3>
+                      <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">{post.excerpt}</p>
+                      <p className="mt-auto inline-flex items-center pt-6 text-sm font-bold text-foreground">Read Featured Article <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" /></p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <div className="mb-12">
             <p className="eyebrow">The Publication</p>
-            <h2 className="mt-2 font-heading text-3xl font-black tracking-tight">{search ? `Search results for “${search}”` : "Explore Our Latest Articles"}</h2>
+            <h2 className="mt-2 font-heading text-3xl font-black tracking-tight">{search ? `Search results for “${search}”` : "Latest Articles"}</h2>
             {total > 0 ? (
               <p className="mt-3 text-sm font-medium text-muted-foreground">
                 {search ? `${total} matching article${total === 1 ? "" : "s"}` : `Showing page ${currentPage} of ${totalPages} across ${total} published articles.`}
@@ -142,40 +171,9 @@ export default async function BlogPage({
           
           {posts.length > 0 ? (
             <div className="grid gap-8">
-              {/* Featured Post (Full Width) */}
-              {featuredPost && (
-                <Link href={`/blog/${featuredPost.blogSlug}`} className="group surface-raised grid overflow-hidden bg-card transition-shadow hover:shadow-lg lg:grid-cols-2">
-                  {getBlogImageSrc(featuredPost.blogImage) ? (
-                    <div className="relative aspect-video w-full overflow-hidden lg:aspect-auto">
-                      <Image
-                        src={getBlogImageSrc(featuredPost.blogImage) || ""}
-                        alt={featuredPost.blogTitle}
-                        fill
-                        sizes="(min-width: 1024px) 50vw, 100vw"
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                        priority
-                      />
-                    </div>
-                  ) : null}
-                  <div className="flex flex-col justify-center p-8 sm:p-12">
-                    <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-wider text-primary"><span>{formatDate(featuredPost.createdAt)}</span><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{featuredPost.readingMinutes} min read</span></div>
-                    <h3 className="mt-4 font-heading text-2xl font-black leading-snug text-foreground transition-colors group-hover:text-primary lg:text-3xl">
-                      {featuredPost.blogTitle}
-                    </h3>
-                    <p className="mt-4 line-clamp-3 text-base leading-relaxed text-muted-foreground">
-                      {featuredPost.excerpt}
-                    </p>
-                    <p className="mt-8 inline-flex items-center text-sm font-bold text-foreground">
-                      Read Featured Article <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                    </p>
-                  </div>
-                </Link>
-              )}
-
-              {/* Grid Posts */}
-              {gridPosts.length > 0 && (
+              {posts.length > 0 && (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {gridPosts.map((post) => (
+                  {posts.map((post) => (
                     <Link key={post.pidBlog} href={`/blog/${post.blogSlug}`} className="group surface-raised flex flex-col overflow-hidden bg-card no-underline transition-all hover:border-primary/50 hover:shadow-md">
                       {getBlogImageSrc(post.blogImage) ? (
                         <div className="relative aspect-[16/10] overflow-hidden">

@@ -103,6 +103,8 @@ async function main() {
   const now = new Date()
   const catalog = [
     ["SEOLINK_PROMPT_TO_PROFIT", "/courses/prompt-to-profit", "Prompt to Profit"],
+    ["SEOLINK_PROMPT_TO_PRODUCTION", "/courses/prompt-to-production", "Prompt to Profit Advanced"],
+    ["SEOLINK_BUILD_SERVICE", "/build", "Build Service"],
     ["SEOLINK_BUSINESS_PLAN", "/services/business-plan", "AI Business Plan Service"],
     ["SEOLINK_SCHOOLS", "/schools", "AI for Schools"],
     ["SEOLINK_COACHING", "/private-ai-build-coaching", "Private AI Build Coaching"],

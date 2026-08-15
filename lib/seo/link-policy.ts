@@ -1,4 +1,8 @@
-export type LinkApprovalDecision = "once" | "global"
+export type LinkApprovalDecision = "once" | "global" | "rejected" | "amended"
+
+function escapeAttribute(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
 
 const siteHosts = new Set(["tochukwunkwocha.com", "www.tochukwunkwocha.com"])
 
@@ -43,4 +47,21 @@ export function findNewUnapprovedLinks(input: {
   const discovered = extractLinkableUrls(input.rewrittenHtml).filter((url) => !original.has(url))
   const pending = discovered.filter((url) => !approved.has(url) && !input.decisions?.[url])
   return { discovered, pending }
+}
+
+export function reviseInternalLinkInHtml(input: { html: string; originalUrl: string; replacementUrl?: string | null }) {
+  const originalUrl = normalizeLinkableUrl(input.originalUrl)
+  const replacementUrl = input.replacementUrl == null ? null : normalizeLinkableUrl(input.replacementUrl)
+  if (!originalUrl) throw new Error("The original internal link is invalid.")
+  if (input.replacementUrl != null && !replacementUrl) throw new Error("The replacement internal link is invalid.")
+
+  let changed = false
+  const html = String(input.html || "").replace(/<a\b([^>]*?)\bhref\s*=\s*(["'])(.*?)\2([^>]*)>([\s\S]*?)<\/a>/gi, (anchor, before, quote, href, after, label) => {
+    if (normalizeLinkableUrl(href) !== originalUrl) return anchor
+    changed = true
+    if (!replacementUrl) return label
+    return `<a${before}href=${quote}${escapeAttribute(replacementUrl)}${quote}${after}>${label}</a>`
+  })
+  if (!changed) throw new Error("The selected internal link was not found in the saved rewrite.")
+  return html
 }

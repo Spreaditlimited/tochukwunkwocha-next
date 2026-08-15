@@ -9,7 +9,7 @@ import {
   generateSeoDraftForOpportunity,
   updateOpportunityStatus
 } from "@/lib/seo"
-import { applySeoMetadataChange, approveSeoRewriteLink, discardSeoRewrite, getSeoChangeReview, prepareSeoRewrite, rejectSeoChangeReview } from "@/lib/seo-review"
+import { applySeoMetadataChange, approveSeoRewriteLink, discardSeoRewrite, getSeoChangeReview, prepareSeoRewrite, rejectSeoChangeReview, reviewSeoRewriteLink, saveSeoInternalLinkSuggestionFeedback } from "@/lib/seo-review"
 
 export async function updateOpportunityStatusAction(formData: FormData) {
   await requireAdmin("/internal/seo")
@@ -86,14 +86,39 @@ export async function generateSeoRewriteAction(formData: FormData) {
 
 export async function approveSeoRewriteLinkAction(formData: FormData) {
   const admin = await requireAdmin("/internal/seo")
-  const pidChange = String(formData.get("pidChange") || ""), url = String(formData.get("url") || ""), scope = String(formData.get("scope") || "")
+  const pidChange = String(formData.get("pidChange") || ""), url = String(formData.get("url") || ""), scope = String(formData.get("scope") || ""), note = String(formData.get("note") || "")
   if (scope !== "once" && scope !== "global") redirect(`/internal/seo/changes/${pidChange}`)
   let nextUrl = `/internal/seo/changes/${pidChange}`
   try {
-    const result = await approveSeoRewriteLink({ pidChange, url, scope, approvedBy: admin.adminUuid })
+    const result = await approveSeoRewriteLink({ pidChange, url, scope, approvedBy: admin.adminUuid, note })
     revalidatePath(`/internal/seo/changes/${pidChange}`)
     nextUrl = `/internal/seo/changes/${pidChange}?${result.status === "awaiting_link_review" ? "linkReview=1" : "rewrite=ready"}`
   } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not approve link.")}` }
+  redirect(nextUrl)
+}
+
+export async function saveSeoInternalLinkSuggestionAction(formData: FormData) {
+  const admin = await requireAdmin("/internal/seo")
+  const pidChange = String(formData.get("pidChange") || ""), originalUrl = String(formData.get("originalUrl") || ""), decision = String(formData.get("decision") || ""), replacementUrl = String(formData.get("replacementUrl") || ""), note = String(formData.get("note") || "")
+  if (!pidChange || !["keep", "rejected", "amended"].includes(decision)) redirect(`/internal/seo/changes/${pidChange}`)
+  let nextUrl = `/internal/seo/changes/${pidChange}?linkSuggestionSaved=1`
+  try {
+    await saveSeoInternalLinkSuggestionFeedback({ pidChange, originalUrl, decision: decision as "keep" | "rejected" | "amended", replacementUrl, note, updatedBy: admin.adminUuid })
+    revalidatePath(`/internal/seo/changes/${pidChange}`)
+  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not save internal-link feedback.")}` }
+  redirect(nextUrl)
+}
+
+export async function reviewSeoRewriteLinkAction(formData: FormData) {
+  const admin = await requireAdmin("/internal/seo")
+  const pidChange = String(formData.get("pidChange") || ""), url = String(formData.get("url") || ""), decision = String(formData.get("decision") || ""), replacementUrl = String(formData.get("replacementUrl") || ""), note = String(formData.get("note") || "")
+  if (!pidChange || !["rejected", "amended"].includes(decision)) redirect(`/internal/seo/changes/${pidChange}`)
+  let nextUrl = `/internal/seo/changes/${pidChange}`
+  try {
+    const result = await reviewSeoRewriteLink({ pidChange, url, decision: decision as "rejected" | "amended", replacementUrl, note, reviewedBy: admin.adminUuid })
+    revalidatePath(`/internal/seo/changes/${pidChange}`)
+    nextUrl = `/internal/seo/changes/${pidChange}?${result.status === "awaiting_link_review" ? "linkReview=1" : "rewrite=ready"}`
+  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not review link.")}` }
   redirect(nextUrl)
 }
 

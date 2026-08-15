@@ -5,6 +5,8 @@ export interface SeoLinkCatalogItem { label: string; url: string; useWhen: strin
 
 export const systemSeoLinkCatalog: SeoLinkCatalogItem[] = [
   { label: "Prompt to Profit", url: "/courses/prompt-to-profit", useWhen: "Readers want practical AI skills for useful outputs, services, or income opportunities." },
+  { label: "Prompt to Profit Advanced", url: "/courses/prompt-to-production", useWhen: "Readers are ready to move beyond introductory prompting and build production-ready AI workflows, tools, or products." },
+  { label: "Build Service", url: "/build", useWhen: "Businesses need a custom dashboard, portal, workflow, automation, or operational web application built for them." },
   { label: "AI Business Plan Service", url: "/services/business-plan", useWhen: "Readers need help turning a business idea into a clear plan, offer, or launch path." },
   { label: "AI for Schools", url: "/schools", useWhen: "Parents, teachers, principals, or school owners are evaluating AI education." },
   { label: "Private AI Build Coaching", url: "/private-ai-build-coaching", useWhen: "Readers need one-to-one help building an AI-assisted project, workflow, or product." },

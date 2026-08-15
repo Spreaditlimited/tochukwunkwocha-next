@@ -1,4 +1,5 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+import { normalizeDeliverableEmail } from "@/lib/email-address"
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
@@ -71,9 +72,9 @@ export async function sendBrevoTransactionalEmail(input: {
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
   if (!apiKey) throw new Error("Missing Brevo API key.")
-  const to = clean(input.to, 190).toLowerCase()
+  const to = normalizeDeliverableEmail(input.to, 190)
   const subject = clean(input.subject, 255)
-  if (!to || !subject || !input.html) throw new Error("Recipient, subject, and HTML body are required.")
+  if (!to || !subject || !input.html) throw new Error("A deliverable recipient, subject, and HTML body are required.")
 
   const headers = Object.fromEntries(
     Object.entries(input.headers || {})

@@ -1,5 +1,6 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { finishEmailDeliveryLog, startEmailDeliveryLog } from "@/lib/email-delivery-log"
+import { normalizeDeliverableEmail } from "@/lib/email-address"
 import nodemailer from "nodemailer"
 
 type EmailInput = {
@@ -83,12 +84,12 @@ function shouldDecorateHtml(html: string) {
 
 export async function sendEmail(input: EmailInput) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
-  const to = clean(input.to, 190)
+  const to = normalizeDeliverableEmail(input.to, 190)
   const subject = clean(input.subject, 255)
   const rawHtmlContent = clean(input.html, 200000)
   const textContent = clean(input.text, 200000)
   if (!to || !subject || (!rawHtmlContent && !textContent)) {
-    throw new Error("to, subject, and email body are required")
+    throw new Error("A deliverable recipient, subject, and email body are required")
   }
   const deliveryLogUuid = await startEmailDeliveryLog({ recipient: to, subject })
   const htmlContent = rawHtmlContent

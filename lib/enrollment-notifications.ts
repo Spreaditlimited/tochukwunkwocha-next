@@ -1,14 +1,11 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { sendEmail } from "@/lib/email"
+import { normalizeDeliverableEmail } from "@/lib/email-address"
 import { prisma } from "@/lib/prisma"
 import { publicActionLinkVariants, publicSiteUrl } from "@/lib/public-site-url"
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
-}
-
-function normalizeEmail(value: unknown) {
-  return clean(value, 190).toLowerCase()
 }
 
 function siteBaseUrl() {
@@ -57,7 +54,7 @@ export async function syncEnrollmentToBrevo(input: {
 }) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   const listId = Number(input.listId || await resolveEnrollmentBrevoListId(input) || 0) || 0
   if (!apiKey || !email || !listId) return { ok: true, skipped: true }
 
@@ -98,7 +95,7 @@ export async function removeEnrollmentFromBrevoList(input: {
 }) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   const listId = Number(input.listId || 0) || 0
   if (!apiKey || !email || !listId) return { ok: true, skipped: true }
 
@@ -166,7 +163,7 @@ export async function reconcileFamilyOwnerBrevoLists(input: {
   previousListIds?: Array<number | string | null | undefined>
   source: string
 }) {
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   const courseSlug = clean(input.courseSlug, 120).toLowerCase()
   let familyId: bigint
   try {
@@ -262,7 +259,7 @@ export async function sendBatchSwitchConfirmationEmail(input: {
   newBatchLabel?: string | null
   newBatchStartText?: string | null
 }) {
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   const name = clean(input.fullName, 120) || "there"
   const course = clean(input.courseName, 160) || "your course"
@@ -314,7 +311,7 @@ export async function sendStudentAccountReadyEmail(input: {
   temporaryPassword?: string | null
   resetToken?: string | null
 }) {
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
   const dashboardLinks = publicActionLinkVariants("/dashboard")
@@ -366,7 +363,7 @@ export async function sendStudentPendingManualPaymentEmail(input: {
   resetToken?: string | null
   dashboardPath?: string | null
 }) {
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
   const dashboardPath = clean(input.dashboardPath || "/dashboard/courses?manual_payment=pending", 180)
@@ -420,7 +417,7 @@ export async function sendInstallmentStartedEmail(input: {
   fullName?: string | null
   courseSlug?: string | null
 }) {
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   await sendEmail({
     to: email,
@@ -452,7 +449,7 @@ export async function sendAbandonedEnrollmentReminderEmail(input: {
   stopUrl: string
   reminderNumber: number
 }) {
-  const email = normalizeEmail(input.email)
+  const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   const name = clean(input.fullName, 120) || "there"
   const course = learningCourseName(input.courseSlug) || "your selected course"

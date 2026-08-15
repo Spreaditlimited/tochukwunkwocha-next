@@ -1,15 +1,18 @@
 import crypto from "crypto"
 
 import { parseBlogSeo } from "@/lib/blog"
+import { assertCleanGeneratedBlogHtml, normalizeBlogContentForStorage } from "@/lib/blog-content-html"
 import { prisma } from "@/lib/prisma"
 import { safeJsonParse } from "@/lib/utils"
 import { extractExternalUrls, validateExternalLinkContinuity, type ExternalLinkChange } from "@/lib/seo/external-link-policy"
 import { getSeoLinkCatalog, type SeoLinkCatalogItem } from "@/lib/seo/link-catalog"
-import { findNewUnapprovedLinks, normalizeLinkableUrl, type LinkApprovalDecision } from "@/lib/seo/link-policy"
+import { findNewUnapprovedLinks, normalizeLinkableUrl, reviseInternalLinkInHtml, type LinkApprovalDecision } from "@/lib/seo/link-policy"
 
-export const SEO_REWRITE_QUALITY_POLICY_VERSION = "2026-08-external-research-global-v1"
+export const SEO_REWRITE_QUALITY_POLICY_VERSION = "2026-08-clean-semantic-html-v2"
 
 type JsonRecord = Record<string, unknown>
+export type InternalLinkEditorialDecision = "keep" | "once" | "global" | "rejected" | "amended"
+export type InternalLinkEditorialFeedback = { originalUrl: string; label: string; decision: InternalLinkEditorialDecision; replacementUrl: string; note: string; updatedBy: string; updatedAt: string }
 type OpenAiResponsePayload = { id?: string; status?: string; model?: string; output_text?: string; output?: Array<{ content?: Array<{ text?: unknown }> }>; error?: { message?: string }; incomplete_details?: { reason?: string } }
 
 function jsonObject(value: string | null) { return safeJsonParse<JsonRecord>(value, {}) }
@@ -18,6 +21,7 @@ function truncate(value: string, max: number) { return value.length <= max ? val
 function contentHash(value: string | null) { return crypto.createHash("sha256").update(String(value || "")).digest("hex") }
 function strings(value: unknown) { return Array.isArray(value) ? value.map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean) : [] }
 function objects(value: unknown) { return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") as JsonRecord[] : [] }
+function internalLinkFeedback(value: unknown): InternalLinkEditorialFeedback[] { return objects(value).map((item) => ({ originalUrl: normalizeLinkableUrl(item.originalUrl) || "", label: String(item.label || "").trim(), decision: String(item.decision || "") as InternalLinkEditorialDecision, replacementUrl: normalizeLinkableUrl(item.replacementUrl) || "", note: String(item.note || "").trim(), updatedBy: String(item.updatedBy || "").trim(), updatedAt: String(item.updatedAt || "").trim() })).filter((item) => item.originalUrl && ["keep", "once", "global", "rejected", "amended"].includes(item.decision)) }
 function escapeHtml(value: unknown) { return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;") }
 
 function extractJson(value: string) {
@@ -49,6 +53,7 @@ export async function getSeoChangeReview(pidChange: string) {
     rewrittenHtml: artifact?.rewrittenHtml || null, appliedChanges: jsonArray<string>(artifact?.appliedChangesJson || null),
     discoveredLinks: jsonArray<string>(artifact?.discoveredLinksJson || null), pendingLinks: jsonArray<string>(artifact?.pendingLinksJson || null),
     linkDecisions: jsonObject(artifact?.decisionsJson || null) as Record<string, LinkApprovalDecision>,
+    internalLinkFeedback: internalLinkFeedback(jsonObject(change.afterJson).internalLinkFeedback),
     externalLinkChanges: jsonArray<ExternalLinkChange>(artifact?.externalLinkChangesJson || null),
     rewritePolicyCurrent: artifact?.qualityPolicyVersion === SEO_REWRITE_QUALITY_POLICY_VERSION,
     openAiResponseId: artifact?.openAiResponseId || null, openAiResponseStatus: artifact?.openAiResponseStatus || null,
@@ -70,8 +75,15 @@ const rewriteSchema = {
 }
 
 function rewritePrompt(change: ChangeReview, catalog: SeoLinkCatalogItem[]) {
-  const after = change.after, approved = new Set(catalog.map((item) => item.url))
-  const internalLinks = objects(after.internalLinks).filter((item) => approved.has(String(item.url || "")))
+  const after = change.after, approved = new Map(catalog.map((item) => [normalizeLinkableUrl(item.url), item]))
+  const feedback = internalLinkFeedback(after.internalLinkFeedback), feedbackByUrl = new Map(feedback.map((item) => [item.originalUrl, item]))
+  const internalLinks = objects(after.internalLinks).flatMap((item) => {
+    const originalUrl = normalizeLinkableUrl(item.url), decision = originalUrl ? feedbackByUrl.get(originalUrl) : null
+    if (!originalUrl || decision?.decision === "rejected") return []
+    const selectedUrl = decision?.decision === "amended" ? decision.replacementUrl : originalUrl, catalogItem = approved.get(selectedUrl)
+    if (!catalogItem) return []
+    return [{ label: catalogItem.label || String(item.label || ""), url: catalogItem.url, reason: String(item.reason || ""), editorialNote: decision?.note || "" }]
+  })
   const original = removeGeneratedFaq(change.blogContent)
   return `Rewrite and improve this Tochukwu Tech and AI Academy blog post HTML using the approved SEO content brief.
 
@@ -84,14 +96,19 @@ Critical rules:
 - Add authoritative external citations when they materially help readers verify a claim or continue their research.
 - Write primarily for Nigerian students, parents, teachers, professionals, teams, and small businesses, while explaining local context so the article remains useful globally.
 - Use clear, practical, specific prose. Keep valid semantic HTML only; no markdown fences, scripts, styles, presentational class attributes, or FAQ section. Link appearance is controlled by the site's shared article stylesheet.
+- Never include HTML comments, escaped comments, filenames, batch/depth/top-up markers, editor notes, assistant preambles, or Markdown syntax in the article HTML.
+- Render every citation as a normal descriptive HTML anchor. Do not include OpenAI tracking parameters in any URL.
 - Add internal links naturally and only from the exact approved catalog below. Do not invent routes.
+- Treat the editor's internal-link decisions and notes as binding. Never restore a rejected suggestion; use the amended destination when one is supplied.
 - Do not change the blog title unless it already appears as a heading in the body.
 
 Metadata: title=${after.metaTitle || ""}; description=${after.metaDescription || ""}; keyword=${after.focusKeyword || ""}; CTA=${after.ctaIntent || change.recommendedCta || ""}
 
 Content brief:\n${strings(after.contentBrief).map((item, i) => `${i + 1}. ${item}`).join("\n") || "None"}
 
-Suggested internal links:\n${internalLinks.map((item, i) => `${i + 1}. ${item.label || ""}: ${item.url} (${item.reason || ""})`).join("\n") || "None"}
+Suggested internal links after editorial review:\n${internalLinks.map((item, i) => `${i + 1}. ${item.label || ""}: ${item.url} (${item.reason || ""})${item.editorialNote ? ` Editor note: ${item.editorialNote}` : ""}`).join("\n") || "None"}
+
+Editorial internal-link decisions:\n${feedback.map((item, i) => `${i + 1}. ${item.originalUrl}: ${item.decision}${item.replacementUrl ? ` -> ${item.replacementUrl}` : ""}${item.note ? `; note: ${item.note}` : ""}`).join("\n") || "No prior decisions."}
 
 Approved catalog:\n${catalog.map((item, i) => `${i + 1}. ${item.label}: ${item.url} - ${item.useWhen}`).join("\n")}
 
@@ -129,6 +146,7 @@ function parseRewrite(payload: OpenAiResponsePayload, change: ChangeReview) {
   if (!content) throw new Error("OpenAI response did not include rewritten content.")
   const parsed = extractJson(content), html = String(parsed.html || "").trim()
   if (html.length < 500) throw new Error("AI rewrite returned content that is too short to apply safely.")
+  assertCleanGeneratedBlogHtml(html)
   const externalLinkChanges = objects(parsed.externalLinkChanges).filter((item) => typeof item.originalUrl === "string" && typeof item.action === "string" && ["retained", "replaced"].includes(item.action) && typeof item.replacementUrl === "string" && typeof item.reason === "string") as ExternalLinkChange[]
   validateExternalLinkContinuity({ originalHtml: change.blogContent, rewrittenHtml: html, changes: externalLinkChanges })
   return { html, appliedChanges: strings(parsed.appliedChanges), externalLinkChanges }
@@ -145,6 +163,7 @@ async function beginAttempt(change: ChangeReview, sourceHash: string) {
 }
 
 async function saveArtifact(input: { change: ChangeReview; html: string; appliedChanges: string[]; externalLinkChanges: ExternalLinkChange[]; decisions: Record<string, LinkApprovalDecision>; attemptId?: string }) {
+  assertCleanGeneratedBlogHtml(input.html)
   const catalog = await getSeoLinkCatalog()
   validateExternalLinkContinuity({ originalHtml: input.change.blogContent, rewrittenHtml: input.html, changes: input.externalLinkChanges })
   const links = findNewUnapprovedLinks({ originalHtml: input.change.blogContent, rewrittenHtml: input.html, approvedUrls: catalog.map((item) => item.url), decisions: input.decisions })
@@ -161,6 +180,40 @@ function assertReviewable(change: ChangeReview) {
   if (!change.pidBlog || !change.blog) throw new Error("SEO draft is not attached to a blog post.")
   if (change.status === "rejected") throw new Error("SEO draft has been rejected.")
   if (change.validation.ok === false) throw new Error("Resolve the stored SEO draft validation errors before continuing.")
+}
+
+async function persistInternalLinkFeedback(input: { pidChange: string; originalUrl: string; label?: string; decision: InternalLinkEditorialDecision; replacementUrl?: string; note?: string; updatedBy: string }) {
+  const originalUrl = normalizeLinkableUrl(input.originalUrl)
+  if (!originalUrl) throw new Error("The internal-link suggestion is invalid.")
+  const replacementUrl = input.decision === "amended" ? normalizeLinkableUrl(input.replacementUrl) : null
+  if (input.decision === "amended" && !replacementUrl) throw new Error("Choose a valid approved replacement link.")
+  if (replacementUrl === originalUrl) throw new Error("Choose a different destination when amending a link.")
+  if (replacementUrl) {
+    const approved = new Set((await getSeoLinkCatalog()).map((item) => normalizeLinkableUrl(item.url)))
+    if (!approved.has(replacementUrl)) throw new Error("The replacement must come from the approved internal-link catalog.")
+  }
+  const change = await prisma.tochukwuSeoContentChangeLog.findUnique({ where: { pidChange: input.pidChange }, select: { afterJson: true, status: true } })
+  if (!change) throw new Error("SEO draft was not found.")
+  if (["applied", "rejected"].includes(change.status)) throw new Error("A closed SEO draft cannot be amended.")
+  const after = jsonObject(change.afterJson), existing = internalLinkFeedback(after.internalLinkFeedback).filter((item) => item.originalUrl !== originalUrl)
+  const feedback: InternalLinkEditorialFeedback = { originalUrl, label: String(input.label || "").trim().slice(0, 180), decision: input.decision, replacementUrl: replacementUrl || "", note: String(input.note || "").trim().slice(0, 1200), updatedBy: String(input.updatedBy || "").trim().slice(0, 80), updatedAt: new Date().toISOString() }
+  after.internalLinkFeedback = [...existing, feedback]
+  await prisma.tochukwuSeoContentChangeLog.update({ where: { pidChange: input.pidChange }, data: { afterJson: JSON.stringify(after), updatedAt: new Date() } })
+  return feedback
+}
+
+export async function saveSeoInternalLinkSuggestionFeedback(input: { pidChange: string; originalUrl: string; decision: "keep" | "rejected" | "amended"; replacementUrl?: string; note?: string; updatedBy: string }) {
+  const change = await getSeoChangeReview(input.pidChange); if (!change) throw new Error("SEO draft was not found.")
+  const originalUrl = normalizeLinkableUrl(input.originalUrl), suggestion = objects(change.after.internalLinks).find((item) => normalizeLinkableUrl(item.url) === originalUrl)
+  if (!originalUrl || !suggestion) throw new Error("That internal-link suggestion is no longer part of this draft.")
+  return persistInternalLinkFeedback({ ...input, originalUrl, label: String(suggestion.label || "") })
+}
+
+export async function getSeoInternalLinkEditorialGuidance(pidBlog: string) {
+  const changes = await prisma.tochukwuSeoContentChangeLog.findMany({ where: { pidBlog }, select: { afterJson: true }, orderBy: { updatedAt: "desc" }, take: 30 })
+  const latest = new Map<string, InternalLinkEditorialFeedback>()
+  for (const change of changes) for (const item of internalLinkFeedback(jsonObject(change.afterJson).internalLinkFeedback)) if (!latest.has(item.originalUrl)) latest.set(item.originalUrl, item)
+  return [...latest.values()]
 }
 
 export async function prepareSeoRewrite(pidChange: string, options: { allowStart?: boolean } = {}) {
@@ -216,7 +269,7 @@ export async function applySeoMetadataChange(pidChange: string) {
   const existingSeo = parseBlogSeo(change.blog!), keywords = strings((existingSeo as unknown as JsonRecord).keywords)
   if (!keywords.some((item) => item.toLowerCase() === focusKeyword.toLowerCase())) keywords.unshift(focusKeyword)
   const nextSeo = { ...existingSeo, metaTitle, seoTitle: metaTitle, metaDescription, focusKeyword, keywords: keywords.slice(0, 10), ogTitle: metaTitle, ogDescription: metaDescription, twitterTitle: metaTitle, twitterDescription: metaDescription }
-  const clean = removeGeneratedFaq(change.rewrittenHtml), nextContent = `${clean}\n\n${faqHtml(after.faq, pidChange)}`.trim()
+  const clean = normalizeBlogContentForStorage(removeGeneratedFaq(change.rewrittenHtml)), nextContent = `${clean}\n\n${faqHtml(after.faq, pidChange)}`.trim()
   await prisma.tochukwuSeoPipelineAttempt.create({ data: { pidAttempt: attemptId, pidChange, stage: "apply", status: "started", detailsJson: JSON.stringify({ sourceContentHash: sourceHash }), startedAt: now, createdAt: now, updatedAt: now } })
   try {
     await prisma.$transaction([
@@ -237,13 +290,30 @@ export async function applySeoMetadataChange(pidChange: string) {
   return { status: "applied" as const, pendingLinks: [] as string[] }
 }
 
-export async function approveSeoRewriteLink(input: { pidChange: string; url: string; scope: LinkApprovalDecision; approvedBy: string }) {
+export async function approveSeoRewriteLink(input: { pidChange: string; url: string; scope: "once" | "global"; approvedBy: string; note?: string }) {
   const url = normalizeLinkableUrl(input.url); if (!url) throw new Error("The selected link is not a valid Tochukwu site URL.")
   const change = await getSeoChangeReview(input.pidChange); if (!change) throw new Error("SEO draft was not found.")
   if (["rejected", "applied"].includes(change.status) || !change.pendingLinks.includes(url)) throw new Error("That link is no longer awaiting approval.")
   const decisions = { ...change.linkDecisions, [url]: input.scope }, now = new Date()
   await prisma.tochukwuSeoRewriteArtifact.update({ where: { pidChange: input.pidChange }, data: { decisionsJson: JSON.stringify(decisions), reviewedAt: now, updatedAt: now } })
   if (input.scope === "global") await prisma.tochukwuSeoLinkablePage.upsert({ where: { normalizedUrl: url }, create: { pidLink: `seo_link_${crypto.randomUUID()}`, url, normalizedUrl: url, label: url.split("/").filter(Boolean).pop()?.split("-").map((word) => word[0]?.toUpperCase() + word.slice(1)).join(" ") || "Approved page", status: "active", source: "admin", approvedBy: input.approvedBy, approvedAt: now, createdAt: now, updatedAt: now }, update: { url, status: "active", source: "admin", approvedBy: input.approvedBy, approvedAt: now, updatedAt: now } })
+  await persistInternalLinkFeedback({ pidChange: input.pidChange, originalUrl: url, label: url, decision: input.scope, note: input.note, updatedBy: input.approvedBy })
+  return prepareSeoRewrite(input.pidChange)
+}
+
+export async function reviewSeoRewriteLink(input: { pidChange: string; url: string; decision: "rejected" | "amended"; replacementUrl?: string; note?: string; reviewedBy: string }) {
+  const originalUrl = normalizeLinkableUrl(input.url); if (!originalUrl) throw new Error("The selected link is invalid.")
+  const change = await getSeoChangeReview(input.pidChange); if (!change) throw new Error("SEO draft was not found.")
+  if (!change.rewrittenHtml || !change.pendingLinks.includes(originalUrl)) throw new Error("That link is no longer awaiting review.")
+  const replacementUrl = input.decision === "amended" ? normalizeLinkableUrl(input.replacementUrl) : null
+  if (input.decision === "amended") {
+    const approved = new Set((await getSeoLinkCatalog()).map((item) => normalizeLinkableUrl(item.url)))
+    if (!replacementUrl || !approved.has(replacementUrl)) throw new Error("Choose an approved replacement destination.")
+  }
+  const html = reviseInternalLinkInHtml({ html: change.rewrittenHtml, originalUrl, replacementUrl })
+  const decisions = { ...change.linkDecisions, [originalUrl]: input.decision }, now = new Date()
+  await prisma.tochukwuSeoRewriteArtifact.update({ where: { pidChange: input.pidChange }, data: { rewrittenHtml: html, decisionsJson: JSON.stringify(decisions), reviewedAt: now, updatedAt: now } })
+  await persistInternalLinkFeedback({ pidChange: input.pidChange, originalUrl, label: originalUrl, decision: input.decision, replacementUrl: replacementUrl || undefined, note: input.note, updatedBy: input.reviewedBy })
   return prepareSeoRewrite(input.pidChange)
 }
 

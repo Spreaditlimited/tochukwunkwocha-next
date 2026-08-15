@@ -41,14 +41,14 @@ export async function saveBlogPostAction(formData: FormData) {
     blogPublished: boolFromForm(formData.get("blogPublished")),
     blogFeatured: boolFromForm(formData.get("blogFeatured")),
     blogImage: String(formData.get("blogImage") || "").trim(),
-    blogBy: String(formData.get("blogBy") || "").trim(),
     excerpt: String(formData.get("excerpt") || "").trim(),
     tags: tagsFromForm(formData.get("tags")),
     seo: {
       metaTitle: String(formData.get("metaTitle") || "").trim(),
       seoTitle: String(formData.get("metaTitle") || "").trim(),
       metaDescription: String(formData.get("metaDescription") || "").trim(),
-      focusKeyword: String(formData.get("focusKeyword") || "").trim()
+      focusKeyword: String(formData.get("focusKeyword") || "").trim(),
+      imageAlt: String(formData.get("imageAlt") || "").trim()
     }
   })
   const pidOpportunity = String(formData.get("pidOpportunity") || "").trim()

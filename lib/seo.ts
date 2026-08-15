@@ -2,8 +2,10 @@ import crypto from "crypto"
 
 import { prisma } from "@/lib/prisma"
 import { parseBlogSeo } from "@/lib/blog"
+import { normalizeBlogContentForStorage } from "@/lib/blog-content-html"
 import { safeJsonParse, stripHtml } from "@/lib/utils"
 import { getSeoLinkCatalog, type SeoLinkCatalogItem } from "@/lib/seo/link-catalog"
+import { getSeoInternalLinkEditorialGuidance, type InternalLinkEditorialFeedback } from "@/lib/seo-review"
 
 type SeoDraft = {
   changeType: "meta_refresh" | "content_refresh" | "faq_addition"
@@ -68,7 +70,7 @@ function buildDraftPrompt(context: {
   position: unknown
   recommendation: string | null
   recommendedCta: string | null
-}, internalLinkCatalog: SeoLinkCatalogItem[]) {
+}, internalLinkCatalog: SeoLinkCatalogItem[], editorialLinkGuidance: InternalLinkEditorialFeedback[]) {
   return `
 You are the Tochukwu Tech and AI Academy SEO operations assistant. Create a conservative, reviewable SEO draft for an existing article.
 
@@ -79,10 +81,14 @@ Rules:
 - Keep Nigeria as the primary context while explaining local terms and surfacing globally transferable lessons.
 - Preserve the author's direct, practical teaching voice.
 - Internal links must use only URLs from the approved catalog.
+- Follow the editor's prior internal-link decisions for this article. Do not suggest rejected destinations again; use amended destinations instead. Treat optional notes as editorial direction for both the draft and its link suggestions.
 - Never mark generated changes as ready for automatic publishing.
 
 Approved internal link catalog:
 ${internalLinkCatalog.map((item, index) => `${index + 1}. ${item.label}: ${item.url} - ${item.useWhen}`).join("\n")}
+
+Prior editorial internal-link guidance for this article:
+${editorialLinkGuidance.map((item, index) => `${index + 1}. ${item.originalUrl}: ${item.decision}${item.replacementUrl ? ` -> ${item.replacementUrl}` : ""}${item.note ? `; editor note: ${item.note}` : ""}`).join("\n") || "No prior editor feedback."}
 
 Return only valid JSON:
 {
@@ -254,7 +260,7 @@ export async function generateSeoDraftForOpportunity(pidOpportunity: string) {
     orderBy: { createdAt: "desc" }
   })
   if (existing) return { pidChange: existing.pidChange, validation: safeJsonParse(existing.validationJson, {}), reused: true }
-  const linkCatalog = await getSeoLinkCatalog()
+  const [linkCatalog, editorialLinkGuidance] = await Promise.all([getSeoLinkCatalog(), getSeoInternalLinkEditorialGuidance(opportunity.blog.pidBlog)])
   const draft = await callOpenAiForDraft(
     buildDraftPrompt({
       blogTitle: opportunity.blog.blogTitle,
@@ -268,7 +274,7 @@ export async function generateSeoDraftForOpportunity(pidOpportunity: string) {
       position: opportunity.position,
       recommendation: opportunity.recommendation,
       recommendedCta: opportunity.recommendedCta
-    }, linkCatalog)
+    }, linkCatalog, editorialLinkGuidance)
   )
   const validation = validateDraft(draft, new Set(linkCatalog.map((item) => item.url)))
   const pidChange = `seo_change_${crypto.randomUUID()}`
@@ -347,7 +353,7 @@ export async function applySeoChange(pidChange: string) {
     focusKeyword
   }
   const faqHtml = buildFaqHtml(after.faq, change.pidChange)
-  const cleanContent = removeGeneratedFaq(change.blog.blogContent)
+  const cleanContent = normalizeBlogContentForStorage(removeGeneratedFaq(change.blog.blogContent))
   const nextContent = faqHtml ? `${cleanContent}\n\n${faqHtml}` : cleanContent
   const now = new Date()
 

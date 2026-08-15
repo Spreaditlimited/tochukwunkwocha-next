@@ -1,5 +1,6 @@
 import { parseBlogSeo } from "@/lib/blog"
 import { BlogContentEditor } from "@/components/BlogContentEditor"
+import { primaryBlogAuthor } from "@/lib/blog-author"
 
 type BlogPostFormPost = {
   pidBlog?: string
@@ -9,7 +10,6 @@ type BlogPostFormPost = {
   blogPublished?: boolean
   blogFeatured?: boolean
   blogImage?: string | null
-  blogBy?: string | null
   excerpt?: string | null
   tagsJson?: string | null
   seoJson?: string | null
@@ -53,10 +53,12 @@ export function BlogPostForm({
       </div>
 
       <div className="admin-card grid gap-4 md:grid-cols-2">
-        <label>
+        <div>
           <span className="label">Author</span>
-          <input className="field mt-1" name="blogBy" defaultValue={post?.blogBy || "Tochukwu Nkwocha"} />
-        </label>
+          <p className="field mt-1 bg-muted/50 text-muted-foreground" aria-label="Author">
+            {primaryBlogAuthor.name}
+          </p>
+        </div>
         <label>
           <span className="label">Image URL</span>
           <input className="field mt-1" name="blogImage" defaultValue={post?.blogImage || ""} />
@@ -90,6 +92,10 @@ export function BlogPostForm({
         <label>
           <span className="label">Focus keyword</span>
           <input className="field mt-1" name="focusKeyword" defaultValue={seo.focusKeyword || ""} />
+        </label>
+        <label>
+          <span className="label">Image alt text</span>
+          <input className="field mt-1" name="imageAlt" defaultValue={seo.imageAlt || ""} />
         </label>
       </div>
 

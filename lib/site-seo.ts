@@ -1,12 +1,14 @@
 import type { Metadata } from "next"
 
 import { brand } from "@/lib/brand"
+import { primaryBlogAuthor } from "@/lib/blog-author"
 
 type MetadataInput = {
   title: string
   description: string
   path: string
   image?: string | null
+  imageAlt?: string | null
   type?: "website" | "article"
   noIndex?: boolean
 }
@@ -42,7 +44,7 @@ export function absoluteUrl(path: string) {
   return `${getSiteUrl()}${path.startsWith("/") ? path : `/${path}`}`
 }
 
-export function buildMetadata({ title, description, path, image, type = "website", noIndex = false }: MetadataInput): Metadata {
+export function buildMetadata({ title, description, path, image, imageAlt, type = "website", noIndex = false }: MetadataInput): Metadata {
   const url = absoluteUrl(path)
   const previewImage = absoluteUrl(image || brand.assets.ogDefault)
 
@@ -58,7 +60,7 @@ export function buildMetadata({ title, description, path, image, type = "website
       description,
       url,
       siteName: brand.name,
-      images: [{ url: previewImage }],
+      images: [{ url: previewImage, alt: imageAlt || title }],
       locale: "en_US",
       type
     },
@@ -224,7 +226,10 @@ export function articleJsonLd(post: {
     dateModified: (post.updatedAt || post.createdAt)?.toISOString(),
     author: {
       "@type": "Person",
-      name: post.blogBy || brand.personalName
+      "@id": absoluteUrl(primaryBlogAuthor.profilePath),
+      name: primaryBlogAuthor.name,
+      url: absoluteUrl(primaryBlogAuthor.profilePath),
+      image: absoluteUrl(primaryBlogAuthor.portrait)
     },
     publisher: {
       "@type": "EducationalOrganization",
@@ -235,5 +240,29 @@ export function articleJsonLd(post: {
       }
     },
     mainEntityOfPage: absoluteUrl(`/blog/${post.blogSlug}`)
+  }
+}
+
+export function blogAuthorJsonLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "@id": absoluteUrl(primaryBlogAuthor.profilePath),
+    name: primaryBlogAuthor.name,
+    url: absoluteUrl(primaryBlogAuthor.profilePath),
+    image: absoluteUrl(primaryBlogAuthor.portrait),
+    description: primaryBlogAuthor.shortBio,
+    jobTitle: ["Founder of Sure Imports", "Digital Marketing Executive"],
+    worksFor: [
+      {
+        "@type": "Organization",
+        name: "Sure Imports",
+        url: primaryBlogAuthor.sureImportsUrl
+      },
+      {
+        "@type": "Organization",
+        name: "Technology consulting firm"
+      }
+    ]
   }
 }

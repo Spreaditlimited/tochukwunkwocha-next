@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-import { findNewUnapprovedLinks, normalizeLinkableUrl } from "../lib/seo/link-policy.ts"
+import { findNewUnapprovedLinks, normalizeLinkableUrl, reviseInternalLinkInHtml } from "../lib/seo/link-policy.ts"
 import { validateExternalLinkContinuity } from "../lib/seo/external-link-policy.ts"
 
 const review = await readFile(new URL("../lib/seo-review.ts", import.meta.url), "utf8")
@@ -14,14 +14,34 @@ const seoQueue = await readFile(new URL("../app/(internal)/internal/(admin)/seo/
 const newBlogPage = await readFile(new URL("../app/(internal)/internal/(admin)/blog/new/page.tsx", import.meta.url), "utf8")
 const rewriteProgress = await readFile(new URL("../app/(internal)/internal/(admin)/seo/RewriteProgress.tsx", import.meta.url), "utf8")
 const generateDraftButton = await readFile(new URL("../app/(internal)/internal/(admin)/seo/GenerateDraftButton.tsx", import.meta.url), "utf8")
+const seoActions = await readFile(new URL("../app/(internal)/internal/(admin)/seo/actions.ts", import.meta.url), "utf8")
+const changeReviewPage = await readFile(new URL("../app/(internal)/internal/(admin)/seo/changes/[pidChange]/page.tsx", import.meta.url), "utf8")
 const globalStyles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8")
 const blogEditor = await readFile(new URL("../components/BlogContentEditor.tsx", import.meta.url), "utf8")
+const linkCatalog = await readFile(new URL("../lib/seo/link-catalog.ts", import.meta.url), "utf8")
+const seoSetup = await readFile(new URL("../scripts/setup-seo-tables.mjs", import.meta.url), "utf8")
 
 test("internal URL normalization and approvals are scoped", () => {
   assert.equal(normalizeLinkableUrl("https://www.tochukwunkwocha.com/schools/?ref=blog#form"), "/schools")
   assert.equal(normalizeLinkableUrl("https://example.com/schools"), null)
   assert.deepEqual(findNewUnapprovedLinks({ originalHtml: '<a href="/blog">Blog</a>', rewrittenHtml: '<a href="/blog">Blog</a><a href="/schools">Schools</a>', approvedUrls: [] }).pending, ["/schools"])
   assert.deepEqual(findNewUnapprovedLinks({ originalHtml: "", rewrittenHtml: '<a href="/schools">Schools</a>', approvedUrls: [], decisions: { "/schools": "once" } }).pending, [])
+})
+
+test("Prompt to Profit Advanced is available in the approved link catalog", () => {
+  assert.match(linkCatalog, /Prompt to Profit Advanced[^\n]*\/courses\/prompt-to-production/)
+  assert.match(seoSetup, /SEOLINK_PROMPT_TO_PRODUCTION[^\n]*\/courses\/prompt-to-production[^\n]*Prompt to Profit Advanced/)
+})
+
+test("Build Service is available in the approved link catalog", () => {
+  assert.match(linkCatalog, /Build Service[^\n]*\/build/)
+  assert.match(seoSetup, /SEOLINK_BUILD_SERVICE[^\n]*\/build[^\n]*Build Service/)
+})
+
+test("internal link review can reject an anchor or amend it to an approved destination", () => {
+  const html = '<p>Read <a class="article-link" href="/schools">our schools guide</a>.</p>'
+  assert.equal(reviseInternalLinkInHtml({ html, originalUrl: "/schools" }), "<p>Read our schools guide.</p>")
+  assert.equal(reviseInternalLinkInHtml({ html, originalUrl: "/schools", replacementUrl: "/resources" }), '<p>Read <a class="article-link" href="/resources">our schools guide</a>.</p>')
 })
 
 test("external citations cannot silently disappear", () => {
@@ -91,4 +111,17 @@ test("draft and article rewrite actions expose visible progress without duplicat
   assert.match(rewriteProgress, /Research and article rewrite/)
   assert.match(statusRoute, /elapsedSeconds/)
   assert.match(statusRoute, /progressFor/)
+})
+
+test("internal link suggestions support persistent rejection, amendment, and prompt feedback", () => {
+  assert.match(changeReviewPage, /Keep suggestion/)
+  assert.match(changeReviewPage, /Reject suggestion/)
+  assert.match(changeReviewPage, /Amend destination/)
+  assert.match(changeReviewPage, /Optional editor note/)
+  assert.match(seoActions, /saveSeoInternalLinkSuggestionFeedback/)
+  assert.match(seoActions, /reviewSeoRewriteLink/)
+  assert.match(review, /internalLinkFeedback/)
+  assert.match(review, /undeliverable|Never restore a rejected suggestion|binding/)
+  assert.match(seoWorkflow, /getSeoInternalLinkEditorialGuidance/)
+  assert.match(seoWorkflow, /Prior editorial internal-link guidance/)
 })

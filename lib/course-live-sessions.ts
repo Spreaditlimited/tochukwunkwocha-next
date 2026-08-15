@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
 import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
+import { normalizeDeliverableEmail } from "@/lib/email-address"
 import { prisma } from "@/lib/prisma"
 import { publicAbsoluteUrl } from "@/lib/public-site-url"
 import { addColumnIfMissing } from "@/lib/schema-guards"
@@ -478,6 +479,8 @@ async function listSessionRecipients(courseSlug: string, batchKey: string) {
     WHERE email IS NOT NULL AND email <> ''
   `)
   return Array.from(new Map(rows.map((row) => [clean(row.recipientKey, 190), row])).values())
+    .map((row) => ({ ...row, email: normalizeDeliverableEmail(row.email) }))
+    .filter((row) => Boolean(row.email))
 }
 
 function dashboardUrl() {
