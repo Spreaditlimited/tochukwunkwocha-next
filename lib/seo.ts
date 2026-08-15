@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { prisma } from "@/lib/prisma"
 import { parseBlogSeo } from "@/lib/blog"
 import { safeJsonParse, stripHtml } from "@/lib/utils"
+import { getSeoLinkCatalog, type SeoLinkCatalogItem } from "@/lib/seo/link-catalog"
 
 type SeoDraft = {
   changeType: "meta_refresh" | "content_refresh" | "faq_addition"
@@ -19,36 +20,6 @@ type SeoDraft = {
 
 const RULES_VERSION = "2026-07-09"
 
-const internalLinkCatalog = [
-  {
-    label: "Prompt to Profit",
-    url: "/courses/prompt-to-profit",
-    useWhen: "Readers want to turn practical AI skills into useful outputs, services, or income opportunities."
-  },
-  {
-    label: "AI Business Plan Service",
-    url: "/services/business-plan",
-    useWhen: "Readers need help turning a business idea into a clearer plan, offer, or launch path."
-  },
-  {
-    label: "AI for Schools",
-    url: "/schools",
-    useWhen: "Parents, principals, teachers, or school owners are evaluating AI education for children or classrooms."
-  },
-  {
-    label: "Private AI Build Coaching",
-    url: "/private-ai-build-coaching",
-    useWhen: "Readers need one-on-one help building a project, workflow, or AI-assisted product."
-  },
-  {
-    label: "Blog",
-    url: "/blog",
-    useWhen: "Readers need more practical guides before choosing a course or service."
-  }
-]
-
-const approvedUrls = new Set(internalLinkCatalog.map((item) => item.url))
-
 function truncate(value: string, maxLength: number) {
   if (value.length <= maxLength) return value
   return `${value.slice(0, maxLength - 3)}...`
@@ -63,21 +34,19 @@ function extractJsonObject(value: string) {
   return trimmed.slice(start, end + 1)
 }
 
-function validateDraft(draft: Partial<SeoDraft>) {
+function validateDraft(draft: Partial<SeoDraft>, approvedUrls: Set<string>) {
   const errors: string[] = []
   const warnings: string[] = []
 
   if (!draft.metaTitle) errors.push("Meta title is required.")
   if (draft.metaTitle && draft.metaTitle.length > 65) errors.push("Meta title must be 65 characters or fewer.")
   if (!draft.metaDescription) errors.push("Meta description is required.")
-  if (draft.metaDescription && (draft.metaDescription.length < 110 || draft.metaDescription.length > 165)) {
-    warnings.push("Meta description is outside the preferred 110 to 165 character range.")
-  }
+  if (draft.metaDescription && (draft.metaDescription.length < 120 || draft.metaDescription.length > 160)) errors.push("Meta description must be between 120 and 160 characters.")
   if (!draft.focusKeyword) errors.push("Focus keyword is required.")
   if (!draft.changeType || !["meta_refresh", "content_refresh", "faq_addition"].includes(draft.changeType)) {
     errors.push("Change type must be meta_refresh, content_refresh, or faq_addition.")
   }
-  if (!Array.isArray(draft.faq) || draft.faq.length < 3) warnings.push("FAQ has fewer than 3 items.")
+  if (!Array.isArray(draft.faq) || draft.faq.length < 3 || draft.faq.length > 5) errors.push("FAQ must include 3 to 5 items.")
   if (Array.isArray(draft.internalLinks)) {
     draft.internalLinks.forEach((link, index) => {
       if (!approvedUrls.has(link.url)) errors.push(`Internal link ${index + 1} uses an unapproved URL.`)
@@ -99,13 +68,15 @@ function buildDraftPrompt(context: {
   position: unknown
   recommendation: string | null
   recommendedCta: string | null
-}) {
+}, internalLinkCatalog: SeoLinkCatalogItem[]) {
   return `
 You are the Tochukwu Tech and AI Academy SEO operations assistant. Create a conservative, reviewable SEO draft for an existing article.
 
 Rules:
 - Keep the audience practical: Nigerian students, parents, teachers, school owners, professionals, teams, and small business owners learning useful AI skills.
-- Do not invent laws, prices, dates, scholarships, platform policies, statistics, guarantees, or tool capabilities.
+- Do not invent laws, prices, dates, scholarships, platform policies, statistics, guarantees, citations, URLs, or tool capabilities.
+- Identify where current research or authoritative external sources would improve or verify the article. Existing useful citations must be retained; weak citations may only be replaced with more authoritative sources.
+- Keep Nigeria as the primary context while explaining local terms and surfacing globally transferable lessons.
 - Preserve the author's direct, practical teaching voice.
 - Internal links must use only URLs from the approved catalog.
 - Never mark generated changes as ready for automatic publishing.
@@ -117,7 +88,7 @@ Return only valid JSON:
 {
   "changeType": "meta_refresh | content_refresh | faq_addition",
   "metaTitle": "string, max 65 characters",
-  "metaDescription": "string, 110 to 165 characters",
+  "metaDescription": "string, 120 to 160 characters",
   "focusKeyword": "string",
   "faq": [{"question":"string","answer":"string"}],
   "internalLinks": [{"label":"string","url":"exact approved URL","reason":"string"}],
@@ -146,6 +117,16 @@ Article:
 `.trim()
 }
 
+const seoDraftSchema = {
+  type: "object", properties: {
+    changeType: { type: "string", enum: ["meta_refresh", "content_refresh", "faq_addition"] }, metaTitle: { type: "string" }, metaDescription: { type: "string" }, focusKeyword: { type: "string" },
+    faq: { type: "array", minItems: 3, maxItems: 5, items: { type: "object", properties: { question: { type: "string" }, answer: { type: "string" } }, required: ["question", "answer"], additionalProperties: false } },
+    internalLinks: { type: "array", items: { type: "object", properties: { label: { type: "string" }, url: { type: "string" }, reason: { type: "string" } }, required: ["label", "url", "reason"], additionalProperties: false } },
+    contentBrief: { type: "array", items: { type: "string" } }, ctaIntent: { type: "string" }, riskNotes: { type: "array", items: { type: "string" } },
+    publishSafety: { type: "object", properties: { safeForAutoPublish: { type: "boolean" }, reason: { type: "string" } }, required: ["safeForAutoPublish", "reason"], additionalProperties: false }
+  }, required: ["changeType", "metaTitle", "metaDescription", "focusKeyword", "faq", "internalLinks", "contentBrief", "ctaIntent", "riskNotes", "publishSafety"], additionalProperties: false
+}
+
 async function callOpenAiForDraft(prompt: string): Promise<SeoDraft> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY.")
@@ -164,7 +145,8 @@ async function callOpenAiForDraft(prompt: string): Promise<SeoDraft> {
           content: "Return conservative JSON SEO drafts for Tochukwu Tech and AI Academy. Do not invent unsupported facts."
         },
         { role: "user", content: prompt }
-      ]
+      ],
+      text: { format: { type: "json_schema", name: "tochukwu_seo_draft", schema: seoDraftSchema, strict: true } }
     })
   })
 
@@ -218,9 +200,9 @@ function removeGeneratedFaq(content: string | null | undefined) {
     .trim()
 }
 
-export async function listSeoOpportunities(status = "open") {
+export async function listSeoOpportunities(status = "open", type = "all") {
   return prisma.tochukwuSeoOpportunity.findMany({
-    where: status === "all" ? undefined : { status },
+    where: { ...(status === "all" ? {} : { status }), ...(type === "all" ? {} : { opportunityType: type }) },
     include: {
       blog: { select: { blogTitle: true, blogSlug: true } },
       changes: { orderBy: { createdAt: "desc" }, take: 1 }
@@ -228,6 +210,10 @@ export async function listSeoOpportunities(status = "open") {
     orderBy: [{ confidence: "desc" }, { impressions: "desc" }, { createdAt: "desc" }],
     take: 100
   })
+}
+
+export async function listSeoImportRuns() {
+  return prisma.tochukwuSearchConsoleImportRun.findMany({ orderBy: { createdAt: "desc" }, take: 20 })
 }
 
 export async function getSeoStats() {
@@ -257,12 +243,18 @@ export async function getSeoStats() {
 export async function generateSeoDraftForOpportunity(pidOpportunity: string) {
   const opportunity = await prisma.tochukwuSeoOpportunity.findUnique({
     where: { pidOpportunity },
-    include: { blog: true }
+    include: { blog: true, changes: { orderBy: { createdAt: "desc" }, take: 1 } }
   })
   if (!opportunity) throw new Error("SEO opportunity was not found.")
   if (!opportunity.blog) throw new Error("SEO opportunity is not matched to a blog post.")
 
   const currentSeo = parseBlogSeo(opportunity.blog) as Record<string, unknown>
+  const existing = await prisma.tochukwuSeoContentChangeLog.findFirst({
+    where: { pidBlog: opportunity.blog.pidBlog, status: { notIn: ["applied", "rejected"] } },
+    orderBy: { createdAt: "desc" }
+  })
+  if (existing) return { pidChange: existing.pidChange, validation: safeJsonParse(existing.validationJson, {}), reused: true }
+  const linkCatalog = await getSeoLinkCatalog()
   const draft = await callOpenAiForDraft(
     buildDraftPrompt({
       blogTitle: opportunity.blog.blogTitle,
@@ -276,9 +268,9 @@ export async function generateSeoDraftForOpportunity(pidOpportunity: string) {
       position: opportunity.position,
       recommendation: opportunity.recommendation,
       recommendedCta: opportunity.recommendedCta
-    })
+    }, linkCatalog)
   )
-  const validation = validateDraft(draft)
+  const validation = validateDraft(draft, new Set(linkCatalog.map((item) => item.url)))
   const pidChange = `seo_change_${crypto.randomUUID()}`
   const now = new Date()
 
@@ -305,6 +297,16 @@ export async function generateSeoDraftForOpportunity(pidOpportunity: string) {
     prisma.tochukwuSeoOpportunity.update({
       where: { pidOpportunity: opportunity.pidOpportunity },
       data: { status: "reviewing", updatedAt: now }
+    }),
+    prisma.tochukwuSeoOpportunity.updateMany({
+      where: {
+        pidOpportunity: { not: opportunity.pidOpportunity },
+        status: { in: ["open", "reviewing"] },
+        OR: opportunity.blogSlug
+          ? [{ blogSlug: opportunity.blogSlug }]
+          : [{ blogSlug: null, pageUrl: opportunity.pageUrl }]
+      },
+      data: { status: "dismissed", updatedAt: now }
     })
   ])
 
@@ -386,8 +388,40 @@ export async function rejectSeoChange(pidChange: string) {
 
 export async function updateOpportunityStatus(pidOpportunity: string, status: string) {
   if (!["open", "reviewing", "dismissed", "applied"].includes(status)) return
-  await prisma.tochukwuSeoOpportunity.update({
-    where: { pidOpportunity },
-    data: { status, updatedAt: new Date() }
-  })
+  const opportunity = await prisma.tochukwuSeoOpportunity.findUnique({ where: { pidOpportunity }, select: { blogSlug: true, pageUrl: true, opportunityType: true, primaryQuery: true } })
+  if (!opportunity) return
+  const now = new Date()
+  await prisma.$transaction([
+    prisma.tochukwuSeoOpportunity.update({ where: { pidOpportunity }, data: { status, updatedAt: now } }),
+    ...(["open", "reviewing", "applied"].includes(status) ? [
+      prisma.tochukwuSeoOpportunity.updateMany({
+        where: {
+          pidOpportunity: { not: pidOpportunity },
+          status: { in: ["open", "reviewing"] },
+          OR: opportunity.opportunityType === "new_content"
+            ? [{ opportunityType: "new_content", primaryQuery: opportunity.primaryQuery }]
+            : opportunity.blogSlug
+              ? [{ blogSlug: opportunity.blogSlug }]
+              : [{ blogSlug: null, pageUrl: opportunity.pageUrl }]
+        },
+        data: { status: "dismissed", updatedAt: now }
+      })
+    ] : [])
+  ])
+}
+
+export async function attachNewContentOpportunity(pidOpportunity: string, blog: { pidBlog: string; blogSlug: string }) {
+  const opportunity = await prisma.tochukwuSeoOpportunity.findUnique({ where: { pidOpportunity } })
+  if (!opportunity || opportunity.opportunityType !== "new_content") return
+  const now = new Date()
+  await prisma.$transaction([
+    prisma.tochukwuSeoOpportunity.update({
+      where: { pidOpportunity },
+      data: { pidBlog: blog.pidBlog, blogSlug: blog.blogSlug, pageUrl: `https://www.tochukwunkwocha.com/blog/${blog.blogSlug}`, status: "reviewing", updatedAt: now }
+    }),
+    prisma.tochukwuSeoOpportunity.updateMany({
+      where: { pidOpportunity: { not: pidOpportunity }, opportunityType: "new_content", primaryQuery: opportunity.primaryQuery, status: { in: ["open", "reviewing"] } },
+      data: { status: "dismissed", updatedAt: now }
+    })
+  ])
 }

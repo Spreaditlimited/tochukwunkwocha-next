@@ -17,9 +17,11 @@ import {
 
 import { formatDate } from "@/lib/utils"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
-import { getSeoStats, listSeoOpportunities } from "@/lib/seo"
+import { getSeoStats, listSeoImportRuns, listSeoOpportunities } from "@/lib/seo"
 import { buildMetadata } from "@/lib/site-seo"
 import { generateSeoDraftAction, updateOpportunityStatusAction } from "./actions"
+import { GscImportControl } from "./GscImportControl"
+import { GenerateDraftButton } from "./GenerateDraftButton"
 
 export const dynamic = "force-dynamic"
 
@@ -41,10 +43,11 @@ function percent(value: unknown) {
 export default async function SeoQueuePage({
   searchParams
 }: {
-  searchParams?: Promise<{ status?: string; error?: string }>
+  searchParams?: Promise<{ status?: string; type?: string; error?: string }>
 }) {
   const params = searchParams ? await searchParams : {}
   const currentStatus = params.status || "open"
+  const currentType = params.type || "all"
   
   let stats = {
     open: 0,
@@ -58,11 +61,13 @@ export default async function SeoQueuePage({
     latestImportEndDate: null as Date | null
   }
   let opportunities: Awaited<ReturnType<typeof listSeoOpportunities>> = []
+  let importRuns: Awaited<ReturnType<typeof listSeoImportRuns>> = []
   let setupMissing = false
 
   try {
     stats = await getSeoStats()
-    opportunities = await listSeoOpportunities(currentStatus)
+    opportunities = await listSeoOpportunities(currentStatus, currentType)
+    importRuns = await listSeoImportRuns()
   } catch {
     setupMissing = true
   }
@@ -82,6 +87,8 @@ export default async function SeoQueuePage({
   ]
 
   const tabs = ["open", "reviewing", "dismissed", "all"]
+  const activeRun = importRuns.find((run) => run.status === "started") || importRuns[0] || null
+  const latestCompleted = importRuns.find((run) => run.status === "completed") || null
 
   return (
     <main className="space-y-8 pb-12">
@@ -103,7 +110,7 @@ export default async function SeoQueuePage({
           {tabs.map((status) => (
             <Link 
               key={status} 
-              href={`/internal/seo?status=${status}`} 
+              href={`/internal/seo?status=${status}&type=${currentType}`}
               className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-xs font-bold capitalize transition-all ${
                 currentStatus === status 
                   ? "bg-background text-foreground shadow-sm ring-1 ring-border" 
@@ -143,6 +150,27 @@ export default async function SeoQueuePage({
       </div>
       </DashboardStatsVisibility>
 
+      <GscImportControl
+        latestCompletedEndDate={latestCompleted?.sourceEndDate?.toISOString().slice(0, 10) || null}
+        initialRun={activeRun ? {
+          runUuid: activeRun.runUuid,
+          startDate: activeRun.sourceStartDate?.toISOString().slice(0, 10) || "",
+          endDate: activeRun.sourceEndDate?.toISOString().slice(0, 10) || "",
+          rowCount: activeRun.rowCount,
+          status: activeRun.status,
+          error: activeRun.errorMessage,
+          elapsedSeconds: Math.max(0, Math.floor(((activeRun.completedAt || new Date()).getTime() - activeRun.startedAt.getTime()) / 1000)),
+          percent: ["completed", "failed"].includes(activeRun.status) ? 100 : 8,
+          stage: activeRun.status === "completed" ? "Import completed and SEO opportunities refreshed" : activeRun.status === "failed" ? "Import stopped with an error" : "Reconnecting to the saved import job",
+          ready: ["completed", "failed"].includes(activeRun.status)
+        } : null}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+        <div><p className="text-xs font-bold uppercase tracking-widest text-primary">Opportunity type</p><p className="mt-1 text-xs text-muted-foreground">Separate metadata fixes, existing-article improvements, and unmet keyword demand for new articles.</p></div>
+        <div className="flex flex-wrap gap-2">{["all", "low_ctr", "ranking_push", "new_content"].map((type) => <Link key={type} href={`/internal/seo?status=${currentStatus}&type=${type}`} className={`rounded-lg border px-3 py-2 text-xs font-bold ${currentType === type ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{type.replace(/_/g, " ")}</Link>)}</div>
+      </div>
+
       {/* Technical Instruction Panel */}
       <div className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-sm lg:grid-cols-[1fr_auto] lg:items-center sm:p-6">
         <div className="flex items-center gap-4">
@@ -150,9 +178,9 @@ export default async function SeoQueuePage({
             <FileTerminal className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="font-heading text-sm font-bold text-foreground">Data Import Endpoint</h3>
+            <h3 className="font-heading text-sm font-bold text-foreground">Google Search Console Connection</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              POST Search Console rows as JSON to <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground font-bold">/api/seo/search-console/import</code>
+              Use the authenticated importer above, or call <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground font-bold">/api/cron/search-console</code> with its bearer secret. Run <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground font-bold">npm run db:setup:seo</code> once per database.
             </p>
           </div>
         </div>
@@ -188,24 +216,23 @@ export default async function SeoQueuePage({
         
         {opportunities.length ? opportunities.map((opportunity) => {
           const latestChange = opportunity.changes[0]
+          const isNewContent = opportunity.opportunityType === "new_content" && !opportunity.pidBlog
           return (
             <article 
               key={opportunity.pidOpportunity} 
               className="flex flex-col gap-6 rounded-xl border border-border bg-card p-6 shadow-sm transition-colors hover:border-primary/20 xl:flex-row xl:items-start xl:justify-between"
             >
               <div className="min-w-0 flex-1">
-                <p className="inline-flex items-center rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-                  {opportunity.opportunityType.replace(/_/g, " ")}
-                </p>
+                <div className="flex flex-wrap gap-2"><p className="inline-flex items-center rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">{opportunity.opportunityType.replace(/_/g, " ")}</p><p className="rounded bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{opportunity.status}</p><p className="rounded border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">CTA: {(opportunity.recommendedCta || "general").replace(/_/g, " ")}</p></div>
                 <h3 className="mt-3 font-heading text-xl font-bold text-foreground">
-                  {opportunity.blog?.blogTitle || opportunity.blogSlug || opportunity.pageUrl}
+                  {isNewContent ? `New article: ${opportunity.primaryQuery}` : opportunity.blog?.blogTitle || opportunity.blogSlug || opportunity.pageUrl}
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {opportunity.recommendation}
                 </p>
                 
                 {/* Metric Data Blocks */}
-                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5 rounded-lg border border-border bg-muted/10 p-4">
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-6 rounded-lg border border-border bg-muted/10 p-4">
                   <div>
                     <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                       <Search className="h-3 w-3" /> Query
@@ -246,29 +273,39 @@ export default async function SeoQueuePage({
                       {Number(opportunity.position || 0).toFixed(1)}
                     </p>
                   </div>
+                  <div><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Confidence</p><p className="mt-1 font-heading text-sm font-black text-foreground">{(Number(opportunity.confidence || 0) * 100).toFixed(1)}%</p></div>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col">
-                {latestChange ? (
+                {opportunity.pidBlog && <Link className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-bold" href={`/internal/blog/${opportunity.pidBlog}`}>Edit Blog</Link>}
+                <a className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-bold" href={opportunity.pageUrl} target="_blank" rel="noopener noreferrer">{isNewContent ? "Current Ranking Page" : "Public Page"}</a>
+                {isNewContent ? (
+                  <Link
+                    className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground transition-all hover:bg-primary/90 shadow-sm"
+                    href={`/internal/blog/new?topic=${encodeURIComponent(opportunity.primaryQuery || "")}&opportunity=${encodeURIComponent(opportunity.pidOpportunity)}`}
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" /> Start New Article
+                  </Link>
+                ) : latestChange && latestChange.status !== "rejected" ? (
                   <Link 
                     className="inline-flex w-full items-center justify-center rounded-lg border border-primary/20 bg-primary/10 px-6 py-2.5 text-sm font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground shadow-sm sm:w-auto xl:w-full" 
                     href={`/internal/seo/changes/${latestChange.pidChange}`}
                   >
                     <Eye className="mr-2 h-4 w-4" /> Review Draft
                   </Link>
-                ) : (
+                ) : opportunity.pidBlog ? (
                   <form action={generateSeoDraftAction} className="w-full sm:w-auto xl:w-full">
                     <input type="hidden" name="pidOpportunity" value={opportunity.pidOpportunity} />
-                    <button 
-                      className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground transition-all hover:bg-primary/90 shadow-sm" 
-                      type="submit"
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" /> Generate Draft
-                    </button>
+                    <GenerateDraftButton />
                   </form>
-                )}
+                ) : null}
+                {opportunity.status !== "reviewing" && <form action={updateOpportunityStatusAction} className="w-full sm:w-auto xl:w-full">
+                  <input type="hidden" name="pidOpportunity" value={opportunity.pidOpportunity} />
+                  <input type="hidden" name="status" value="reviewing" />
+                  <button className="inline-flex w-full items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 px-6 py-2.5 text-sm font-bold text-blue-700" type="submit"><CheckCircle2 className="mr-2 h-4 w-4" />Mark for Review</button>
+                </form>}
                 <form action={updateOpportunityStatusAction} className="w-full sm:w-auto xl:w-full">
                   <input type="hidden" name="pidOpportunity" value={opportunity.pidOpportunity} />
                   <input type="hidden" name="status" value="dismissed" />

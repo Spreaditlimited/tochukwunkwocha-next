@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, Download, FileText, Sparkles, User } from "lucide-react"
+import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, Clock3, Download, FileText, Sparkles, User } from "lucide-react"
 
 import { JsonLd } from "@/components/JsonLd"
 import { getBlogImageSrc, getContinueReadingPosts, getPostBySlug, parseBlogSeo } from "@/lib/blog"
@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/utils"
 import { brand } from "@/lib/brand"
 import { normalizeLeadMagnetDownloadUrl } from "@/lib/marketing"
 import { articleJsonLd, breadcrumbJsonLd, buildMetadata } from "@/lib/site-seo"
+import { estimateReadingMinutes } from "@/lib/blog-search"
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>
@@ -67,6 +68,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const leadMagnetPdfUrl = leadMagnet?.pdfUrl ? normalizeLeadMagnetDownloadUrl(leadMagnet.pdfUrl) : ""
   const leadMagnetBenefits = leadMagnetBullets(leadMagnet?.bulletsJson)
   const imageSrc = getBlogImageSrc(post.blogImage)
+  const readingMinutes = estimateReadingMinutes(post.blogContent)
   const continueReadingPosts = await getContinueReadingPosts(post, 3)
   const titleParts = blogTitleParts(post.blogTitle)
 
@@ -117,6 +119,10 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-primary" />
                 {post.blogBy || brand.personalName}
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-primary" />
+                {readingMinutes} min read
               </div>
             </div>
           </div>
@@ -252,6 +258,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
             <div className="grid gap-5">
               {continueReadingPosts.map((relatedPost) => {
                 const relatedImageSrc = getBlogImageSrc(relatedPost.blogImage)
+                const relatedReadingMinutes = estimateReadingMinutes(relatedPost.blogContent)
                 return (
                   <Link
                     key={relatedPost.pidBlog}
@@ -270,9 +277,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                       </div>
                     ) : null}
                     <div className={relatedImageSrc ? "" : "sm:col-span-2"}>
-                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        {formatDate(relatedPost.createdAt)}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-widest text-muted-foreground"><span>{formatDate(relatedPost.createdAt)}</span><span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />{relatedReadingMinutes} min read</span></div>
                       <h3 className="mt-2 font-heading text-lg font-black leading-snug text-foreground group-hover:text-primary">
                         {relatedPost.blogTitle}
                       </h3>

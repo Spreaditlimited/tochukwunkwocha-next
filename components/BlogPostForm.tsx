@@ -18,9 +18,11 @@ type BlogPostFormPost = {
 
 export function BlogPostForm({
   post,
+  pidOpportunity,
   action
 }: {
   post?: BlogPostFormPost | null
+  pidOpportunity?: string
   action: (formData: FormData) => Promise<void>
 }) {
   const seo = post ? parseBlogSeo(post) : {}
@@ -33,6 +35,7 @@ export function BlogPostForm({
   return (
     <form action={action} className="space-y-5">
       <input type="hidden" name="pidBlog" value={post?.pidBlog || ""} />
+      <input type="hidden" name="pidOpportunity" value={pidOpportunity || ""} />
       <div className="admin-card grid gap-4">
         <label>
           <span className="label">Title</span>

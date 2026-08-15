@@ -1,8 +1,7 @@
 import Image from "next/image"
 import { FileText, ImageIcon, Sparkles } from "lucide-react"
 
-import { generateBlogImageAction, generateBlogLeadMagnetAction } from "@/app/(internal)/internal/actions"
-import { BlogAutomationSubmitButton } from "@/components/BlogAutomationSubmitButton"
+import { BlogAutomationProgressControl } from "@/components/BlogAutomationProgressControl"
 import { getBlogImageSrc } from "@/lib/blog"
 
 type LeadMagnet = {
@@ -56,10 +55,7 @@ export function BlogAutomationPanel({
               <p className="mt-1 text-sm text-muted-foreground">
                 Creates a new editorial image, uploads it to Cloudinary, and saves the image public id on the blog post.
               </p>
-              <form action={generateBlogImageAction} className="mt-4">
-                <input type="hidden" name="pidBlog" value={pidBlog} />
-                <BlogAutomationSubmitButton type="image" />
-              </form>
+              <BlogAutomationProgressControl pidBlog={pidBlog} type="image" />
             </div>
           </div>
         </div>
@@ -81,10 +77,7 @@ export function BlogAutomationPanel({
                   View current PDF
                 </a>
               ) : null}
-              <form action={generateBlogLeadMagnetAction} className="mt-4">
-                <input type="hidden" name="pidBlog" value={pidBlog} />
-                <BlogAutomationSubmitButton type="leadMagnet" />
-              </form>
+              <BlogAutomationProgressControl pidBlog={pidBlog} type="leadMagnet" />
             </div>
           </div>
         </div>

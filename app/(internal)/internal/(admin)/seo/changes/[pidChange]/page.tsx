@@ -1,185 +1,55 @@
 import Link from "next/link"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { 
-  AlertTriangle, 
-  ArrowLeft, 
-  Check, 
-  CheckCircle2,
-  History, 
-  ShieldCheck, 
-  Sparkles, 
-  X 
-} from "lucide-react"
+import { ArrowLeft, ArrowUpRight, Link2, ListChecks, ShieldAlert, ShieldCheck, Sparkles, Trash2, XCircle } from "lucide-react"
 
-import { getSeoChange } from "@/lib/seo"
 import { buildMetadata } from "@/lib/site-seo"
-import { applySeoChangeAction, rejectSeoChangeAction } from "../../actions"
+import { getSeoChangeReview } from "@/lib/seo-review"
+import { ActionButton } from "../../ActionButton"
+import { RewriteProgress } from "../../RewriteProgress"
+import { applySeoChangeAction, approveSeoRewriteLinkAction, discardSeoRewriteAction, generateSeoRewriteAction, rejectSeoChangeAction } from "../../actions"
 
 export const dynamic = "force-dynamic"
+export const metadata: Metadata = buildMetadata({ title: "SEO Draft Review", description: "Internal SEO draft review screen.", path: "/internal/seo/changes", noIndex: true })
 
-export const metadata: Metadata = buildMetadata({
-  title: "SEO Draft Review",
-  description: "Internal SEO draft review screen.",
-  path: "/internal/seo/changes",
-  noIndex: true
-})
+function list(value: unknown) { return Array.isArray(value) ? value : [] }
+function JsonList({ items }: { items: unknown }) { const values = list(items); return values.length ? <div className="space-y-3">{values.map((item, index) => <div key={index} className="rounded-lg border border-border bg-background p-4">{typeof item === "string" ? <p className="text-sm leading-relaxed">{item}</p> : Object.entries((item || {}) as Record<string, unknown>).map(([key, value]) => <div key={key} className="mb-2"><p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{key.replace(/([A-Z])/g, " $1")}</p><p className="mt-1 text-sm leading-relaxed">{String(value || "")}</p></div>)}</div>)}</div> : <p className="text-xs text-muted-foreground">No items proposed.</p> }
+function Field({ label, value, note }: { label: string; value: unknown; note?: string }) { return <div className="rounded-lg border border-border bg-background p-4"><div className="flex justify-between"><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>{note && <span className="text-[10px] text-muted-foreground">{note}</span>}</div><p className="mt-2 text-sm leading-relaxed">{String(value || "Not provided")}</p></div> }
+function wordCount(content: string | null | undefined) { return String(content || "").replace(/<!--[\s\S]*?-->/g, " ").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)?.length || 0 }
+function preview(content: string | null, empty: string) { const body = String(content || "").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, ' $1="#"').trim() || `<p>${empty}</p>`; return `<!doctype html><html><head><meta charset="utf-8"><style>body{padding:28px;color:#172033;font:15px/1.7 Arial,sans-serif}img,video,iframe{max-width:100%}a{color:#0754b8}h1,h2,h3{line-height:1.25;margin-top:1.5em}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px}</style></head><body>${body}</body></html>` }
 
-export default async function SeoChangePage({
-  params,
-  searchParams
-}: {
-  params: Promise<{ pidChange: string }>
-  searchParams?: Promise<{ applied?: string; rejected?: string }>
-}) {
-  const { pidChange } = await params
-  const query = searchParams ? await searchParams : {}
-  const change = await getSeoChange(pidChange)
-  
+export default async function Page({ params, searchParams }: { params: Promise<{ pidChange: string }>; searchParams?: Promise<Record<string, string | undefined>> }) {
+  const { pidChange } = await params, query = searchParams ? await searchParams : {}, change = await getSeoChangeReview(pidChange)
   if (!change) notFound()
+  const after = change.after, validation = change.validation, errors = list(validation.errors), warnings = list(validation.warnings)
+  const original = typeof change.before.blogContent === "string" ? change.before.blogContent : change.blogContent
+  const originalWords = wordCount(original), proposedWords = wordCount(change.rewrittenHtml), difference = proposedWords - originalWords
+  const needsRewrite = !change.rewrittenHtml || !change.rewritePolicyCurrent || ["discarded", "failed"].includes(change.artifactStatus || "")
+  const processing = change.artifactStatus === "rewriting" && Boolean(change.openAiResponseId)
+  const reviewable = Boolean(change.rewrittenHtml) && !needsRewrite
+  const canApply = reviewable && !change.pendingLinks.length && ["ready", "apply_failed"].includes(change.artifactStatus || "")
+  const open = !["rejected", "applied"].includes(change.status)
 
-  const isDraft = change.status === "draft"
+  return <main className="space-y-8 pb-20">
+    <header className="flex flex-col gap-5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between"><div><Link href="/internal/seo?status=reviewing" className="inline-flex items-center gap-2 text-xs font-bold text-muted-foreground"><ArrowLeft className="h-4 w-4" />SEO Queue</Link><div className="mt-4 flex flex-wrap gap-2"><span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-bold uppercase">{change.status}</span><span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-bold uppercase text-primary">{change.changeType.replace(/_/g, " ")}</span></div><h1 className="mt-4 text-2xl font-black">{change.blogTitle || "SEO Draft Review"}</h1><p className="mt-2 break-all text-xs text-muted-foreground">{change.pageUrl || change.blogSlug || change.pidChange}</p></div>
+    <div className="flex flex-wrap gap-2">{change.pidBlog && <Link href={`/internal/blog/${change.pidBlog}`} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-bold">Edit Blog <ArrowUpRight className="h-4 w-4" /></Link>}{change.pageUrl && <a href={change.pageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-bold">Public Page <ArrowUpRight className="h-4 w-4" /></a>}{open && <form action={rejectSeoChangeAction}><input type="hidden" name="pidChange" value={pidChange} /><button className="inline-flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-sm font-bold text-destructive"><XCircle className="h-4 w-4" />Reject</button></form>}{open && needsRewrite && <form action={generateSeoRewriteAction}><input type="hidden" name="pidChange" value={pidChange} /><ActionButton label={processing ? "Check Rewrite Status" : change.artifactStatus === "failed" ? "Retry Article Rewrite" : "Generate Article Rewrite"} pendingLabel={processing ? "Checking Status" : "Starting Rewrite"} pendingMessage={processing ? "Checking the saved OpenAI response. This does not start another paid rewrite." : "Starting one background rewrite and saving its response ID. Nothing will be published yet."} /></form>}{open && canApply && <form action={applySeoChangeAction}><input type="hidden" name="pidChange" value={pidChange} /><ActionButton label="Apply Approved Rewrite" pendingLabel="Applying Draft" pendingMessage="Saving the approved SEO rewrite and metadata…" /></form>}</div></header>
 
-  return (
-    <main className="space-y-8 pb-12">
-      
-      {/* Header & Navigation */}
-      <div className="flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <Link 
-            href="/internal/seo" 
-            className="inline-flex items-center gap-2 text-xs font-bold text-muted-foreground transition-colors hover:text-primary"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> Back to SEO Queue
-          </Link>
-          <div className="mt-4 flex items-center gap-3">
-            <h1 className="font-heading text-2xl font-black tracking-tight text-foreground sm:text-3xl">
-              {change.blog?.blogTitle || "SEO Draft Review"}
-            </h1>
-            <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
-              change.status === 'applied' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-              change.status === 'rejected' ? 'border-destructive/20 bg-destructive/10 text-destructive' :
-              'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400'
-            }`}>
-              {change.status}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground max-w-2xl">
-            Review the proposed metadata and FAQ changes before applying them to the live page.
-          </p>
-        </div>
-      </div>
+    {query.error && <p className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">{query.error}</p>}
+    {query.applied && <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-700">The approved rewrite, metadata, social fields, keywords, and FAQ were applied.</p>}
+    {query.rejected && <p className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">The SEO draft was rejected.</p>}
+    {query.rewrite === "ready" && reviewable && <p className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-700">The researched article rewrite is saved. Compare it with the original before applying.</p>}
+    {query.rewriteDiscarded && <p className="rounded-xl border border-border bg-muted p-4 text-sm">The saved rewrite was discarded.</p>}
+    {processing && <RewriteProgress pidChange={pidChange} startedAt={change.rewriteStartedAt?.toISOString() || null} initialStatus={change.openAiResponseStatus} model={change.openAiModel} />}
 
-      {/* Action Notifications */}
-      {query.applied && (
-        <div className="flex items-start gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-600 dark:text-emerald-400 animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-semibold leading-relaxed">Draft successfully applied to the live content.</p>
-        </div>
-      )}
-      
-      {query.rejected && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-600 dark:text-amber-400 animate-in fade-in slide-in-from-top-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-semibold leading-relaxed">Draft has been rejected and will not be applied.</p>
-        </div>
-      )}
+    {open && change.pendingLinks.length > 0 && <section className="rounded-xl border border-amber-500/30 bg-card p-5"><div className="flex gap-3"><ShieldAlert className="h-5 w-5 text-amber-600" /><div><h2 className="font-bold">New internal link approval required</h2><p className="mt-1 text-xs text-muted-foreground">Approve each AI-introduced internal link once, or add it to the global link registry. Approval prepares the saved rewrite; it does not publish.</p></div></div><div className="mt-5 space-y-3">{change.pendingLinks.map((url) => <div key={url} className="flex flex-col gap-3 rounded-lg border border-border p-4 lg:flex-row lg:items-center lg:justify-between"><code className="break-all text-xs font-bold">{url}</code><div className="flex gap-2">{[...["once", "global"] as const].map((scope) => <form key={scope} action={approveSeoRewriteLinkAction}><input type="hidden" name="pidChange" value={pidChange} /><input type="hidden" name="url" value={url} /><input type="hidden" name="scope" value={scope} /><button className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold">{scope === "once" ? "Approve Once" : "Approve & Add Globally"}</button></form>)}</div></div>)}</div><form action={discardSeoRewriteAction} className="mt-4 border-t border-border pt-4"><input type="hidden" name="pidChange" value={pidChange} /><button className="inline-flex items-center gap-2 text-xs font-bold text-destructive"><Trash2 className="h-4 w-4" />Discard Rewrite</button></form></section>}
 
-      {/* Diff View Grid */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        
-        {/* Before State */}
-        <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex items-center gap-3 border-b border-border bg-muted/20 p-5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
-              <History className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Current State</p>
-              <h2 className="font-heading text-sm font-bold text-foreground">Before</h2>
-            </div>
-          </div>
-          <div className="relative flex-1 bg-muted/10 p-5">
-            <pre className="h-[520px] overflow-auto rounded-lg border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-muted-foreground scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
-              {JSON.stringify(change.before, null, 2)}
-            </pre>
-          </div>
-        </section>
+    {["failed", "apply_failed"].includes(change.artifactStatus || "") && change.artifactErrorMessage && <section className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive"><strong>{change.artifactStatus === "apply_failed" ? "The saved rewrite could not be applied." : `Rewrite attempt ${change.rewriteAttemptCount || 1} failed.`}</strong><p className="mt-1">{change.artifactErrorMessage}</p></section>}
 
-        {/* After State */}
-        <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm ring-1 ring-primary/5">
-          <div className="flex items-center gap-3 border-b border-border bg-primary/5 p-5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/20 text-primary">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Proposed Update</p>
-              <h2 className="font-heading text-sm font-bold text-foreground">After</h2>
-            </div>
-          </div>
-          <div className="relative flex-1 bg-muted/10 p-5">
-            <pre className="h-[520px] overflow-auto rounded-lg border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
-              {JSON.stringify(change.after, null, 2)}
-            </pre>
-          </div>
-        </section>
-        
-      </div>
+    <section className="grid gap-3 md:grid-cols-3">{[["1. SEO proposal", "Saved for editorial review.", true], ["2. Article rewrite", reviewable ? "Saved; compare both articles below." : "Generate a researched, citation-preserving rewrite.", reviewable], ["3. Approve and apply", change.status === "applied" ? "Applied to the public blog." : "Resolve links, review, then explicitly apply.", change.status === "applied"]].map(([title, text, complete]) => <div key={String(title)} className={`rounded-xl border p-4 ${complete ? "border-emerald-500/20 bg-emerald-500/10" : "border-border bg-card"}`}><p className="text-xs font-bold uppercase">{title}</p><p className="mt-2 text-xs">{text}</p></div>)}</section>
 
-      {/* Validation Block */}
-      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex items-center gap-3 border-b border-border bg-muted/20 p-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <ShieldCheck className="h-4 w-4" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">System Checks</p>
-            <h2 className="font-heading text-sm font-bold text-foreground">Validation Results</h2>
-          </div>
-        </div>
-        <div className="p-5">
-          <pre className="max-h-64 overflow-auto rounded-lg border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-muted-foreground scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
-            {JSON.stringify(change.validation, null, 2)}
-          </pre>
-        </div>
-      </section>
+    <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-bold">Article Content Review</h2><p className="mt-1 text-xs text-muted-foreground">Nothing changes publicly until the final Apply action.</p>{reviewable ? <><div className="mt-5 grid gap-3 sm:grid-cols-3"><Field label="Existing article" value={`${originalWords.toLocaleString()} words`} /><Field label="Proposed article" value={`${proposedWords.toLocaleString()} words`} /><Field label="Word count change" value={`${difference > 0 ? "+" : ""}${difference.toLocaleString()} words`} /></div><div className="mt-5 grid gap-5 xl:grid-cols-2"><div className="overflow-hidden rounded-xl border border-border"><p className="border-b border-border bg-muted p-3 text-xs font-bold uppercase">Original article</p><iframe title="Original article preview" sandbox="allow-scripts allow-presentation" referrerPolicy="strict-origin-when-cross-origin" srcDoc={preview(original, "Original article is empty.")} className="h-[42rem] w-full bg-white" /></div><div className="overflow-hidden rounded-xl border border-blue-500/30"><p className="border-b border-blue-500/20 bg-blue-500/10 p-3 text-xs font-bold uppercase">Proposed rewrite</p><iframe title="Proposed rewrite preview" sandbox="allow-scripts allow-presentation" referrerPolicy="strict-origin-when-cross-origin" srcDoc={preview(change.rewrittenHtml, "No rewrite saved.")} className="h-[42rem] w-full bg-white" /></div></div>{change.appliedChanges.length > 0 && <div className="mt-5"><h3 className="mb-3 text-xs font-bold uppercase">AI change summary</h3><JsonList items={change.appliedChanges} /></div>}</> : <div className="mt-5 rounded-xl border border-dashed border-border p-6"><p className="font-bold">No reviewable article rewrite yet.</p><p className="mt-1 text-xs text-muted-foreground">Generate the rewrite to create a saved preview. It will not publish anything.</p></div>}</section>
 
-      {/* Action Bar */}
-      <div className="sticky bottom-6 mt-8 flex flex-col items-center justify-between gap-4 rounded-2xl border border-border bg-card/90 p-4 shadow-xl backdrop-blur-xl sm:flex-row sm:p-6">
-        <div>
-          <p className="font-heading text-sm font-bold text-foreground">
-            {isDraft ? "Ready to deploy?" : "Review Complete"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {isDraft ? "Applying these changes will immediately update the live content." : `This draft has already been ${change.status}.`}
-          </p>
-        </div>
-        
-        <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
-          <form action={rejectSeoChangeAction} className="w-full sm:w-auto">
-            <input type="hidden" name="pidChange" value={change.pidChange} />
-            <button 
-              className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-background px-6 py-2.5 text-sm font-bold text-muted-foreground transition-all hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto shadow-sm" 
-              type="submit" 
-              disabled={!isDraft}
-            >
-              <X className="mr-2 h-4 w-4" /> Reject Draft
-            </button>
-          </form>
-          
-          <form action={applySeoChangeAction} className="w-full sm:w-auto">
-            <input type="hidden" name="pidChange" value={change.pidChange} />
-            <button 
-              className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto" 
-              type="submit" 
-              disabled={!isDraft}
-            >
-              <Check className="mr-2 h-4 w-4" /> Apply Metadata & FAQ
-            </button>
-          </form>
-        </div>
-      </div>
-      
-    </main>
-  )
+    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]"><div className="space-y-6"><div className="rounded-xl border border-border bg-card p-5"><h2 className="font-bold">Metadata to apply</h2><div className="mt-4 grid gap-4"><Field label="Meta title" value={after.metaTitle} note={`${String(after.metaTitle || "").length}/65`} /><Field label="Meta description" value={after.metaDescription} note={`${String(after.metaDescription || "").length}/160`} /><Field label="Focus keyword" value={after.focusKeyword} /><Field label="CTA intent" value={after.ctaIntent} /></div></div><div className="rounded-xl border border-border bg-card p-5"><h2 className="flex items-center gap-2 font-bold"><ListChecks className="h-4 w-4 text-primary" />FAQ suggestions</h2><div className="mt-4"><JsonList items={after.faq} /></div></div><div className="rounded-xl border border-border bg-card p-5"><h2 className="flex items-center gap-2 font-bold"><Link2 className="h-4 w-4 text-primary" />Internal link suggestions</h2><div className="mt-4"><JsonList items={after.internalLinks} /></div></div><div className="rounded-xl border border-border bg-card p-5"><h2 className="font-bold">Content brief</h2><div className="mt-4"><JsonList items={after.contentBrief} /></div></div></div>
+    <aside className="space-y-6"><div className="rounded-xl border border-border bg-card p-5"><h2 className="flex items-center gap-2 font-bold"><ShieldCheck className="h-4 w-4 text-primary" />Validation</h2><p className="mt-3 text-sm font-bold">{validation.ok ? "Passed rules" : `${errors.length} issue(s)`}</p><div className="mt-4"><JsonList items={[...errors, ...warnings]} /></div></div><div className="rounded-xl border border-border bg-card p-5"><h2 className="flex items-center gap-2 font-bold"><Sparkles className="h-4 w-4 text-primary" />Opportunity</h2><p className="mt-3 text-xs font-bold uppercase">{change.opportunityType?.replace(/_/g, " ") || "Unknown"}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{change.recommendation}</p></div><div className="rounded-xl border border-border bg-card p-5"><h2 className="font-bold">Risk notes</h2><div className="mt-4"><JsonList items={after.riskNotes} /></div></div></aside></section>
+  </main>
 }

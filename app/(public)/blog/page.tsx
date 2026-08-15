@@ -4,13 +4,16 @@ import {
   ArrowRight, 
   BookOpen, 
   Briefcase, 
+  Clock3,
   Cpu, 
   FolderGit2, 
   GraduationCap, 
   Mail, 
   MessageSquare, 
+  Search,
   Terminal, 
-  TrendingUp 
+  TrendingUp,
+  X
 } from "lucide-react"
 
 import { BlogNewsletterForm } from "@/components/blog/BlogNewsletterForm"
@@ -39,8 +42,12 @@ export const metadata = {
 const sectionContainer = "site-container"
 const BLOG_PAGE_SIZE = 12
 
-function pageHref(page: number) {
-  return page <= 1 ? "/blog" : `/blog?page=${page}`
+function pageHref(page: number, search = "") {
+  const params = new URLSearchParams()
+  if (search) params.set("q", search)
+  if (page > 1) params.set("page", String(page))
+  const query = params.toString()
+  return query ? `/blog?${query}` : "/blog"
 }
 
 function normalizePage(value: unknown) {
@@ -52,11 +59,12 @@ function normalizePage(value: unknown) {
 export default async function BlogPage({
   searchParams
 }: {
-  searchParams?: Promise<{ page?: string | string[] }>
+  searchParams?: Promise<{ page?: string | string[]; q?: string | string[] }>
 }) {
   const params = searchParams ? await searchParams : {}
   const requestedPage = normalizePage(params.page)
-  const { posts, total, page, totalPages } = await getPublishedPostsPage({ page: requestedPage, pageSize: BLOG_PAGE_SIZE })
+  const rawSearch = Array.isArray(params.q) ? params.q[0] : params.q
+  const { posts, total, page, totalPages, search } = await getPublishedPostsPage({ page: requestedPage, pageSize: BLOG_PAGE_SIZE, search: rawSearch })
   const featuredPost = posts.length > 0 ? posts[0] : null
   const gridPosts = posts.length > 1 ? posts.slice(1) : []
   const currentPage = Math.min(page, totalPages)
@@ -112,13 +120,25 @@ export default async function BlogPage({
         <div className={sectionContainer}>
           <div className="mb-12">
             <p className="eyebrow">The Publication</p>
-            <h2 className="mt-2 font-heading text-3xl font-black tracking-tight">Explore Our Latest Articles</h2>
+            <h2 className="mt-2 font-heading text-3xl font-black tracking-tight">{search ? `Search results for “${search}”` : "Explore Our Latest Articles"}</h2>
             {total > 0 ? (
               <p className="mt-3 text-sm font-medium text-muted-foreground">
-                Showing page {currentPage} of {totalPages} across {total} published articles.
+                {search ? `${total} matching article${total === 1 ? "" : "s"}` : `Showing page ${currentPage} of ${totalPages} across ${total} published articles.`}
               </p>
             ) : null}
           </div>
+
+          <form action="/blog" method="get" role="search" className="mb-10 rounded-2xl border border-border bg-card p-3 shadow-sm sm:flex sm:items-center sm:gap-3">
+            <label htmlFor="blog-search" className="sr-only">Search blog articles</label>
+            <div className="flex min-w-0 flex-1 items-center gap-3 px-3">
+              <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <input id="blog-search" name="q" type="search" defaultValue={search} maxLength={120} autoComplete="off"
+                placeholder="Search articles, topics, skills, or questions…"
+                className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground" />
+              {search ? <Link href="/blog" aria-label="Clear blog search" className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></Link> : null}
+            </div>
+            <button type="submit" className="btn-primary mt-3 w-full px-6 py-3 sm:mt-0 sm:w-auto">Search Blog</button>
+          </form>
           
           {posts.length > 0 ? (
             <div className="grid gap-8">
@@ -138,7 +158,7 @@ export default async function BlogPage({
                     </div>
                   ) : null}
                   <div className="flex flex-col justify-center p-8 sm:p-12">
-                    <p className="text-xs font-bold uppercase tracking-wider text-primary">{formatDate(featuredPost.createdAt)}</p>
+                    <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-wider text-primary"><span>{formatDate(featuredPost.createdAt)}</span><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{featuredPost.readingMinutes} min read</span></div>
                     <h3 className="mt-4 font-heading text-2xl font-black leading-snug text-foreground transition-colors group-hover:text-primary lg:text-3xl">
                       {featuredPost.blogTitle}
                     </h3>
@@ -170,7 +190,7 @@ export default async function BlogPage({
                       ) : null}
                       <div className="flex flex-1 flex-col justify-between p-6">
                         <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-primary">{formatDate(post.createdAt)}</p>
+                          <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-wider text-primary"><span>{formatDate(post.createdAt)}</span><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{post.readingMinutes} min read</span></div>
                           <h3 className="mt-4 font-heading text-xl font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{post.blogTitle}</h3>
                           <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">{post.excerpt}</p>
                         </div>
@@ -186,7 +206,7 @@ export default async function BlogPage({
               {totalPages > 1 ? (
                 <nav className="flex flex-col items-center justify-between gap-4 pt-4 sm:flex-row" aria-label="Blog pagination">
                   <Link
-                    href={pageHref(currentPage - 1)}
+                    href={pageHref(currentPage - 1, search)}
                     aria-disabled={currentPage <= 1}
                     className={`btn-secondary px-5 py-3 text-sm ${currentPage <= 1 ? "pointer-events-none opacity-50" : ""}`}
                   >
@@ -199,7 +219,7 @@ export default async function BlogPage({
                         <span key={item} className="inline-flex items-center gap-2">
                           {previous && item - previous > 1 ? <span className="px-1 text-sm font-bold text-muted-foreground">...</span> : null}
                           <Link
-                            href={pageHref(item)}
+                            href={pageHref(item, search)}
                             aria-current={item === currentPage ? "page" : undefined}
                             className={`inline-flex h-10 min-w-10 items-center justify-center rounded-md border px-3 text-sm font-black transition ${
                               item === currentPage
@@ -214,7 +234,7 @@ export default async function BlogPage({
                     })}
                   </div>
                   <Link
-                    href={pageHref(currentPage + 1)}
+                    href={pageHref(currentPage + 1, search)}
                     aria-disabled={currentPage >= totalPages}
                     className={`btn-secondary px-5 py-3 text-sm ${currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}`}
                   >
@@ -226,8 +246,9 @@ export default async function BlogPage({
           ) : (
             <div className="surface-raised flex flex-col items-center justify-center bg-card p-16 text-center">
               <BookOpen className="mb-4 h-10 w-10 text-muted-foreground/50" />
-              <p className="font-heading text-xl font-bold">No publications found.</p>
-              <p className="mt-2 text-muted-foreground">Check back soon for new insights and practical guides.</p>
+              <p className="font-heading text-xl font-bold">{search ? `No articles matched “${search}”.` : "No publications found."}</p>
+              <p className="mt-2 text-muted-foreground">{search ? "Try fewer words, a broader topic, or a related skill." : "Check back soon for new insights and practical guides."}</p>
+              {search ? <Link href="/blog" className="btn-secondary mt-6">Clear Search</Link> : null}
             </div>
           )}
         </div>

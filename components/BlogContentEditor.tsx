@@ -75,10 +75,7 @@ export function BlogContentEditor({ defaultHtml }: { defaultHtml?: string | null
       Link.configure({
         openOnClick: false,
         autolink: true,
-        linkOnPaste: true,
-        HTMLAttributes: {
-          class: "font-bold text-primary underline underline-offset-2"
-        }
+        linkOnPaste: true
       })
     ],
     content: initialHtml,

@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
 import { excerptFrom, safeJsonParse, slugify } from "@/lib/utils"
+import { blogSearchTerms, estimateReadingMinutes, normalizeBlogSearchQuery, scoreBlogSearchResult } from "@/lib/blog-search"
 
 export interface BlogSeo {
   metaTitle?: string
@@ -94,37 +95,37 @@ export const getPublishedPosts = unstable_cache(async (limit = 24) => {
   })
 }, ["published-blog-posts"], { revalidate: 300 })
 
-export const getPublishedPostsPage = unstable_cache(async (input: { page?: number; pageSize?: number }) => {
+export const getPublishedPostsPage = unstable_cache(async (input: { page?: number; pageSize?: number; search?: string }) => {
   const pageSize = Math.max(1, Math.min(48, Math.round(Number(input.pageSize || 12))))
   const requestedPage = Math.max(1, Math.round(Number(input.page || 1)))
+  const normalizedSearch = normalizeBlogSearchQuery(input.search)
+  const terms = blogSearchTerms(normalizedSearch)
+  const search = terms.length ? normalizedSearch : ""
   const where = {
     blogPublished: true,
-    createdAt: { lte: new Date() }
+    createdAt: { lte: new Date() },
+    ...(terms.length ? {
+      AND: terms.map((term) => ({ OR: [
+        { blogTitle: { contains: term } }, { blogSlug: { contains: term } }, { excerpt: { contains: term } },
+        { blogContent: { contains: term } }, { tagsJson: { contains: term } }, { seoJson: { contains: term } }, { blogExt2: { contains: term } }
+      ] }))
+    } : {})
   }
   const total = await prisma.tochukwuBlogPost.count({ where })
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const page = Math.min(requestedPage, totalPages)
-  const posts = await prisma.tochukwuBlogPost.findMany({
-    where,
-    select: {
-      pidBlog: true,
-      blogSlug: true,
-      blogTitle: true,
-      blogImage: true,
-      excerpt: true,
-      createdAt: true
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    skip: (page - 1) * pageSize,
-    take: pageSize
-  })
+  const select = { pidBlog: true, blogSlug: true, blogTitle: true, blogImage: true, excerpt: true, createdAt: true, blogContent: true, tagsJson: true, seoJson: true, blogExt2: true }
+  const candidates = await prisma.tochukwuBlogPost.findMany({ where, select, orderBy: [{ createdAt: "desc" }, { id: "desc" }], ...(search ? {} : { skip: (page - 1) * pageSize, take: pageSize }) })
+  const ranked = search ? candidates.sort((left, right) => scoreBlogSearchResult(right, search) - scoreBlogSearchResult(left, search) || right.createdAt.getTime() - left.createdAt.getTime()).slice((page - 1) * pageSize, page * pageSize) : candidates
+  const posts = ranked.map(({ blogContent, tagsJson: _tags, seoJson: _seo, blogExt2: _ext, ...post }) => ({ ...post, readingMinutes: estimateReadingMinutes(blogContent) }))
 
   return {
     posts,
     total,
     page,
     pageSize,
-    totalPages
+    totalPages,
+    search
   }
 }, ["published-blog-posts-page"], { revalidate: 300 })
 

@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { getBlogImageSrc } from "@/lib/blog"
@@ -42,6 +43,9 @@ type LeadMagnetDraft = {
 
 const DEFAULT_BREVO_LIST_ID = 17
 const BLOG_IMAGE_FOLDER = "tochukwu/blog"
+export type BlogAutomationJobType = "image" | "leadMagnet"
+type ProgressReporter = (stage: string, progress: number) => Promise<void>
+let blogAutomationJobsReady: Promise<void> | null = null
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
@@ -116,6 +120,91 @@ export async function ensureBlogImageJobsTable() {
       KEY idx_blog_image_job_status_created (status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
+}
+
+export async function ensureBlogAutomationJobsTable() {
+  if (!blogAutomationJobsReady) blogAutomationJobsReady = prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS tochukwu_blog_automation_jobs (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      job_uuid VARCHAR(80) NOT NULL,
+      pid_blog VARCHAR(64) NOT NULL,
+      job_type VARCHAR(32) NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'queued',
+      stage VARCHAR(255) NOT NULL DEFAULT 'Queued',
+      progress TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      error_message TEXT NULL,
+      result_json LONGTEXT NULL,
+      started_at DATETIME NULL,
+      finished_at DATETIME NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_blog_automation_job_uuid (job_uuid),
+      KEY idx_blog_automation_pid_type_created (pid_blog, job_type, created_at),
+      KEY idx_blog_automation_status_updated (status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `).then(() => undefined).catch((error) => { blogAutomationJobsReady = null; throw error })
+  await blogAutomationJobsReady
+}
+
+type AutomationJobRow = {
+  jobUuid: string; pidBlog: string; jobType: BlogAutomationJobType; status: string; stage: string
+  progress: number | bigint; errorMessage: string | null; resultJson: string | null
+  startedAt: Date | null; finishedAt: Date | null; createdAt: Date; updatedAt: Date
+}
+
+function automationJobPayload(row: AutomationJobRow | undefined) {
+  if (!row) return null
+  return { ...row, progress: Number(row.progress || 0), result: safeJsonParse(row.resultJson, null), ready: ["succeeded", "failed"].includes(row.status) }
+}
+
+export async function getBlogAutomationJob(input: { pidBlog: string; type: BlogAutomationJobType; jobUuid?: string }) {
+  await ensureBlogAutomationJobsTable()
+  const rows = await prisma.$queryRaw<AutomationJobRow[]>`
+    SELECT job_uuid AS jobUuid, pid_blog AS pidBlog, job_type AS jobType, status, stage, progress,
+      error_message AS errorMessage, result_json AS resultJson, started_at AS startedAt,
+      finished_at AS finishedAt, created_at AS createdAt, updated_at AS updatedAt
+    FROM tochukwu_blog_automation_jobs
+    WHERE pid_blog = ${clean(input.pidBlog, 64)} AND job_type = ${input.type}
+      ${input.jobUuid ? Prisma.sql`AND job_uuid = ${clean(input.jobUuid, 80)}` : Prisma.empty}
+    ORDER BY created_at DESC LIMIT 1
+  `
+  return automationJobPayload(rows[0])
+}
+
+export async function startBlogAutomationJob(pidBlog: string, type: BlogAutomationJobType) {
+  await ensureBlogAutomationJobsTable()
+  const post = await getPost(pidBlog)
+  const staleBefore = new Date(Date.now() - 20 * 60 * 1000)
+  await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='failed', stage='Generation timed out', error_message='The job stopped before completion.', progress=100, finished_at=${new Date()}, updated_at=${new Date()} WHERE pid_blog=${post.pidBlog} AND job_type=${type} AND status IN ('queued','running') AND updated_at < ${staleBefore}`
+  const active = await getBlogAutomationJob({ pidBlog: post.pidBlog, type })
+  if (active && ["queued", "running"].includes(active.status)) return { ...active, alreadyRunning: true }
+  const jobUuid = `BAUTO${crypto.randomBytes(12).toString("hex")}`, now = new Date()
+  await prisma.$executeRaw`INSERT INTO tochukwu_blog_automation_jobs (job_uuid,pid_blog,job_type,status,stage,progress,created_at,updated_at) VALUES (${jobUuid},${post.pidBlog},${type},'queued','Request checkpointed',5,${now},${now})`
+  return { ...(await getBlogAutomationJob({ pidBlog: post.pidBlog, type, jobUuid }))!, alreadyRunning: false }
+}
+
+async function reportBlogAutomationProgress(jobUuid: string, stage: string, progress: number) {
+  await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='running', stage=${clean(stage, 255)}, progress=${Math.max(0, Math.min(99, Math.round(progress)))}, started_at=COALESCE(started_at,${new Date()}), updated_at=${new Date()} WHERE job_uuid=${jobUuid} AND status IN ('queued','running')`
+}
+
+export async function executeBlogAutomationJob(jobUuid: string) {
+  await ensureBlogAutomationJobsTable()
+  const rows = await prisma.$queryRaw<AutomationJobRow[]>`SELECT job_uuid AS jobUuid, pid_blog AS pidBlog, job_type AS jobType, status, stage, progress, error_message AS errorMessage, result_json AS resultJson, started_at AS startedAt, finished_at AS finishedAt, created_at AS createdAt, updated_at AS updatedAt FROM tochukwu_blog_automation_jobs WHERE job_uuid=${clean(jobUuid, 80)} LIMIT 1`
+  const job = rows[0]
+  if (!job || !["queued", "running"].includes(job.status)) return automationJobPayload(job)
+  const report: ProgressReporter = (stage, progress) => reportBlogAutomationProgress(job.jobUuid, stage, progress)
+  try {
+    await report("Loading article context", 10)
+    const result = job.jobType === "image" ? await generateBlogImageForPost(job.pidBlog, report) : await generateLeadMagnetForPost(job.pidBlog, report)
+    const now = new Date()
+    const resultJson = JSON.stringify(result, (_key, value) => typeof value === "bigint" ? value.toString() : value)
+    await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='succeeded', stage=${job.jobType === "image" ? "Image generated and saved" : "PDF lead magnet generated and activated"}, progress=100, result_json=${resultJson}, error_message=NULL, finished_at=${now}, updated_at=${now} WHERE job_uuid=${job.jobUuid}`
+  } catch (error) {
+    const now = new Date(), message = error instanceof Error ? error.message : "Blog automation failed."
+    await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='failed', stage='Generation failed', progress=100, error_message=${message}, finished_at=${now}, updated_at=${now} WHERE job_uuid=${job.jobUuid}`
+  }
+  return getBlogAutomationJob({ pidBlog: job.pidBlog, type: job.jobType, jobUuid: job.jobUuid })
 }
 
 async function getPost(pidBlog: string) {
@@ -328,9 +417,10 @@ async function makeUniqueLeadMagnetSlug(title: string, currentUuid?: string) {
   }
 }
 
-export async function generateLeadMagnetForPost(pidBlog: string) {
+export async function generateLeadMagnetForPost(pidBlog: string, report?: ProgressReporter) {
   await ensureBlogLeadMagnetTables()
   const post = await getPost(pidBlog)
+  await report?.("Generating lead magnet copy with OpenAI", 25)
   const generated = normalizeLeadMagnetDraft(await callOpenAiJson(leadMagnetPrompt(post)))
   if (!generated.leadMagnetTitle || !generated.pdf.title || !generated.pdf.sections.length) {
     throw new Error("OpenAI returned an incomplete lead magnet draft.")
@@ -342,6 +432,8 @@ export async function generateLeadMagnetForPost(pidBlog: string) {
   const filename = `${slug}.pdf`
   const pdfUrl = `/api/blog/lead-magnet/download?slug=${encodeURIComponent(slug)}`
   const now = new Date()
+
+  await report?.("Saving lead capture copy and delivery settings", 60)
 
   const leadMagnet = await prisma.tochukwuBlogLeadMagnet.upsert({
     where: { pidBlog: post.pidBlog },
@@ -384,7 +476,9 @@ export async function generateLeadMagnetForPost(pidBlog: string) {
     }
   })
 
+  await report?.("Building the PDF file", 78)
   const pdf = createSimplePdfBuffer(generated, post)
+  await report?.("Saving and activating the PDF offer", 90)
   await prisma.$executeRaw`
     INSERT INTO tochukwu_blog_lead_magnet_files
       (magnet_uuid, pid_blog, filename, content_type, byte_size, file_data, created_at, updated_at)
@@ -494,7 +588,7 @@ async function uploadGeneratedBlogImage(buffer: Buffer, publicId: string) {
   }
 }
 
-export async function generateBlogImageForPost(pidBlog: string) {
+export async function generateBlogImageForPost(pidBlog: string, report?: ProgressReporter) {
   await ensureBlogImageJobsTable()
   const post = await getPost(pidBlog)
   const jobUuid = `BIMG${crypto.randomBytes(12).toString("hex")}`
@@ -508,12 +602,16 @@ export async function generateBlogImageForPost(pidBlog: string) {
 
   try {
     const prompt = blogImagePrompt(post)
+    await report?.("Preparing the image brief", 20)
     await prisma.$executeRaw`
       UPDATE tochukwu_blog_image_jobs SET prompt = ${prompt}, updated_at = ${new Date()} WHERE job_uuid = ${jobUuid}
     `
+    await report?.("Generating the cover image with OpenAI", 35)
     const image = await generateOpenAiImage(prompt)
     const publicId = `BLOG_${crypto.randomBytes(10).toString("hex")}`
+    await report?.("Uploading the generated image to Cloudinary", 72)
     const uploaded = await uploadGeneratedBlogImage(image, publicId)
+    await report?.("Saving the image to the blog post", 92)
     await prisma.tochukwuBlogPost.update({
       where: { pidBlog: post.pidBlog },
       data: {

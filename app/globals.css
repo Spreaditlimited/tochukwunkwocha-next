@@ -186,7 +186,7 @@
   }
 
   .blog-content a {
-    @apply font-semibold text-primary underline decoration-primary/30 transition-colors hover:decoration-primary;
+    @apply break-words font-bold text-primary underline decoration-2 decoration-primary/50 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 
   .blog-content .btn-primary {
@@ -206,7 +206,7 @@
   }
 
   .blog-content aside a {
-    @apply text-primary-foreground;
+    @apply text-sky-200 decoration-sky-300/80 hover:text-white hover:decoration-white focus-visible:ring-sky-300 focus-visible:ring-offset-brand-ink;
   }
 
   .student-dashboard {

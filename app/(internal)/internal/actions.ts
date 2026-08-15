@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 
 import { clearAdminSession, requireAdmin } from "@/lib/auth"
 import { upsertBlogPost } from "@/lib/blog"
+import { attachNewContentOpportunity } from "@/lib/seo"
 import { generateBlogImageForPost, generateLeadMagnetForPost } from "@/lib/blog-automation"
 import { setInternalToast } from "@/lib/internal-toast"
 
@@ -50,10 +51,13 @@ export async function saveBlogPostAction(formData: FormData) {
       focusKeyword: String(formData.get("focusKeyword") || "").trim()
     }
   })
+  const pidOpportunity = String(formData.get("pidOpportunity") || "").trim()
+  if (pidOpportunity) await attachNewContentOpportunity(pidOpportunity, post)
 
   revalidatePath("/blog")
   revalidatePath(`/blog/${post.blogSlug}`)
   revalidatePath("/internal/blog")
+  revalidatePath("/internal/seo")
   await setInternalToast({ title: "Blog post saved", message: "The public blog and internal CMS have been refreshed." })
   redirect(`/internal/blog/${post.pidBlog}?saved=1`)
 }

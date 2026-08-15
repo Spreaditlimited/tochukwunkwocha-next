@@ -4,7 +4,25 @@ import { ArrowLeft, FilePenLine } from "lucide-react"
 import { saveBlogPostAction } from "../../../actions"
 import { BlogPostForm } from "@/components/BlogPostForm"
 
-export default function NewBlogPostPage() {
+function titleFromTopic(topic: string) {
+  return topic.split(/\s+/).filter(Boolean).map((word) => {
+    if (word.toLowerCase() === "ai") return "AI"
+    return word[0]?.toUpperCase() + word.slice(1).toLowerCase()
+  }).join(" ")
+}
+
+export default async function NewBlogPostPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ topic?: string; opportunity?: string; error?: string }>
+}) {
+  const params = searchParams ? await searchParams : {}
+  const topic = String(params.topic || "").trim().slice(0, 700)
+  const pidOpportunity = String(params.opportunity || "").trim().slice(0, 90)
+  const suggestedPost = topic ? {
+    blogTitle: titleFromTopic(topic),
+    seoJson: JSON.stringify({ metaTitle: titleFromTopic(topic), seoTitle: titleFromTopic(topic), focusKeyword: topic })
+  } : null
   return (
     <main className="space-y-8 pb-12">
       
@@ -35,7 +53,7 @@ export default function NewBlogPostPage() {
 
       {/* Editor Workspace Container */}
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-        <BlogPostForm action={saveBlogPostAction} />
+        <BlogPostForm post={suggestedPost} pidOpportunity={pidOpportunity} action={saveBlogPostAction} />
       </div>
       
     </main>
