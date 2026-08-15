@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { CheckCircle2, Clock3, FileText, ImageIcon, Loader2, RotateCcw, XCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 
-type AutomationType = "image" | "leadMagnet"
+type AutomationType = "image" | "leadMagnet" | "leadMagnetLayout"
 type Job = { jobUuid: string; status: string; stage: string; progress: number; errorMessage: string | null; startedAt: string | null; finishedAt: string | null; ready: boolean }
 
 const stepSets = {
   image: [{ at: 10, label: "Article context loaded" }, { at: 20, label: "Image brief prepared" }, { at: 35, label: "OpenAI image generation" }, { at: 72, label: "Cloudinary upload" }, { at: 92, label: "Save image to blog" }],
-  leadMagnet: [{ at: 10, label: "Article context loaded" }, { at: 25, label: "OpenAI lead magnet copy" }, { at: 60, label: "Save copy and delivery settings" }, { at: 78, label: "Build PDF file" }, { at: 90, label: "Activate lead capture offer" }]
+  leadMagnet: [{ at: 10, label: "Article context loaded" }, { at: 25, label: "OpenAI lead magnet copy" }, { at: 60, label: "Save copy and delivery settings" }, { at: 78, label: "Apply branded two-page PDF design" }, { at: 90, label: "Activate lead capture offer" }],
+  leadMagnetLayout: [{ at: 10, label: "Article context loaded" }, { at: 30, label: "Saved copy loaded (no OpenAI)" }, { at: 65, label: "Rebuild fixed two-page design" }, { at: 90, label: "Replace PDF file" }]
 } satisfies Record<AutomationType, Array<{ at: number; label: string }>>
 
 function elapsed(startedAt: string | null, finishedAt: string | null, now: number) {
@@ -20,7 +21,7 @@ function elapsed(startedAt: string | null, finishedAt: string | null, now: numbe
 function elapsedLabel(seconds: number) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` }
 
 export function BlogAutomationProgressControl({ pidBlog, type }: { pidBlog: string; type: AutomationType }) {
-  const router = useRouter(), Icon = type === "image" ? ImageIcon : FileText
+  const router = useRouter(), Icon = type === "image" ? ImageIcon : type === "leadMagnetLayout" ? RotateCcw : FileText
   const [job, setJob] = useState<Job | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(""), [now, setNow] = useState(Date.now())
   const running = Boolean(job && ["queued", "running"].includes(job.status))
   const endpoint = `/api/internal/blog/${encodeURIComponent(pidBlog)}/automation`
@@ -49,7 +50,13 @@ export function BlogAutomationProgressControl({ pidBlog, type }: { pidBlog: stri
   }
   const seconds = useMemo(() => elapsed(job?.startedAt || null, job?.finishedAt || null, now), [job?.finishedAt, job?.startedAt, now])
   const progress = Math.max(0, Math.min(100, Number(job?.progress || 0))), steps = stepSets[type]
-  const buttonLabel = running ? "Generation in progress" : job?.status === "failed" ? `Retry ${type === "image" ? "image" : "PDF"}` : `${job?.status === "succeeded" ? "Regenerate" : "Generate"} ${type === "image" ? "image" : "lead magnet"}`
+  const buttonLabel = running
+    ? type === "leadMagnetLayout" ? "PDF rebuild in progress" : "Generation in progress"
+    : job?.status === "failed"
+      ? `Retry ${type === "image" ? "image" : type === "leadMagnetLayout" ? "PDF rebuild" : "PDF"}`
+      : type === "leadMagnetLayout"
+        ? "Rebuild PDF design — no OpenAI"
+        : `${job?.status === "succeeded" ? "Regenerate" : "Generate"} ${type === "image" ? "image" : "lead magnet copy + PDF"}`
 
   return <div className="mt-4 space-y-3" aria-live="polite">
     <button type="button" onClick={start} disabled={loading || running} aria-busy={loading || running} className="btn-primary min-h-11 justify-center gap-2 disabled:pointer-events-none disabled:opacity-80">
@@ -61,7 +68,7 @@ export function BlogAutomationProgressControl({ pidBlog, type }: { pidBlog: stri
       {running ? <div className="mt-3 grid gap-1.5">{steps.map((step, index) => { const complete = progress > step.at || index < steps.length - 1 && progress >= steps[index + 1].at; const active = !complete && progress >= step.at; return <div key={step.label} className={`flex items-center gap-2 text-[11px] ${complete ? "font-bold text-emerald-700" : active ? "font-bold text-primary" : "text-muted-foreground"}`}>{complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : active ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-3.5 w-3.5 rounded-full border border-current opacity-40" />}{step.label}</div> })}</div> : null}
       {job.errorMessage ? <p className="mt-3 text-xs font-semibold text-destructive">{job.errorMessage}</p> : null}
       {running ? <p className="mt-3 text-[10px] text-muted-foreground">Progress is saved on the server. You can refresh or leave this page and reconnect later.</p> : null}
-    </div> : <p className="text-xs font-medium text-muted-foreground">{type === "image" ? "Uses OpenAI image generation, Cloudinary upload, and a saved blog update." : "Generates the copy, builds the PDF, saves delivery settings, and activates the offer."}</p>}
+    </div> : <p className="text-xs font-medium text-muted-foreground">{type === "image" ? "Uses OpenAI image generation, Cloudinary upload, and a saved blog update." : type === "leadMagnetLayout" ? "Reuses saved copy and rebuilds only the PDF layout. No OpenAI request is made." : "Generates new copy with OpenAI, builds the PDF, saves delivery settings, and activates the offer."}</p>}
     {error ? <p className="text-xs font-semibold text-destructive">{error}</p> : null}
   </div>
 }

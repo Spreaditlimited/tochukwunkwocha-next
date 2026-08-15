@@ -93,7 +93,12 @@ export function parseFinancialFilters(input: Record<string, string | string[] | 
   let to = /^\d{4}-\d{2}-\d{2}$/.test(value("to")) ? value("to") : ""
   const today = new Date()
 
-  if (period !== "custom" && period !== "all") {
+  if (period === "all") {
+    // Preset date inputs remain populated in the browser when an admin switches
+    // to All time. All time must always win over those stale submitted values.
+    from = ""
+    to = ""
+  } else if (period !== "custom") {
     const start = startOfPeriod(period, today)
     from = dateText(start)
     if (period === "last_month") to = dateText(new Date(start.getFullYear(), start.getMonth() + 1, 0))

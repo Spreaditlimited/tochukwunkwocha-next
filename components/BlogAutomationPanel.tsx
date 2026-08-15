@@ -78,6 +78,7 @@ export function BlogAutomationPanel({
                 </a>
               ) : null}
               <BlogAutomationProgressControl pidBlog={pidBlog} type="leadMagnet" />
+              {active ? <BlogAutomationProgressControl pidBlog={pidBlog} type="leadMagnetLayout" /> : null}
             </div>
           </div>
         </div>

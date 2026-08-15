@@ -91,6 +91,9 @@ export async function sendEmail(input: EmailInput) {
   if (!to || !subject || (!rawHtmlContent && !textContent)) {
     throw new Error("A deliverable recipient, subject, and email body are required")
   }
+  if (/(?:https?:\/\/)?(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0|\[::1\]|[^\s/]+\.local)(?=[/:\s<'\"]|$)/i.test(`${rawHtmlContent}\n${textContent}`)) {
+    throw new Error("Outbound email contains a local URL and was blocked.")
+  }
   const deliveryLogUuid = await startEmailDeliveryLog({ recipient: to, subject })
   const htmlContent = rawHtmlContent
     ? shouldDecorateHtml(rawHtmlContent)

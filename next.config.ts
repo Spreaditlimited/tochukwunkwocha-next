@@ -3,6 +3,10 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants"
 
 const sharedConfig: NextConfig = {
   poweredByHeader: false,
+  // PDFKit loads its standard-font AFM files relative to its installed package.
+  // Keeping it external prevents Next's server bundler from relocating the
+  // module into vendor-chunks without the accompanying font data directory.
+  serverExternalPackages: ["pdfkit"],
   experimental: {
     optimizePackageImports: ["lucide-react"]
   },

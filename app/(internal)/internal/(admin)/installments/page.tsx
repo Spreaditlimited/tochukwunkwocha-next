@@ -1,10 +1,13 @@
-import { 
+import Link from "next/link"
+import { Prisma } from "@prisma/client"
+import {
   Activity,
-  CheckCircle2, 
-  Clock, 
-  CreditCard, 
-  User, 
-  WalletCards 
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Search,
+  User,
+  WalletCards
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
@@ -13,6 +16,10 @@ import { formatMinorCurrency } from "@/lib/student-dashboard"
 import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
+
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
 
 type PlanRow = {
   planUuid: string
@@ -44,8 +51,33 @@ type PaymentRow = {
   email: string | null
 }
 
-async function listInstallmentPlans() {
-  return prisma.$queryRaw<PlanRow[]>`
+function installmentSearch(input: string | string[] | undefined) {
+  return String(Array.isArray(input) ? input[0] || "" : input || "").trim().slice(0, 190)
+}
+
+function planSearchSql(search: string) {
+  if (!search) return Prisma.empty
+  const pattern = `%${search}%`
+  return Prisma.sql`WHERE (
+    pl.plan_uuid LIKE ${pattern} OR pl.course_slug LIKE ${pattern} OR
+    COALESCE(pl.batch_label, '') LIKE ${pattern} OR COALESCE(sa.full_name, '') LIKE ${pattern} OR
+    COALESCE(sa.email, '') LIKE ${pattern}
+  )`
+}
+
+function paymentSearchSql(search: string) {
+  if (!search) return Prisma.empty
+  const pattern = `%${search}%`
+  return Prisma.sql`WHERE (
+    ip.payment_uuid LIKE ${pattern} OR pl.plan_uuid LIKE ${pattern} OR pl.course_slug LIKE ${pattern} OR
+    COALESCE(sa.full_name, '') LIKE ${pattern} OR COALESCE(sa.email, '') LIKE ${pattern} OR
+    COALESCE(ip.provider, '') LIKE ${pattern} OR COALESCE(ip.provider_reference, '') LIKE ${pattern} OR
+    COALESCE(ip.provider_order_id, '') LIKE ${pattern} OR COALESCE(ip.status, '') LIKE ${pattern}
+  )`
+}
+
+async function listInstallmentPlans(search: string) {
+  return prisma.$queryRaw<PlanRow[]>(Prisma.sql`
     SELECT
       pl.plan_uuid AS planUuid,
       pl.account_id AS accountId,
@@ -65,14 +97,15 @@ async function listInstallmentPlans() {
     FROM student_installment_plans pl
     LEFT JOIN student_accounts sa ON sa.id = pl.account_id
     LEFT JOIN student_installment_payments ip ON ip.plan_id = pl.id AND ip.status = 'paid'
+    ${planSearchSql(search)}
     GROUP BY pl.id
     ORDER BY pl.created_at DESC
     LIMIT 150
-  `.catch(() => [])
+  `).catch(() => [])
 }
 
-async function listPayments() {
-  return prisma.$queryRaw<PaymentRow[]>`
+async function listPayments(search: string) {
+  return prisma.$queryRaw<PaymentRow[]>(Prisma.sql`
     SELECT
       ip.payment_uuid AS paymentUuid,
       pl.plan_uuid AS planUuid,
@@ -86,9 +119,10 @@ async function listPayments() {
     FROM student_installment_payments ip
     JOIN student_installment_plans pl ON pl.id = ip.plan_id
     LEFT JOIN student_accounts sa ON sa.id = pl.account_id
+    ${paymentSearchSql(search)}
     ORDER BY ip.created_at DESC
     LIMIT 120
-  `.catch(() => [])
+  `).catch(() => [])
 }
 
 function PaymentStatusTone(status: string | null) {
@@ -102,8 +136,10 @@ function PaymentStatusTone(status: string | null) {
   return "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
 }
 
-export default async function InternalInstallmentsPage() {
-  const [plans, payments] = await Promise.all([listInstallmentPlans(), listPayments()])
+export default async function InternalInstallmentsPage({ searchParams }: PageProps) {
+  const params = (await searchParams) || {}
+  const search = installmentSearch(params.search)
+  const [plans, payments] = await Promise.all([listInstallmentPlans(search), listPayments(search)])
   const activePlans = plans.filter((plan) => String(plan.status || "").toLowerCase() === "open").length
   const completedPlans = plans.filter((plan) => String(plan.status || "").toLowerCase() === "completed").length
 
@@ -122,6 +158,33 @@ export default async function InternalInstallmentsPage() {
           </p>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <form method="get" className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="block min-w-0 flex-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Search plans and payments
+            <span className="relative mt-2 block">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                name="search"
+                defaultValue={search}
+                className="w-full rounded-xl border border-input bg-background py-3 pl-10 pr-3.5 text-sm font-medium text-foreground outline-none transition placeholder:font-normal focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="Email, learner, course, plan, transaction or reference"
+              />
+            </span>
+          </label>
+          <div className="flex gap-2">
+            <button type="submit" className="btn-primary h-12 flex-1 justify-center sm:flex-none">Search</button>
+            {search ? <Link href="/internal/installments" className="btn-secondary h-12 flex-1 justify-center sm:flex-none">Clear</Link> : null}
+          </div>
+        </form>
+        {search ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Found {plans.length.toLocaleString("en-GB")} matching plan{plans.length === 1 ? "" : "s"} and {payments.length.toLocaleString("en-GB")} matching payment{payments.length === 1 ? "" : "s"} for <strong className="text-foreground">{search}</strong>.
+          </p>
+        ) : null}
+      </section>
 
       {/* Summary Metrics */}
       <DashboardStatsVisibility storageKey="tochukwu-internal-installments-stats">
@@ -224,7 +287,7 @@ export default async function InternalInstallmentsPage() {
               </div>
               <h3 className="mt-4 font-heading text-lg font-bold text-foreground">No Plans Found</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                There are currently no installment plans initialized in the system.
+                {search ? "No installment plans match this search." : "There are currently no installment plans initialized in the system."}
               </p>
             </div>
           )}
@@ -281,7 +344,7 @@ export default async function InternalInstallmentsPage() {
               )) : (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-sm font-semibold text-muted-foreground">
-                    No installment transactions recorded yet.
+                    {search ? "No installment payments match this search." : "No installment transactions recorded yet."}
                   </td>
                 </tr>
               )}

@@ -1,5 +1,8 @@
 import crypto from "crypto"
+import fs from "node:fs"
+import path from "node:path"
 import { Prisma } from "@prisma/client"
+import PDFDocument from "pdfkit"
 
 import { prisma } from "@/lib/prisma"
 import { getBlogImageSrc } from "@/lib/blog"
@@ -43,7 +46,7 @@ type LeadMagnetDraft = {
 
 const DEFAULT_BREVO_LIST_ID = 17
 const BLOG_IMAGE_FOLDER = "tochukwu/blog"
-export type BlogAutomationJobType = "image" | "leadMagnet"
+export type BlogAutomationJobType = "image" | "leadMagnet" | "leadMagnetLayout"
 type ProgressReporter = (stage: string, progress: number) => Promise<void>
 let blogAutomationJobsReady: Promise<void> | null = null
 
@@ -97,6 +100,7 @@ export async function ensureBlogLeadMagnetTables() {
   await addColumnIfMissing("tochukwu_blog_lead_magnets", "pdf_filename", "VARCHAR(255) NULL")
   await addColumnIfMissing("tochukwu_blog_lead_magnets", "pdf_resource_type", "VARCHAR(40) NULL")
   await addColumnIfMissing("tochukwu_blog_lead_magnets", "delivery_message", "TEXT NULL")
+  await addColumnIfMissing("tochukwu_blog_lead_magnets", "draft_json", "LONGTEXT NULL")
 }
 
 export async function ensureBlogImageJobsTable() {
@@ -196,10 +200,19 @@ export async function executeBlogAutomationJob(jobUuid: string) {
   const report: ProgressReporter = (stage, progress) => reportBlogAutomationProgress(job.jobUuid, stage, progress)
   try {
     await report("Loading article context", 10)
-    const result = job.jobType === "image" ? await generateBlogImageForPost(job.pidBlog, report) : await generateLeadMagnetForPost(job.pidBlog, report)
+    const result = job.jobType === "image"
+      ? await generateBlogImageForPost(job.pidBlog, report)
+      : job.jobType === "leadMagnetLayout"
+        ? await rebuildLeadMagnetPdfForPost(job.pidBlog, report)
+        : await generateLeadMagnetForPost(job.pidBlog, report)
     const now = new Date()
     const resultJson = JSON.stringify(result, (_key, value) => typeof value === "bigint" ? value.toString() : value)
-    await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='succeeded', stage=${job.jobType === "image" ? "Image generated and saved" : "PDF lead magnet generated and activated"}, progress=100, result_json=${resultJson}, error_message=NULL, finished_at=${now}, updated_at=${now} WHERE job_uuid=${job.jobUuid}`
+    const completedStage = job.jobType === "image"
+      ? "Image generated and saved"
+      : job.jobType === "leadMagnetLayout"
+        ? "PDF design rebuilt without an OpenAI call"
+        : "PDF lead magnet generated and activated"
+    await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='succeeded', stage=${completedStage}, progress=100, result_json=${resultJson}, error_message=NULL, finished_at=${now}, updated_at=${now} WHERE job_uuid=${job.jobUuid}`
   } catch (error) {
     const now = new Date(), message = error instanceof Error ? error.message : "Blog automation failed."
     await prisma.$executeRaw`UPDATE tochukwu_blog_automation_jobs SET status='failed', stage='Generation failed', progress=100, error_message=${message}, finished_at=${now}, updated_at=${now} WHERE job_uuid=${job.jobUuid}`
@@ -228,6 +241,9 @@ function leadMagnetPrompt(post: BlogPostForAutomation) {
   return [
     "Create a premium blog PDF lead magnet for Tochukwu Tech and AI Academy.",
     "The audience is practical AI learners, parents, schools, students, professionals, teams, and business owners.",
+    "The finished PDF is exactly two A4 pages. Prioritise useful, specific content over introductions, filler, motivational language, or repeated ideas.",
+    "Create exactly 3 sections with exactly 3 concrete, self-contained recommendations in each section, plus exactly 4 action steps.",
+    "Every recommendation must give the reader a decision, method, warning, example, or next action they can use immediately.",
     "Return only valid JSON.",
     "Do not include markdown.",
     "",
@@ -245,8 +261,8 @@ function leadMagnetPrompt(post: BlogPostForAutomation) {
     '    "subtitle": "max 140 chars",',
     '    "audience": "max 75 chars",',
     '    "promise": "max 120 chars",',
-    '    "sections": [{ "heading": "max 55 chars", "items": ["max 90 chars each"] }],',
-    '    "actionPlan": ["max 85 chars each"],',
+    '    "sections": [{ "heading": "max 45 chars", "items": ["exactly 3 concrete recommendations, max 90 chars each"] }],',
+    '    "actionPlan": ["exactly 4 specific steps, max 85 chars each"],',
     '    "closingNote": "max 130 chars",',
     '    "serviceCta": { "label": "max 28 chars", "headline": "max 62 chars", "body": "max 110 chars", "url": "/courses/prompt-to-profit/ or /courses/prompt-to-profit-schools/ or /courses/ai-for-everyday-business-owners/ or /build/ or /contact/" }',
     "  }",
@@ -302,11 +318,11 @@ function normalizeLeadMagnetDraft(raw: LeadMagnetDraft) {
       promise: clean(pdf.promise, 120),
       sections: Array.isArray(pdf.sections)
         ? pdf.sections.map((section) => ({
-            heading: clean(section?.heading, 55),
-            items: normalizeBullets(section?.items, 5, 90)
-          })).filter((section) => section.heading && section.items.length).slice(0, 4)
+            heading: clean(section?.heading, 45),
+            items: normalizeBullets(section?.items, 3, 90)
+          })).filter((section) => section.heading && section.items.length).slice(0, 3)
         : [],
-      actionPlan: normalizeBullets(pdf.actionPlan, 5, 85),
+      actionPlan: normalizeBullets(pdf.actionPlan, 4, 85),
       closingNote: clean(pdf.closingNote, 130),
       serviceCta: {
         label: clean(pdf.serviceCta?.label, 28),
@@ -318,88 +334,220 @@ function normalizeLeadMagnetDraft(raw: LeadMagnetDraft) {
   }
 }
 
-function escapePdfText(value: unknown) {
-  return clean(value, 4000).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)")
+function hasCompleteTwoPageContent(item: ReturnType<typeof normalizeLeadMagnetDraft>) {
+  return Boolean(
+    item.leadMagnetTitle &&
+    item.pdf.title &&
+    item.pdf.sections.length === 3 &&
+    item.pdf.sections.every((section) => section.items.length === 3) &&
+    item.pdf.actionPlan.length === 4
+  )
 }
 
-function wrapText(value: unknown, maxChars = 88) {
-  const words = clean(value, 3000).split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  let current = ""
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word
-    if (next.length > maxChars && current) {
-      lines.push(current)
-      current = word
-    } else {
-      current = next
+async function createDesignedPdfBuffer(item: ReturnType<typeof normalizeLeadMagnetDraft>, post: BlogPostForAutomation) {
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 0,
+    bufferPages: true,
+    info: {
+      Title: item.pdf.title,
+      Author: "Tochukwu Nkwocha",
+      Subject: item.pdf.subtitle,
+      Keywords: parseTags(post).join(", "),
+      Creator: "Tochukwu Tech and AI Academy"
     }
-  }
-  if (current) lines.push(current)
-  return lines
-}
+  })
+  const chunks: Buffer[] = []
+  const completed = new Promise<Buffer>((resolve, reject) => {
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk))
+    doc.on("end", () => resolve(Buffer.concat(chunks)))
+    doc.on("error", reject)
+  })
 
-function createSimplePdfBuffer(item: ReturnType<typeof normalizeLeadMagnetDraft>, post: BlogPostForAutomation) {
-  const lines: Array<{ text: string; size: number; gap: number }> = [
-    { text: "Tochukwu Tech and AI Academy", size: 11, gap: 20 },
-    { text: item.pdf.title, size: 22, gap: 26 },
-    { text: item.pdf.subtitle, size: 12, gap: 28 },
-    { text: `For: ${item.pdf.audience}`, size: 11, gap: 18 },
-    { text: item.pdf.promise, size: 11, gap: 24 }
-  ]
+  const width = doc.page.width
+  const height = doc.page.height
+  const navy = "#071A33"
+  const blue = "#0D4F9A"
+  const cyan = "#BDEBFA"
+  const pale = "#F3F8FC"
+  const ink = "#122238"
+  const muted = "#52657A"
+  const white = "#FFFFFF"
+  const logoLight = path.join(process.cwd(), "public/brand/tochukwu-tech-logo-reverse.png")
+  const logoDark = path.join(process.cwd(), "public/brand/tochukwu-tech-logo.png")
 
-  for (const section of item.pdf.sections) {
-    lines.push({ text: section.heading, size: 15, gap: 20 })
-    for (const bullet of section.items) lines.push({ text: `- ${bullet}`, size: 10, gap: 14 })
-    lines.push({ text: "", size: 10, gap: 10 })
-  }
-
-  if (item.pdf.actionPlan.length) {
-    lines.push({ text: "Action plan", size: 15, gap: 20 })
-    for (const step of item.pdf.actionPlan) lines.push({ text: `- ${step}`, size: 10, gap: 14 })
-  }
-
-  lines.push({ text: item.pdf.closingNote, size: 11, gap: 22 })
-  lines.push({ text: item.pdf.serviceCta.headline, size: 15, gap: 20 })
-  lines.push({ text: `${item.pdf.serviceCta.body} ${item.pdf.serviceCta.url}`, size: 10, gap: 16 })
-  lines.push({ text: `Companion guide for: ${post.blogTitle}`, size: 8, gap: 12 })
-
-  const content: string[] = ["BT", "/F1 10 Tf", "50 792 Td"]
-  let y = 792
-  for (const line of lines) {
-    const wrapped = line.text ? wrapText(line.text, line.size >= 15 ? 50 : 88) : [""]
-    for (const part of wrapped) {
-      if (y < 72) break
-      content.push(`/F1 ${line.size} Tf`)
-      content.push(`(${escapePdfText(part)}) Tj`)
-      content.push(`0 -${line.gap} Td`)
-      y -= line.gap
+  function brandLogo(variant: "light" | "dark", x: number, y: number, logoWidth = 210) {
+    const file = variant === "light" ? logoLight : logoDark
+    if (fs.existsSync(file)) {
+      doc.image(file, x, y, { width: logoWidth })
+      return
     }
+    doc.font("Helvetica-Bold").fontSize(13).fillColor(variant === "light" ? white : blue)
+      .text("TOCHUKWU TECH & AI ACADEMY", x, y, { width: logoWidth })
   }
-  content.push("ET")
 
-  const stream = content.join("\n")
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`
-  ]
+  function pageChrome(pageNumber: number, label = "PRACTICAL AI GUIDE") {
+    doc.rect(0, 0, width, height).fill(pale)
+    doc.rect(0, 0, 14, height).fill(blue)
+    doc.rect(14, 0, 5, height).fill(cyan)
+    brandLogo("dark", 48, 35, 184)
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(blue).text(label, 350, 44, {
+      width: 197,
+      height: 12,
+      align: "right",
+      characterSpacing: 1.2
+    })
+    doc.moveTo(48, 78).lineTo(547, 78).lineWidth(1).strokeColor("#D8E5EF").stroke()
+    doc.font("Helvetica").fontSize(8).fillColor(muted)
+      .text("tochukwunkwocha.com", 48, 807, { width: 240, height: 12 })
+      .text(String(pageNumber).padStart(2, "0"), 500, 807, { width: 47, height: 12, align: "right" })
+  }
 
-  let pdf = "%PDF-1.4\n"
-  const offsets = [0]
-  objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf))
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  // Page 1: compact cover and useful overview.
+  doc.rect(0, 0, width, height).fill(navy)
+  doc.circle(520, 90, 170).fill("#0B315D")
+  doc.circle(540, 50, 100).fill("#0D4F9A")
+  doc.rect(0, 0, 18, height).fill(cyan)
+  brandLogo("light", 56, 48, 235)
+  doc.roundedRect(56, 125, 151, 25, 12).fill(cyan)
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(navy).text("2-PAGE PRACTICAL GUIDE", 66, 134, {
+    width: 131,
+    height: 12,
+    align: "center",
+    characterSpacing: 0.9
   })
-  const xrefOffset = Buffer.byteLength(pdf)
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`
+  doc.font("Helvetica-Bold").fontSize(27).fillColor(white).text(item.pdf.title, 56, 181, {
+    width: 475,
+    height: 120,
+    lineGap: 5
   })
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
-  return Buffer.from(pdf)
+  doc.font("Helvetica").fontSize(13).fillColor(cyan).text(item.pdf.subtitle, 56, 315, {
+    width: 455,
+    height: 58,
+    lineGap: 5
+  })
+  const coverCardY = 390
+  doc.roundedRect(56, coverCardY, 475, 124, 16).fill("#102C4C")
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(cyan).text("FOR", 78, coverCardY + 20, {
+    height: 12,
+    characterSpacing: 1.2
+  })
+  doc.font("Helvetica").fontSize(10).fillColor(white).text(item.pdf.audience, 78, coverCardY + 38, {
+    width: 425,
+    height: 28,
+    lineGap: 3
+  })
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(cyan).text("OUTCOME", 78, coverCardY + 72, {
+    height: 12,
+    characterSpacing: 1.2
+  })
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(white).text(item.pdf.promise, 78, coverCardY + 90, {
+    width: 425,
+    height: 28,
+    lineGap: 3
+  })
+  const overviewY = coverCardY + 154
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(cyan).text("AT A GLANCE", 56, overviewY, { height: 12, characterSpacing: 1.1 })
+  let overviewCardY = overviewY + 25
+  item.pdf.sections.forEach((section, index) => {
+    doc.roundedRect(56, overviewCardY, 475, 68, 12).fill("#102C4C")
+    doc.roundedRect(72, overviewCardY + 14, 38, 38, 9).fill(blue)
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(white).text(String(index + 1).padStart(2, "0"), 72, overviewCardY + 26, {
+      width: 38,
+      height: 15,
+      align: "center"
+    })
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(white).text(section.heading, 126, overviewCardY + 13, { width: 382, height: 16 })
+    doc.font("Helvetica").fontSize(8.5).fillColor("#C7D7E6").text(section.items[0], 126, overviewCardY + 34, {
+      width: 382,
+      height: 25,
+      lineGap: 2
+    })
+    overviewCardY += 78
+  })
+  doc.font("Helvetica").fontSize(8).fillColor("#AFC5DA").text("BY TOCHUKWU NKWOCHA", 56, 817, {
+    height: 11,
+    characterSpacing: 1.2
+  })
+
+  // Page 2: all recommendations, action plan and CTA.
+  doc.addPage()
+  pageChrome(2, "PRACTICAL PLAYBOOK")
+  doc.font("Helvetica-Bold").fontSize(23).fillColor(ink).text("Use this now", 48, 102, { width: 499, height: 29 })
+  let sectionY = 145
+  item.pdf.sections.forEach((section, index) => {
+    const cardHeight = 118
+    doc.roundedRect(48, sectionY, 499, cardHeight, 11).fill(white)
+    doc.circle(70, sectionY + 23, 12).fill(blue)
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(white).text(String(index + 1), 64, sectionY + 20, {
+      width: 12,
+      height: 12,
+      align: "center"
+    })
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(ink).text(section.heading, 92, sectionY + 15, { width: 430, height: 17 })
+    let itemY = sectionY + 42
+    section.items.forEach((text) => {
+      doc.circle(70, itemY + 5, 2.3).fill(cyan)
+      doc.font("Helvetica").fontSize(9.25).fillColor(muted).text(text, 82, itemY, {
+        width: 440,
+        height: 21,
+        lineGap: 2
+      })
+      itemY += 24
+    })
+    sectionY += cardHeight + 10
+  })
+
+  const actionY = sectionY + 5
+  doc.font("Helvetica-Bold").fontSize(13).fillColor(ink).text("4-step action plan", 48, actionY, { width: 499, height: 18 })
+  item.pdf.actionPlan.forEach((step, index) => {
+    const column = index % 2
+    const row = Math.floor(index / 2)
+    const x = 48 + column * 254
+    const y = actionY + 27 + row * 55
+    doc.roundedRect(x, y, 245, 47, 9).fill("#E7F2FA")
+    doc.roundedRect(x + 9, y + 9, 29, 29, 7).fill(blue)
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(white).text(String(index + 1), x + 9, y + 19, {
+      width: 29,
+      height: 12,
+      align: "center"
+    })
+    doc.font("Helvetica").fontSize(8.2).fillColor(ink).text(step, x + 46, y + 9, {
+      width: 187,
+      height: 31,
+      lineGap: 1
+    })
+  })
+
+  const ctaUrl = item.pdf.serviceCta.url.startsWith("http")
+    ? item.pdf.serviceCta.url
+    : `https://www.tochukwunkwocha.com${item.pdf.serviceCta.url.startsWith("/") ? "" : "/"}${item.pdf.serviceCta.url}`
+  const ctaY = actionY + 143
+  doc.roundedRect(48, ctaY, 499, 74, 12).fill(blue)
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(white).text(item.pdf.serviceCta.headline, 66, ctaY + 14, {
+    width: 300,
+    height: 16
+  })
+  doc.font("Helvetica").fontSize(8.2).fillColor("#DCEAF5").text(item.pdf.serviceCta.body, 66, ctaY + 34, {
+    width: 300,
+    height: 28,
+    lineGap: 2
+  })
+  doc.roundedRect(384, ctaY + 17, 145, 40, 9).fill(cyan)
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(navy).text("CONTINUE ONLINE", 394, ctaY + 32, {
+    width: 125,
+    height: 12,
+    align: "center",
+    link: ctaUrl
+  })
+
+  const renderedPageCount = doc.bufferedPageRange().count
+  doc.end()
+  const buffer = await completed
+  if (renderedPageCount !== 2) {
+    throw new Error(`Lead magnet renderer produced ${renderedPageCount} pages; expected exactly 2.`)
+  }
+  return buffer
 }
 
 async function makeUniqueLeadMagnetSlug(title: string, currentUuid?: string) {
@@ -422,7 +570,7 @@ export async function generateLeadMagnetForPost(pidBlog: string, report?: Progre
   const post = await getPost(pidBlog)
   await report?.("Generating lead magnet copy with OpenAI", 25)
   const generated = normalizeLeadMagnetDraft(await callOpenAiJson(leadMagnetPrompt(post)))
-  if (!generated.leadMagnetTitle || !generated.pdf.title || !generated.pdf.sections.length) {
+  if (!hasCompleteTwoPageContent(generated)) {
     throw new Error("OpenAI returned an incomplete lead magnet draft.")
   }
 
@@ -476,8 +624,16 @@ export async function generateLeadMagnetForPost(pidBlog: string, report?: Progre
     }
   })
 
-  await report?.("Building the PDF file", 78)
-  const pdf = createSimplePdfBuffer(generated, post)
+  // Preserve the approved copy separately from the binary PDF so future
+  // visual rebuilds do not need another OpenAI request.
+  await prisma.$executeRaw`
+    UPDATE tochukwu_blog_lead_magnets
+    SET draft_json = ${safeJsonStringify(generated)}, updated_at = ${now}
+    WHERE magnet_uuid = ${magnetUuid}
+  `
+
+  await report?.("Applying the branded two-page PDF design", 78)
+  const pdf = await createDesignedPdfBuffer(generated, post)
   await report?.("Saving and activating the PDF offer", 90)
   await prisma.$executeRaw`
     INSERT INTO tochukwu_blog_lead_magnet_files
@@ -494,6 +650,46 @@ export async function generateLeadMagnetForPost(pidBlog: string, report?: Progre
   `
 
   return leadMagnet
+}
+
+export async function rebuildLeadMagnetPdfForPost(pidBlog: string, report?: ProgressReporter) {
+  await ensureBlogLeadMagnetTables()
+  const post = await getPost(pidBlog)
+  await report?.("Loading the saved lead magnet copy — no OpenAI call", 30)
+  const rows = await prisma.$queryRaw<Array<{
+    magnetUuid: string
+    filename: string | null
+    draftJson: string | null
+  }>>`
+    SELECT magnet_uuid AS magnetUuid, pdf_filename AS filename, draft_json AS draftJson
+    FROM tochukwu_blog_lead_magnets
+    WHERE pid_blog = ${post.pidBlog}
+    LIMIT 1
+  `
+  const source = safeJsonParse<LeadMagnetDraft | null>(rows[0]?.draftJson, null)
+  if (!rows[0] || !source) {
+    throw new Error("No saved lead magnet source exists yet. Regenerate the copy once; later design rebuilds will not call OpenAI.")
+  }
+  const generated = normalizeLeadMagnetDraft(source)
+  if (!hasCompleteTwoPageContent(generated)) {
+    throw new Error("The saved lead magnet source does not satisfy the two-page content contract. Regenerate the copy once to upgrade it.")
+  }
+
+  await report?.("Rebuilding the fixed two-page PDF layout", 65)
+  const pdf = await createDesignedPdfBuffer(generated, post)
+  const now = new Date()
+  const filename = clean(rows[0].filename, 255) || `${slugify(generated.leadMagnetTitle) || "lead-magnet"}.pdf`
+  await report?.("Replacing the PDF file without regenerating copy", 90)
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_blog_lead_magnet_files
+      (magnet_uuid, pid_blog, filename, content_type, byte_size, file_data, created_at, updated_at)
+    VALUES
+      (${rows[0].magnetUuid}, ${post.pidBlog}, ${filename}, ${"application/pdf"}, ${pdf.length}, ${pdf}, ${now}, ${now})
+    ON DUPLICATE KEY UPDATE
+      filename = VALUES(filename), content_type = VALUES(content_type), byte_size = VALUES(byte_size),
+      file_data = VALUES(file_data), updated_at = VALUES(updated_at)
+  `
+  return { magnetUuid: rows[0].magnetUuid, filename, byteSize: pdf.length, openAiCalled: false, pageCount: 2 }
 }
 
 function blogImagePrompt(post: BlogPostForAutomation) {

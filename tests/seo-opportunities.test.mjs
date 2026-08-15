@@ -22,6 +22,9 @@ const globalStyles = await readFile(new URL("../app/globals.css", import.meta.ur
 const blogEditor = await readFile(new URL("../components/BlogContentEditor.tsx", import.meta.url), "utf8")
 const linkCatalog = await readFile(new URL("../lib/seo/link-catalog.ts", import.meta.url), "utf8")
 const seoSetup = await readFile(new URL("../scripts/setup-seo-tables.mjs", import.meta.url), "utf8")
+const newArticleWorkflow = await readFile(new URL("../lib/seo-new-article.ts", import.meta.url), "utf8")
+const newArticleProgress = await readFile(new URL("../app/(internal)/internal/(admin)/seo/GenerateArticleButton.tsx", import.meta.url), "utf8")
+const newArticleStatusRoute = await readFile(new URL("../app/api/seo/opportunities/[pidOpportunity]/article-status/route.ts", import.meta.url), "utf8")
 
 test("internal URL normalization and approvals are scoped", () => {
   assert.equal(normalizeLinkableUrl("https://www.tochukwunkwocha.com/schools/?ref=blog#form"), "/schools")
@@ -107,10 +110,32 @@ test("uncovered Search Console demand creates tracked new-article opportunities"
   assert.match(importer, /hasMeaningfulBlogCoverage/)
   assert.match(importer, /opportunityType: "new_content"/)
   assert.match(importer, /blogCoverage >= 0\.25/)
-  assert.match(seoQueue, /Start New Article/)
+  assert.match(seoQueue, /GenerateArticleButton/)
   assert.match(seoQueue, /Current Ranking Page/)
   assert.match(newBlogPage, /focusKeyword/)
   assert.match(seoWorkflow, /attachNewContentOpportunity/)
+})
+
+test("new-article opportunities trigger researched background writing instead of a blank editor", () => {
+  assert.match(seoQueue, /GenerateArticleButton/)
+  assert.doesNotMatch(seoQueue, /internal\/blog\/new\?topic=/)
+  assert.match(newArticleWorkflow, /SEO_CONTENT_REWRITE_MODEL \|\| "gpt-5\.6-sol"/)
+  assert.match(newArticleWorkflow, /background: true/)
+  assert.match(newArticleWorkflow, /reasoning: \{ effort: "high" \}/)
+  assert.match(newArticleWorkflow, /tools: \[\{ type: "web_search" \}\]/)
+  assert.match(newArticleWorkflow, /tool_choice: "required"/)
+  assert.match(newArticleWorkflow, /wordCount < 1_400/)
+  assert.match(newArticleWorkflow, /const focusKeyword = primaryQuery\.trim\(\)/)
+  assert.match(newArticleWorkflow, /exact primary query below as the non-negotiable focus keyword/)
+  assert.match(newArticleWorkflow, /related query cluster as secondary keywords/)
+  assert.match(newArticleWorkflow, /findNewUnapprovedLinks/)
+  assert.match(newArticleWorkflow, /extractExternalUrls/)
+  assert.match(newArticleWorkflow, /blogPublished: false/)
+  assert.match(newArticleWorkflow, /attachNewContentOpportunity/)
+  assert.match(newArticleProgress, /Research & Write Article/)
+  assert.match(newArticleProgress, /Research → full article → citations → metadata → CMS draft/)
+  assert.match(newArticleStatusRoute, /allowStart: false|allowStart/)
+  assert.match(newArticleStatusRoute, /canAccessDashboardPath/)
 })
 
 test("draft and article rewrite actions expose visible progress without duplicate generation", () => {

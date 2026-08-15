@@ -56,7 +56,9 @@ export async function syncEnrollmentToBrevo(input: {
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
   const email = normalizeDeliverableEmail(input.email, 190)
   const listId = Number(input.listId || await resolveEnrollmentBrevoListId(input) || 0) || 0
-  if (!apiKey || !email || !listId) return { ok: true, skipped: true }
+  if (!apiKey) return { ok: true, skipped: true, reason: "missing_api_key" }
+  if (!email) return { ok: true, skipped: true, reason: "invalid_email" }
+  if (!listId) return { ok: true, skipped: true, reason: "missing_list_id" }
 
   const response = await fetch("https://api.brevo.com/v3/contacts", {
     method: "POST",
@@ -320,7 +322,7 @@ export async function sendStudentAccountReadyEmail(input: {
     ? publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`)
     : dashboardLinks
   const subject = "Your Tochukwu Tech learning account is ready"
-  await sendEmail({
+  return sendEmail({
     to: email,
     subject,
     text: [
@@ -352,7 +354,6 @@ export async function sendStudentAccountReadyEmail(input: {
       <p>Tochukwu Tech and AI Academy</p>
     `
   })
-  return { ok: true }
 }
 
 export async function sendStudentPendingManualPaymentEmail(input: {
@@ -374,7 +375,7 @@ export async function sendStudentPendingManualPaymentEmail(input: {
     ? publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`)
     : dashboardLinks
   const subject = "Your manual payment is awaiting verification"
-  await sendEmail({
+  return sendEmail({
     to: email,
     subject,
     text: [
@@ -409,7 +410,6 @@ export async function sendStudentPendingManualPaymentEmail(input: {
       <p>Tochukwu Tech and AI Academy</p>
     `
   })
-  return { ok: true }
 }
 
 export async function sendInstallmentStartedEmail(input: {

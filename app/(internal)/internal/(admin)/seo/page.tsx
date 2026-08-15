@@ -22,6 +22,7 @@ import { buildMetadata } from "@/lib/site-seo"
 import { generateSeoDraftAction, updateOpportunityStatusAction } from "./actions"
 import { GscImportControl } from "./GscImportControl"
 import { GenerateDraftButton } from "./GenerateDraftButton"
+import { GenerateArticleButton } from "./GenerateArticleButton"
 
 export const dynamic = "force-dynamic"
 
@@ -216,7 +217,8 @@ export default async function SeoQueuePage({
         
         {opportunities.length ? opportunities.map((opportunity) => {
           const latestChange = opportunity.changes[0]
-          const isNewContent = opportunity.opportunityType === "new_content" && !opportunity.pidBlog
+          const isNewContentOpportunity = opportunity.opportunityType === "new_content"
+          const needsNewArticle = isNewContentOpportunity && !opportunity.pidBlog
           return (
             <article 
               key={opportunity.pidOpportunity} 
@@ -225,7 +227,7 @@ export default async function SeoQueuePage({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap gap-2"><p className="inline-flex items-center rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">{opportunity.opportunityType.replace(/_/g, " ")}</p><p className="rounded bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{opportunity.status}</p><p className="rounded border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">CTA: {(opportunity.recommendedCta || "general").replace(/_/g, " ")}</p></div>
                 <h3 className="mt-3 font-heading text-xl font-bold text-foreground">
-                  {isNewContent ? `New article: ${opportunity.primaryQuery}` : opportunity.blog?.blogTitle || opportunity.blogSlug || opportunity.pageUrl}
+                  {needsNewArticle ? `New article: ${opportunity.primaryQuery}` : opportunity.blog?.blogTitle || opportunity.blogSlug || opportunity.pageUrl}
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {opportunity.recommendation}
@@ -279,23 +281,18 @@ export default async function SeoQueuePage({
 
               {/* Action Buttons */}
               <div className="flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col">
-                {opportunity.pidBlog && <Link className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-bold" href={`/internal/blog/${opportunity.pidBlog}`}>Edit Blog</Link>}
-                <a className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-bold" href={opportunity.pageUrl} target="_blank" rel="noopener noreferrer">{isNewContent ? "Current Ranking Page" : "Public Page"}</a>
-                {isNewContent ? (
-                  <Link
-                    className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground transition-all hover:bg-primary/90 shadow-sm"
-                    href={`/internal/blog/new?topic=${encodeURIComponent(opportunity.primaryQuery || "")}&opportunity=${encodeURIComponent(opportunity.pidOpportunity)}`}
-                  >
-                    <Sparkles className="mr-2 h-4 w-4" /> Start New Article
-                  </Link>
-                ) : latestChange && latestChange.status !== "rejected" ? (
+                {opportunity.pidBlog && <Link className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-bold" href={`/internal/blog/${opportunity.pidBlog}`}>{isNewContentOpportunity ? "Edit Generated Draft" : "Edit Blog"}</Link>}
+                <a className="inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-bold" href={opportunity.pageUrl} target="_blank" rel="noopener noreferrer">{isNewContentOpportunity ? "Current Ranking Page" : "Public Page"}</a>
+                {needsNewArticle ? (
+                  <GenerateArticleButton pidOpportunity={opportunity.pidOpportunity} initialStatus={latestChange?.changeType === "new_article" ? latestChange.status : null} />
+                ) : !isNewContentOpportunity && latestChange && latestChange.status !== "rejected" ? (
                   <Link 
                     className="inline-flex w-full items-center justify-center rounded-lg border border-primary/20 bg-primary/10 px-6 py-2.5 text-sm font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground shadow-sm sm:w-auto xl:w-full" 
                     href={`/internal/seo/changes/${latestChange.pidChange}`}
                   >
                     <Eye className="mr-2 h-4 w-4" /> Review Draft
                   </Link>
-                ) : opportunity.pidBlog ? (
+                ) : !isNewContentOpportunity && opportunity.pidBlog ? (
                   <form action={generateSeoDraftAction} className="w-full sm:w-auto xl:w-full">
                     <input type="hidden" name="pidOpportunity" value={opportunity.pidOpportunity} />
                     <GenerateDraftButton />

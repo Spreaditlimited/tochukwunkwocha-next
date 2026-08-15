@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client"
 
-import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import {
   claimIndividualCourseEnrollment,
   ensureEnrollmentClaimTable,
@@ -9,7 +8,7 @@ import {
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { sendManualPaymentMetaPurchase } from "@/lib/manual-payment-meta"
 import { prisma } from "@/lib/prisma"
-import { sendEnrollmentConfirmedWhatsApp } from "@/lib/transactional-whatsapp"
+import { enqueueEnrollmentConfirmationNotification, processPaymentNotificationOutbox } from "@/lib/payment-notification-outbox"
 import {
   assertBatchCapacity,
   createAffiliateCommissionForOrder,
@@ -234,41 +233,31 @@ export async function reviewManualPayment(input: {
 
   const needsFirstUsePassword = !existingAccount || (existingAccount.mustResetPassword && !existingAccount.resetRequestedAt)
   const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
-  const activationEmailTask = temporary?.password
-    ? sendStudentAccountReadyEmail({
-        email,
-        fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-        courseSlug: clean(payment.course_slug, 120),
-        temporaryPassword: temporary.password
-      })
-        .then(() => true)
-        .catch(async (error) => {
-          await appendManualPaymentReviewNote(
-            paymentUuid,
-            `[ACTIVATION_EMAIL_FAILED] ${error instanceof Error ? error.message : "The activation email could not be sent."}`
-          )
-          return false
-        })
-    : Promise.resolve(false)
+  const isFamilyEnrollment = clean(payment.buyer_type, 40).toLowerCase() === "family"
+  const enrollmentNotificationUuid = await enqueueEnrollmentConfirmationNotification({
+    sourceType: "manual_payment",
+    sourceUuid: paymentUuid,
+    email,
+    fullName: account.fullName || clean(payment.first_name, 180) || "Student",
+    phone: account.phoneE164 || clean(payment.phone, 80),
+    courseSlug: clean(payment.course_slug, 120),
+    batchKey: clean(payment.batch_key, 64),
+    batchLabel: clean(payment.batch_label, 120),
+    dashboardPath: isFamilyEnrollment ? "/dashboard/family" : "/dashboard/courses",
+    temporaryPassword: temporary?.password || null,
+    syncBrevo: !isFamilyEnrollment
+  })
+  const activationEmailTask = processPaymentNotificationOutbox({ eventUuid: enrollmentNotificationUuid })
+    .then((result) => result.completed === 1)
+    .catch(async (error) => {
+      await appendManualPaymentReviewNote(
+        paymentUuid,
+        `[ENROLLMENT_NOTIFICATION_RETRYING] ${error instanceof Error ? error.message : "The enrollment notification could not be sent."}`
+      )
+      return false
+    })
   const postEnrollmentResults = await Promise.all([
     activationEmailTask,
-    clean(payment.buyer_type, 40).toLowerCase() === "family"
-      ? Promise.resolve({ ok: true, skipped: true })
-      : syncEnrollmentToBrevo({
-          fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-          email,
-          phone: account.phoneE164 || clean(payment.phone, 80),
-          courseSlug: clean(payment.course_slug, 120),
-          batchKey: clean(payment.batch_key, 64),
-          batchLabel: clean(payment.batch_label, 120),
-          source: "manual_payment_approved"
-        }).catch(() => null),
-    sendEnrollmentConfirmedWhatsApp({
-      phone: account.phoneE164 || clean(payment.phone, 80),
-      fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-      courseSlug: clean(payment.course_slug, 120),
-      dashboardPath: clean(payment.buyer_type, 40).toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
-    }).catch(() => null),
     recordCouponRedemption({
       couponId: payment.coupon_id ? Number(payment.coupon_id) : null,
       orderUuid: paymentUuid,
@@ -283,7 +272,7 @@ export async function reviewManualPayment(input: {
     }).catch(() => null)
   ])
   const activationEmailSent = postEnrollmentResults[0]
-  const affiliateCommission = postEnrollmentResults[4]
+  const affiliateCommission = postEnrollmentResults[2]
   if (!affiliateCommission.ok) {
     await appendManualPaymentReviewNote(
       paymentUuid,

@@ -1,9 +1,8 @@
 import { prisma } from "@/lib/prisma"
-import { sendStudentAccountReadyEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
+import { enqueueEnrollmentConfirmationNotification, processPaymentNotificationOutbox } from "@/lib/payment-notification-outbox"
 import { createStudentSessionForAccount, createStudentTemporaryPassword } from "@/lib/student-auth"
 import { findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
-import { sendEnrollmentConfirmedWhatsApp } from "@/lib/transactional-whatsapp"
 
 type PaidOrderRow = {
   order_uuid?: string | null
@@ -52,34 +51,24 @@ export async function provisionStudentForPaidOrder(
   const sendNotifications = options?.sendNotifications !== false || !existing
   const needsFirstUsePassword = sendNotifications && (!existing || (existing.mustResetPassword && !existing.resetRequestedAt))
   const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
-  if (!isGroupEnrollment) {
-    await syncEnrollmentToBrevo({
-      fullName: account.fullName,
+  let activationEmailSent = false
+  if (sendNotifications) {
+    const sourceUuid = String(order?.order_uuid || `${order?.course_slug || "course"}:${order?.batch_key || "batch"}:${email}`)
+    const eventUuid = await enqueueEnrollmentConfirmationNotification({
+      sourceType: "course_order",
+      sourceUuid,
       email: account.email,
+      fullName: account.fullName,
       phone: account.phoneE164 || String(order?.phone || ""),
       courseSlug: order?.course_slug || "",
       batchKey: order?.batch_key || "",
       batchLabel: order?.batch_label || "",
-      source: "paid_course_enrollment"
-    }).catch(() => null)
-  }
-  if (sendNotifications) {
-    await sendEnrollmentConfirmedWhatsApp({
-      phone: account.phoneE164 || String(order?.phone || ""),
-      fullName: account.fullName,
-      courseSlug: order?.course_slug || "",
-      dashboardPath: isGroupEnrollment ? "/dashboard/family" : "/dashboard/courses"
-    }).catch(() => null)
-  }
-  let activationEmailSent = false
-  if (temporary?.password && sendNotifications) {
-    const delivery = await sendStudentAccountReadyEmail({
-      email: account.email,
-      fullName: account.fullName,
-      courseSlug: order?.course_slug || "",
-      temporaryPassword: temporary.password
-    }).catch(() => null)
-    activationEmailSent = Boolean(delivery?.ok)
+      dashboardPath: isGroupEnrollment ? "/dashboard/family" : "/dashboard/courses",
+      temporaryPassword: temporary?.password || null,
+      syncBrevo: !isGroupEnrollment
+    })
+    const delivery = await processPaymentNotificationOutbox({ eventUuid })
+    activationEmailSent = delivery.completed === 1
   }
 
   const session = options?.createSession === false

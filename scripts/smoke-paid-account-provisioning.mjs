@@ -47,9 +47,11 @@ for (const source of [paystackReturn, paystackWebhook, stripeReturn, stripeWebho
 assert.match(paystackWebhook, /createSession: false/)
 assert.match(stripeWebhook, /createSession: false/)
 assert.ok(
-  provisioning.indexOf("sendStudentAccountReadyEmail({") < provisioning.indexOf("await createStudentSessionForAccount(account)"),
+  provisioning.indexOf("processPaymentNotificationOutbox({ eventUuid })") < provisioning.indexOf("await createStudentSessionForAccount(account)"),
   "Activation delivery must not depend on automatic session creation"
 )
+assert.match(provisioning, /enqueueEnrollmentConfirmationNotification/)
+assert.match(provisioning, /syncBrevo: !isGroupEnrollment/)
 assert.match(provisioning, /automatic sign-in session failed/)
 assert.match(internalToaster, /setTimeout\(\(\) => setToast\(null\), 5000\)/)
 assert.match(internalToaster, /data-toast-managed/)

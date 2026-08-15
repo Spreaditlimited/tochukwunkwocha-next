@@ -33,11 +33,9 @@ assert.match(reconciliation, /attempts = attempts \+ 1/)
 assert.match(reconciliation, /locked_at < \$\{new Date\(timestamp\.getTime\(\) - 10 \* 60_000\)\}/)
 
 const familyProvisionIndex = provisioning.indexOf("await provisionFamilyOrder({")
-const whatsappIndex = provisioning.indexOf("await sendEnrollmentConfirmedWhatsApp({")
-const activationIndex = provisioning.indexOf("await sendStudentAccountReadyEmail({")
+const notificationIndex = provisioning.indexOf("await enqueueEnrollmentConfirmationNotification({")
 assert.ok(familyProvisionIndex >= 0, "Group seats must be provisioned")
-assert.ok(familyProvisionIndex < whatsappIndex, "Group seats must be provisioned before WhatsApp")
-assert.ok(familyProvisionIndex < activationIndex, "Group seats must be provisioned before activation email")
+assert.ok(familyProvisionIndex < notificationIndex, "Group seats must be provisioned before confirmation delivery")
 assert.match(provisioning, /sendNotifications\?: boolean/)
 assert.match(provisioning, /options\?\.sendNotifications !== false \|\| !existing/)
 
