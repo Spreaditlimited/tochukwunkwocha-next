@@ -115,7 +115,7 @@ export function SiteHeader() {
             </div>
 
             <div className="flex items-center gap-2 pr-12 md:hidden">
-              <ThemeToggle />
+              <ThemeToggle className="border-transparent bg-transparent shadow-none hover:bg-muted" />
             </div>
           </div>
         </div>
@@ -124,7 +124,7 @@ export function SiteHeader() {
 
       <details id="mobile-site-menu-shell" ref={mobileMenuRef} className="group md:hidden">
         <summary
-          className="brand-focus fixed right-5 top-5 z-[110] inline-flex h-10 w-10 cursor-pointer touch-manipulation list-none items-center justify-center rounded-md border border-border bg-card text-foreground transition-colors hover:bg-muted sm:right-6 [&::-webkit-details-marker]:hidden"
+          className="brand-focus fixed right-5 top-5 z-[110] inline-flex h-10 w-10 cursor-pointer touch-manipulation list-none items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted sm:right-6 [&::-webkit-details-marker]:hidden"
           aria-label="Toggle menu"
           aria-controls="mobile-site-menu"
         >
