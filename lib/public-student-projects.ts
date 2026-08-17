@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
+import { addColumnIfMissing } from "@/lib/schema-guards"
 import { listPublicSelfDeclaredProjectLinks, type StudentProjectLink } from "@/lib/student-project-links"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
@@ -61,6 +62,7 @@ function normalizePublicUrl(value: unknown) {
 }
 
 async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStudentProject[]> {
+  await addColumnIfMissing("student_accounts", "public_project_learner_type", "VARCHAR(24) NULL")
   const safeLimit = Math.max(6, Math.min(120, Number.isFinite(Number(limit)) ? Math.round(Number(limit)) : 60))
   const individual = await prisma.$queryRaw<Array<{
     id: bigint
@@ -70,6 +72,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
     studentName: string | null
     certificateNo: string | null
     isGroupLearner: number | bigint | boolean
+    publicProjectLearnerType: string | null
     publishedAt: Date | null
   }>>(Prisma.sql`
     SELECT a.id, a.account_id AS accountId, a.submission_link AS projectUrl, a.course_slug AS courseSlug,
@@ -83,8 +86,10 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
           AND child.status = 'active'
           AND family.status = 'active'
       ) AS isGroupLearner,
+      sa.public_project_learner_type AS publicProjectLearnerType,
       COALESCE(a.reviewed_at, a.updated_at, a.created_at) AS publishedAt
     FROM tochukwu_learning_assignments a
+    JOIN student_accounts sa ON sa.id = a.account_id
     LEFT JOIN student_certificates c
       ON c.account_id = a.account_id
      AND c.course_slug = a.course_slug
@@ -133,7 +138,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
         courseSlug,
         courseLabel: courseLabel(courseSlug),
         learnerLabel: clean(row.studentName, 80) || "Student project",
-        sourceType: Number(row.isGroupLearner || 0) === 1 ? "group" : "individual",
+        sourceType: Number(row.isGroupLearner || 0) === 1 || clean(row.publicProjectLearnerType, 24) === "young" ? "group" : "individual",
         schoolName: "",
         publishedAt: row.publishedAt,
         links: [

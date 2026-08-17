@@ -12,6 +12,7 @@ import {
   resetStudentDevices,
   reviewAdditionalProjectLink,
   reviewAssignment,
+  setPublicProjectLearnerType,
   reviewTranscriptAccess,
   saveCourseFeatures
 } from "@/lib/admin-learning-support"
@@ -48,25 +49,56 @@ export async function resendCertificateApprovalEmailAction(formData: FormData) {
 
 export async function reviewAssignmentAction(formData: FormData) {
   await requireAdmin("/internal/learning")
-  const result = await reviewAssignment({
-    assignmentId: String(formData.get("assignmentId") || ""),
-    status: String(formData.get("status") || ""),
-    feedback: String(formData.get("feedback") || ""),
-    sendApprovalEmail: formData.get("sendApprovalEmail") === "on"
+  try {
+    const result = await reviewAssignment({
+      assignmentId: String(formData.get("assignmentId") || ""),
+      status: String(formData.get("status") || ""),
+      feedback: String(formData.get("feedback") || ""),
+      sendApprovalEmail: formData.get("sendApprovalEmail") === "on"
+    })
+    const details = [
+      result.publicProjectPublished ? "The student project is public." : "",
+      result.certificate.message,
+      result.email.attempted
+        ? result.email.sent
+          ? result.email.role === "learner" ? "Learner email sent." : "Group or school owner email sent."
+          : `Learning Support notification failed: ${result.email.error}`
+        : ""
+    ].filter(Boolean)
+    await setInternalToast({
+      type: result.email.attempted && !result.email.sent ? "error" : "success",
+      title: result.email.attempted && !result.email.sent ? "Review saved; email failed" : "Assignment reviewed",
+      message: details.join(" ") || "The learner assignment status has been updated."
+    })
+    revalidateTag("public-student-projects")
+    revalidatePath("/projects")
+    revalidatePath(PATH)
+  } catch (error) {
+    console.error("assignment_review_action_failed", {
+      error: error instanceof Error ? error.message : String(error)
+    })
+    await setInternalToast({
+      type: "error",
+      title: "Assignment review needs attention",
+      message: error instanceof Error
+        ? error.message
+        : "The assignment review could not be completed. Please check the form and try again."
+    })
+  }
+}
+
+export async function setPublicProjectLearnerTypeAction(formData: FormData) {
+  await requireAdmin("/internal/learning")
+  const result = await setPublicProjectLearnerType({
+    accountId: String(formData.get("accountId") || ""),
+    learnerType: String(formData.get("learnerType") || "standard")
   })
-  const details = [
-    result.publicProjectPublished ? "The student project is public." : "",
-    result.certificate.message,
-    result.email.attempted
-      ? result.email.sent
-        ? result.email.role === "learner" ? "Learner email sent." : "Group or school owner email sent."
-        : `Learning Support notification failed: ${result.email.error}`
-      : ""
-  ].filter(Boolean)
   await setInternalToast({
-    type: result.email.attempted && !result.email.sent ? "error" : "success",
-    title: result.email.attempted && !result.email.sent ? "Review saved; email failed" : "Assignment reviewed",
-    message: details.join(" ") || "The learner assignment status has been updated."
+    type: "success",
+    title: "Project label saved",
+    message: result.learnerType === "young"
+      ? "This student's public projects will show the Young Learner badge."
+      : "This student's public projects will use the standard learner presentation."
   })
   revalidateTag("public-student-projects")
   revalidatePath("/projects")

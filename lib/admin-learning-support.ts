@@ -17,6 +17,7 @@ import { ensureLearningSupportNotificationTable, sendLearningSupportNotification
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { prisma } from "@/lib/prisma"
 import { publicActionLinkVariants, publicSiteUrl } from "@/lib/public-site-url"
+import { addColumnIfMissing } from "@/lib/schema-guards"
 import { createStudentPasswordResetToken } from "@/lib/student-auth"
 import { ensureStudentProjectLinkTables } from "@/lib/student-project-links"
 
@@ -53,6 +54,7 @@ function certificateNo() {
 }
 
 export async function ensureLearningSupportTables() {
+  await addColumnIfMissing("student_accounts", "public_project_learner_type", "VARCHAR(24) NULL")
   await ensureLearningSupportNotificationTable()
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS tochukwu_learning_course_features (
@@ -217,14 +219,26 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
     reviewedAt: Date | null
     createdAt: Date | null
     certificateNo: string | null
+    publicProjectLearnerType: string | null
+    isGroupLearner: number | bigint | boolean
   }>>`
     SELECT a.id, a.course_slug AS courseSlug, a.account_id AS accountId,
       a.student_email AS studentEmail, a.student_name AS studentName,
       a.submission_kind AS submissionKind, a.submission_text AS submissionText,
       a.submission_link AS submissionLink, a.status, a.admin_feedback AS adminFeedback,
       a.reviewed_by AS reviewedBy, a.reviewed_at AS reviewedAt, a.created_at AS createdAt,
-      c.certificate_no AS certificateNo
+      c.certificate_no AS certificateNo,
+      sa.public_project_learner_type AS publicProjectLearnerType,
+      EXISTS (
+        SELECT 1
+        FROM family_children child
+        JOIN family_accounts family ON family.id = child.family_id
+        WHERE child.account_id = a.account_id
+          AND child.status = 'active'
+          AND family.status = 'active'
+      ) AS isGroupLearner
     FROM tochukwu_learning_assignments a
+    LEFT JOIN student_accounts sa ON sa.id = a.account_id
     LEFT JOIN student_certificate_issuance_keys k
       ON k.account_id = a.account_id
      AND k.course_slug = a.course_slug
@@ -343,6 +357,7 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
       CASE
         WHEN child.id IS NOT NULL THEN 'group'
         WHEN school_student.id IS NOT NULL THEN 'school'
+        WHEN sa.public_project_learner_type = 'young' THEN 'young'
         ELSE 'direct'
       END AS learnerType,
       l.title, l.project_url AS projectUrl, l.host, l.description,
@@ -371,6 +386,25 @@ export async function listLearningSupportData(filters?: { courseSlug?: string; s
     LIMIT 250
   `.catch(() => [])
   return { courses, features, assignments: filtered, attachments, assignmentMessages, transcriptRequests, students, additionalProjectLinks }
+}
+
+export async function setPublicProjectLearnerType(input: { accountId: string; learnerType: string }) {
+  await ensureLearningSupportTables()
+  await requireAdmin("/internal/learning")
+  const accountId = BigInt(String(input.accountId || "0"))
+  const learnerType = clean(input.learnerType, 24).toLowerCase()
+  if (accountId <= BigInt(0)) throw new Error("A learner account is required.")
+  if (!["standard", "young"].includes(learnerType)) throw new Error("Select a valid public project label.")
+
+  const updated = await prisma.$executeRaw`
+    UPDATE student_accounts
+    SET public_project_learner_type = ${learnerType === "young" ? "young" : null},
+        updated_at = ${new Date()}
+    WHERE id = ${accountId}
+    LIMIT 1
+  `
+  if (!updated) throw new Error("Learner account not found.")
+  return { learnerType }
 }
 
 export async function reviewAdditionalProjectLink(input: { linkUuid: string; reviewStatus: string; reviewNote?: string }) {

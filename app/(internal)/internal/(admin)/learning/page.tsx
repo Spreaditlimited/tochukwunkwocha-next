@@ -28,6 +28,7 @@ import {
   resetStudentDevicesAction,
   reviewAdditionalProjectLinkAction,
   reviewAssignmentAction,
+  setPublicProjectLearnerTypeAction,
   saveCourseFeaturesAction
 } from "./actions"
 import { PremiumPicker } from "@/components/PremiumPicker"
@@ -98,6 +99,10 @@ export default async function InternalLearningSupportPage() {
     { value: "approved", label: "Approved & Published" },
     { value: "rejected", label: "Rejected / Hidden" }
   ]
+  const publicProjectLearnerTypeOptions = [
+    { value: "standard", label: "Standard learner" },
+    { value: "young", label: "Young Learner" }
+  ]
   
   const attachmentMap = new Map<string, typeof attachments>()
   for (const attachment of attachments) {
@@ -113,6 +118,11 @@ export default async function InternalLearningSupportPage() {
   const pendingCount = assignments.filter((item) => ["submitted", "in_review"].includes(item.status)).length
   const certificateProofCount = assignments.filter((item) => item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER).length
   const pendingAdditionalLinkCount = additionalProjectLinks.filter((item) => item.reviewStatus === "pending").length
+  const publicProjectLearners = Array.from(new Map(
+    assignments
+      .filter((item) => item.status === "approved" && item.submissionKind === "link" && item.submissionText === CERTIFICATE_PROOF_MARKER && item.submissionLink)
+      .map((item) => [String(item.accountId), item])
+  ).values())
 
   return (
     <main className="space-y-8 pb-12">
@@ -284,6 +294,66 @@ export default async function InternalLearningSupportPage() {
               <div className="col-span-full flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 py-12 text-center text-sm font-semibold text-muted-foreground">
                 <GraduationCap className="mb-2 h-6 w-6" />
                 No courses found to configure.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Public project learner labels */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-heading text-xl font-black text-foreground">Student Project Labels</h2>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Mark directly enrolled children as Young Learners on the public Student Projects page. Group learners remain automatic.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-center shadow-inner">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Published Learners</p>
+            <p className="font-heading text-xl font-black text-foreground">{publicProjectLearners.length}</p>
+          </div>
+        </div>
+
+        <div className="max-h-[560px] overflow-auto bg-background p-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20 sm:p-8">
+          <div className="grid gap-4 lg:grid-cols-2">
+            {publicProjectLearners.length ? publicProjectLearners.map((learner) => (
+              <article key={String(learner.accountId)} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="font-heading text-lg font-black text-foreground">{learner.studentName || "Unknown Learner"}</h3>
+                    <p className="mt-1 break-all text-xs font-medium text-muted-foreground">{learner.studentEmail}</p>
+                    {isOn(learner.isGroupLearner) ? (
+                      <span className="mt-3 inline-flex rounded-md border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-400">
+                        Young Learner · automatic group label
+                      </span>
+                    ) : null}
+                  </div>
+                  {!isOn(learner.isGroupLearner) ? (
+                    <form action={setPublicProjectLearnerTypeAction} className="grid min-w-56 gap-2">
+                      <input type="hidden" name="accountId" value={String(learner.accountId)} />
+                      <label>
+                        <span className="mb-1 block text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Public label</span>
+                        <PremiumPicker
+                          name="learnerType"
+                          defaultValue={learner.publicProjectLearnerType === "young" ? "young" : "standard"}
+                          options={publicProjectLearnerTypeOptions}
+                        />
+                      </label>
+                      <button type="submit" className="btn-secondary w-full justify-center shadow-sm">Save label</button>
+                    </form>
+                  ) : null}
+                </div>
+              </article>
+            )) : (
+              <div className="col-span-full flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 py-12 text-center text-sm font-semibold text-muted-foreground">
+                <GraduationCap className="mb-2 h-6 w-6" />
+                No published student projects found.
               </div>
             )}
           </div>

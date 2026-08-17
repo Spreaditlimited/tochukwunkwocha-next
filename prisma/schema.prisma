@@ -276,6 +276,7 @@ model StudentAccount {
   createdAt                  DateTime  @map("created_at") @db.DateTime(0)
   updatedAt                  DateTime  @map("updated_at") @db.DateTime(0)
   lastLoginAt                DateTime? @map("last_login_at") @db.DateTime(0)
+  publicProjectLearnerType   String?   @map("public_project_learner_type") @db.VarChar(24)
 
   sessions   StudentSession[]
   shopOrders ShopOrder[]
