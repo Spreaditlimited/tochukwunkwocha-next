@@ -123,7 +123,7 @@ async function getOperationsOverview() {
     firstCount(prisma.$queryRaw<CountRow[]>`
       SELECT COUNT(*) AS total
       FROM student_installment_plans
-      WHERE status IN ('active', 'pending', 'overdue')
+      WHERE status <> 'merged'
     `),
     firstCount(prisma.$queryRaw<CountRow[]>`
       SELECT COUNT(*) AS total

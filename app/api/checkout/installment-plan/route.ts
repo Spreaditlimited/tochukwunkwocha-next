@@ -99,7 +99,13 @@ export async function POST(request: Request) {
       await sendInstallmentStartedEmail({
         email,
         fullName: firstName,
-        courseSlug
+        courseSlug,
+        planUuid: plan.planUuid,
+        batchLabel: context.batch.batchLabel,
+        buyerType: context.buyerType,
+        seatCount: context.seatCount,
+        currency: plan.currency,
+        targetAmountMinor: plan.targetAmountMinor
       }).catch(() => null)
     }
 

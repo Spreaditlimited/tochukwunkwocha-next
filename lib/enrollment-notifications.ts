@@ -8,6 +8,15 @@ function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
 }
 
+function escapeHtml(value: unknown) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 function siteBaseUrl() {
   return publicSiteUrl()
 }
@@ -312,23 +321,52 @@ export async function sendStudentAccountReadyEmail(input: {
   courseSlug?: string | null
   temporaryPassword?: string | null
   resetToken?: string | null
+  dashboardPath?: string | null
+  batchLabel?: string | null
 }) {
   const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
-  const dashboardLinks = publicActionLinkVariants("/dashboard")
+  const isGroup = clean(input.dashboardPath, 180).startsWith("/dashboard/family")
+  const dashboardPath = isGroup ? "/dashboard/family" : "/dashboard/courses"
+  const dashboardLinks = publicActionLinkVariants(dashboardPath)
   const loginLinks = publicActionLinkVariants("/dashboard/login")
   const setupLinks = input.resetToken
     ? publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(input.resetToken)}`)
     : dashboardLinks
-  const subject = "Your Tochukwu Tech learning account is ready"
+  const name = clean(input.fullName, 120) || "there"
+  const batch = clean(input.batchLabel, 120)
+  const subject = isGroup
+    ? "IMPORTANT: Your group enrollment is ready — assign your learners now"
+    : "IMPORTANT: Your course access is ready — keep this email"
+  const contextText = [course, batch].filter(Boolean).join(" — ")
+  const accountStepText = input.temporaryPassword
+    ? "Sign in with the email and temporary password below. After the first successful sign-in, you will be asked to create your own private password."
+    : input.resetToken
+      ? "Use the password-setup link below to create your private password and open your dashboard."
+      : "Open your dashboard with the link below."
+  const nextStepsText = isGroup
+    ? [
+        "Open Group Enrollment and select Assign Learners.",
+        "Choose the programme and batch, enter each learner's full name, then select Assign Learners.",
+        "Each assigned learner will appear with a unique access code. Copy each code and give it privately to the correct learner.",
+        "The learner should open the dashboard sign-in page, use Group Access Code, enter the code, and confirm their name. No learner email address is required."
+      ]
+    : [
+        "Open My Courses in your dashboard and select your enrolled course.",
+        "Check the course and batch details, then use Open Course Player when lessons are available.",
+        "Keep your sign-in details private and use Learning Support inside the dashboard if you need help."
+      ]
   return sendEmail({
     to: email,
     subject,
     text: [
-      `Hello ${clean(input.fullName, 120) || "there"},`,
+      `Hello ${name},`,
       "",
       `Your enrollment${course ? ` for ${course}` : ""} is confirmed and your learning account is ready.`,
+      contextText ? `Enrollment: ${contextText}` : "",
+      "",
+      accountStepText,
       input.temporaryPassword ? `Sign-in email: ${email}` : "",
       input.temporaryPassword ? `Temporary password: ${input.temporaryPassword}` : "",
       input.temporaryPassword ? `Primary sign-in link: ${loginLinks.primary}` : input.resetToken ? `Primary password setup link: ${setupLinks.primary}` : `Primary dashboard link: ${dashboardLinks.primary}`,
@@ -336,21 +374,35 @@ export async function sendStudentAccountReadyEmail(input: {
       input.temporaryPassword ? "This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password." : "",
       input.temporaryPassword ? "Keep these details private." : "",
       "",
+      isGroup ? "How to give your learners access:" : "What to do next:",
+      ...nextStepsText.map((step, index) => `${index + 1}. ${step}`),
+      "",
+      isGroup ? "Your email and password are for the parent or group owner. Learners should use only their individual access codes." : "Save this email until you have signed in successfully and secured your account.",
+      "",
       "Tochukwu Tech and AI Academy"
     ].filter(Boolean).join("\n"),
     html: `
-      <p>Hello ${clean(input.fullName, 120) || "there"},</p>
+      <p>Hello ${escapeHtml(name)},</p>
       <p>Your enrollment${course ? ` for <strong>${course}</strong>` : ""} is confirmed and your learning account is ready.</p>
+      ${contextText ? `<p><strong>Enrollment:</strong> ${escapeHtml(contextText)}</p>` : ""}
+      <p>${escapeHtml(accountStepText)}</p>
       ${input.temporaryPassword ? `
         <div style="margin:20px 0;padding:16px;border:1px solid #dbe7f3;border-radius:10px;background:#f8fbff;">
-          <p style="margin:0 0 8px;"><strong>Sign-in email:</strong> ${email}</p>
-          <p style="margin:0;"><strong>Temporary password:</strong> <span style="font-family:monospace;font-size:16px;">${input.temporaryPassword}</span></p>
+          <p style="margin:0 0 8px;"><strong>Sign-in email:</strong> ${escapeHtml(email)}</p>
+          <p style="margin:0;"><strong>Temporary password:</strong> <span style="font-family:monospace;font-size:16px;">${escapeHtml(input.temporaryPassword)}</span></p>
         </div>
         <p><strong>Primary sign-in link:</strong><br/><a href="${loginLinks.primary}">Sign in to your learning dashboard</a></p>
         <p><strong>Alternative sign-in link:</strong> Use this if the primary website does not open.<br/><a href="${loginLinks.alternative}">Sign in through the alternative website</a></p>
         <p>This temporary password has no time limit. It stops working immediately after your first successful use, when you will create your private password.</p>
         <p>Keep these details private.</p>
       ` : `<p><strong>Primary link:</strong><br/><a href="${setupLinks.primary}">${input.resetToken ? "Set your password and open your dashboard" : "Open your dashboard"}</a></p><p><strong>Alternative link:</strong> Use this if the primary website does not open.<br/><a href="${setupLinks.alternative}">${input.resetToken ? "Set your password through the alternative website" : "Open the alternative website"}</a></p>`}
+      <div style="margin:24px 0;padding:18px;border-left:4px solid #0d4f9a;background:#f8fbff;">
+        <p style="margin:0 0 10px;"><strong>${isGroup ? "How to give your learners access" : "What to do next"}</strong></p>
+        <ol style="margin:0;padding-left:22px;">
+          ${nextStepsText.map((step) => `<li style="margin:0 0 8px;">${escapeHtml(step)}</li>`).join("")}
+        </ol>
+      </div>
+      <p><strong>${escapeHtml(isGroup ? "Your email and password are for the parent or group owner. Learners should use only their individual access codes." : "Save this email until you have signed in successfully and secured your account.")}</strong></p>
       <p>Tochukwu Tech and AI Academy</p>
     `
   })
@@ -416,24 +468,57 @@ export async function sendInstallmentStartedEmail(input: {
   email: string
   fullName?: string | null
   courseSlug?: string | null
+  planUuid?: string | null
+  batchLabel?: string | null
+  buyerType?: string | null
+  seatCount?: number | null
+  currency?: string | null
+  targetAmountMinor?: number | null
 }) {
   const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
+  const course = learningCourseName(input.courseSlug) || "your selected course"
+  const planUuid = clean(input.planUuid, 80)
+  const batch = clean(input.batchLabel, 120)
+  const currency = clean(input.currency, 10).toUpperCase()
+  const target = Math.max(0, Math.round(Number(input.targetAmountMinor || 0)))
+  const targetLabel = currency && target ? new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(target / 100) : ""
+  const isGroup = clean(input.buyerType, 40).toLowerCase() === "family"
+  const seats = Math.max(1, Math.round(Number(input.seatCount || 1)))
+  const dashboardUrl = `${siteBaseUrl()}/dashboard/installments`
+  const subject = `IMPORTANT: Your ${course} installment plan is ready`
+  const summary = [
+    `Course: ${course}`,
+    batch ? `Batch: ${batch}` : "",
+    isGroup ? `Group seats: ${seats}` : "",
+    targetLabel ? `Plan total: ${targetLabel}` : "",
+    planUuid ? `Plan reference: ${planUuid}` : ""
+  ].filter(Boolean)
   await sendEmail({
     to: email,
-    subject: "Your installment plan has started",
+    subject,
     text: [
       `Hello ${clean(input.fullName, 120) || "there"},`,
       "",
-      `Your installment plan${input.courseSlug ? ` for ${clean(input.courseSlug, 120)}` : ""} has been created.`,
-      `You can manage your plan from your dashboard: ${siteBaseUrl()}/dashboard/installments`,
+      "Your installment plan has been created successfully. Creating a plan does not by itself reserve course access; payments recorded against the plan reduce the balance.",
+      "",
+      ...summary,
+      "",
+      `Open the installment dashboard to make a payment and see the current balance: ${dashboardUrl}`,
+      "Course access becomes available after the full plan amount has been recorded and you complete enrollment from the dashboard.",
+      "We will send a limited number of balance reminders while the plan remains open.",
       "",
       "Tochukwu Tech and AI Academy"
     ].join("\n"),
     html: `
-      <p>Hello ${clean(input.fullName, 120) || "there"},</p>
-      <p>Your installment plan${input.courseSlug ? ` for <strong>${clean(input.courseSlug, 120)}</strong>` : ""} has been created.</p>
-      <p><a href="${siteBaseUrl()}/dashboard/installments">Open your installment dashboard</a></p>
+      <p>Hello ${escapeHtml(clean(input.fullName, 120) || "there")},</p>
+      <p>Your installment plan has been created successfully. Creating a plan does not by itself reserve course access; payments recorded against the plan reduce the balance.</p>
+      <div style="margin:20px 0;padding:16px;border:1px solid #dbe7f3;border-radius:10px;background:#f8fbff;">
+        ${summary.map((line) => `<p style="margin:0 0 7px;">${escapeHtml(line)}</p>`).join("")}
+      </div>
+      <p><a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;background:#0d4f9a;color:#ffffff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Open your installment dashboard</a></p>
+      <p>Course access becomes available after the full plan amount has been recorded and you complete enrollment from the dashboard.</p>
+      <p>We will send a limited number of balance reminders while the plan remains open.</p>
       <p>Tochukwu Tech and AI Academy</p>
     `
   })

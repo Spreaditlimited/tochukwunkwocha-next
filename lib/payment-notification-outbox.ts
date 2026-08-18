@@ -207,7 +207,9 @@ export async function processPaymentNotificationOutbox(input?: { limit?: number;
               email: payload.email,
               fullName: payload.fullName,
               courseSlug: payload.courseSlug,
-              temporaryPassword: payload.temporaryPassword
+              temporaryPassword: payload.temporaryPassword,
+              dashboardPath: payload.dashboardPath,
+              batchLabel: payload.batchLabel
             })
             if (!result.ok) throw new Error(("error" in result && result.error) || "Enrollment confirmation email was skipped.")
             const messageId = "messageId" in result ? result.messageId : null
