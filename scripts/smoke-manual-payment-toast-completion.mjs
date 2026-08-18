@@ -12,6 +12,7 @@ const addExternalForm = read("app/(internal)/internal/(admin)/manual-payments/Ad
 const activationForm = read("app/(internal)/internal/(admin)/manual-payments/ActivationEmailForm.tsx")
 const provisionForm = read("app/(internal)/internal/(admin)/manual-payments/ProvisionMissingAccountsForm.tsx")
 const toaster = read("components/internal/InternalActionToaster.tsx")
+const adminEnrollments = read("lib/admin-enrollments.ts")
 
 const managedActions = [
   "reconcilePaystackPaymentsAction",
@@ -60,5 +61,6 @@ assert.match(actions, /Account created and Activation Email sent\./)
 assert.match(actions, /Activation Email sent\./)
 assert.match(toaster, /setTimeout\(\(\) => setToast\(null\), 5000\)/)
 assert.match(toaster, /form\.getAttribute\("data-toast-managed"\) === "true"/)
+assert.match(adminEnrollments, /UPDATE family_accounts[\s\S]*SET parent_email = \$\{newEmail\}[\s\S]*WHERE parent_account_id = \$\{oldAccount\.id\}/)
 
 console.log("Manual payment toast completion smoke test passed.")

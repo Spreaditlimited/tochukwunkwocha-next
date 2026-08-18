@@ -1266,6 +1266,11 @@ export async function updateManualPaymentEmail(input: { paymentUuid: string; new
   if (oldAccount) {
     await prisma.studentAccount.update({ where: { id: oldAccount.id }, data: { email: newEmail, updatedAt: now } })
     await prisma.$executeRaw`UPDATE school_students SET email = ${newEmail}, updated_at = ${now} WHERE account_id = ${oldAccount.id}`.catch(() => null)
+    await prisma.$executeRaw`
+      UPDATE family_accounts
+      SET parent_email = ${newEmail}, updated_at = ${now}
+      WHERE parent_account_id = ${oldAccount.id}
+    `
   }
   await prisma.$executeRaw`
     UPDATE course_manual_payments
