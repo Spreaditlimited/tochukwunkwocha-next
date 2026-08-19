@@ -52,7 +52,8 @@
     "smoke:paystack-terminal-cleanup": "node scripts/smoke-paystack-terminal-cleanup.mjs",
     "smoke:dashboard-modal-contract": "node scripts/smoke-dashboard-modal-contract.mjs",
     "smoke:public-project-name": "node scripts/smoke-public-student-project-name.mjs",
-    "smoke:global-course-prices": "node scripts/smoke-global-course-prices.mjs"
+    "smoke:global-course-prices": "node scripts/smoke-global-course-prices.mjs",
+    "smoke:course-social-images": "node scripts/smoke-course-social-images.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

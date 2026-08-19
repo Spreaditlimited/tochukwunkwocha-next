@@ -11,6 +11,7 @@ import { PromptToProfitSchoolsCoursePage } from "@/components/courses/PromptToPr
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { JsonLd } from "@/components/JsonLd"
 import { TrademarkText } from "@/components/TrademarkText"
+import { brand } from "@/lib/brand"
 import { courseOffers } from "@/lib/course-price-display"
 import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { getCourse, resolveCourseSlug } from "@/lib/public-offers"
@@ -28,7 +29,8 @@ export async function generateMetadata({ params }: CoursePageProps): Promise<Met
     title: course?.title || "Course",
     description: course?.description || "Course detail route scaffolded for migration parity.",
     path: `/courses/${course?.slug || resolveCourseSlug(slug)}`,
-    image: course?.logo || undefined
+    image: brand.assets.ogDefault,
+    imageAlt: `${brand.name} — practical AI education and real-world building`
   })
 }
 

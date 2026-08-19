@@ -25,7 +25,9 @@ import { buildMetadata } from "@/lib/site-seo"
 export const metadata = buildMetadata({
   title: "AI Courses and Programmes",
   description: "Explore practical AI programmes for beginners, advanced builders, schools, and business owners.",
-  path: "/courses"
+  path: "/courses",
+  image: brand.assets.ogDefault,
+  imageAlt: `${brand.name} — practical AI education and real-world building`
 })
 
 export const dynamic = "force-dynamic"
