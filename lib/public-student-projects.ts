@@ -76,7 +76,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
     publishedAt: Date | null
   }>>(Prisma.sql`
     SELECT a.id, a.account_id AS accountId, a.submission_link AS projectUrl, a.course_slug AS courseSlug,
-      COALESCE(NULLIF(a.student_name, ''), NULLIF(c.recipient_name, '')) AS studentName,
+      COALESCE(NULLIF(sa.full_name, ''), NULLIF(c.recipient_name, ''), NULLIF(a.student_name, '')) AS studentName,
       c.certificate_no AS certificateNo,
       EXISTS (
         SELECT 1
