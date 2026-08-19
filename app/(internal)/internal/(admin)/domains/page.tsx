@@ -12,7 +12,6 @@ import { prisma } from "@/lib/prisma"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { formatMinorCurrency } from "@/lib/student-dashboard"
-import { ensureDomainRequestTables } from "@/lib/student-domain-actions"
 import { formatDate } from "@/lib/utils"
 import { updateDomainDnsAction, updateDomainNetlifyStatusAction } from "./actions"
 
@@ -53,7 +52,6 @@ type OrderRow = {
 }
 
 async function listDomains() {
-  await ensureDomainRequestTables()
   return prisma.$queryRaw<DomainRow[]>`
     SELECT
       ud.account_id AS accountId,
@@ -103,7 +101,6 @@ async function listDomains() {
 }
 
 async function listOrders() {
-  await ensureDomainRequestTables()
   return prisma.$queryRaw<OrderRow[]>`
     SELECT
       order_uuid AS orderUuid,

@@ -20,6 +20,7 @@ import { getLearningCourseForStudent } from "@/lib/learning-player"
 import { batchHasNotStarted, formatDateTimeWAT } from "@/lib/utils"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { listConvertibleIndividualEnrollments } from "@/lib/group-enrollment-conversion"
+import { mapWithConcurrency } from "@/lib/async-pool"
 
 export const dynamic = "force-dynamic"
 
@@ -36,7 +37,7 @@ export default async function StudentFamilyPage({
     parentEmail: session.account.email
   })
   const wholeGroupBatchOptions = (await getBatchSwitchOptions(session.account)).filter((item) => item.sourceType === "family")
-  const learnerProgressEntries = await Promise.all(data.children.map(async (child) => {
+  const learnerProgressEntries = await mapWithConcurrency(data.children, 2, async (child) => {
     const key = `${child.childId}:${child.courseSlug}`
     if (!child.accountId || !child.accountEmail || !child.courseSlug) {
       return [key, { completedLessons: 0, totalLessons: 0, completionPercent: 0 }] as const
@@ -52,7 +53,7 @@ export default async function StudentFamilyPage({
         ? result.course.progress
         : { completedLessons: 0, totalLessons: 0, completionPercent: 0 }
     ] as const
-  }))
+  })
   const learnerProgressByEnrollment = new Map(learnerProgressEntries)
   const courses = await listActiveLearningCourseOptions()
   const walkthroughVideo = await getPublicVideoSlot("group-enrollment-dashboard-walkthrough")

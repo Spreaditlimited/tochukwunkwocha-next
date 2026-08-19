@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 import { sendInstallmentStartedEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import {
@@ -133,6 +134,9 @@ export async function POST(request: Request) {
     if (isCourseEnrollmentConflict(error)) {
       return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
     }
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not create installment plan" }, { status: 500 })
+    return studentApiErrorResponse(error, "Could not create the installment plan. Please try again.", {
+      status: 503,
+      context: "installment_plan_create_failed"
+    })
   }
 }

@@ -108,7 +108,6 @@ export async function listConvertibleIndividualEnrollments(input: {
   parentAccountId: bigint
   parentEmail: string
 }) {
-  await ensureIndividualGroupConversionTable()
   const email = normalizeEmail(input.parentEmail)
   if (!email) return []
   const rows = await prisma.$queryRaw<ConversionSourceRow[]>(Prisma.sql`

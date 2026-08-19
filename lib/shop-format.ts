@@ -13,9 +13,9 @@ export function shopProductImageUrl(value: string | null | undefined) {
   if (!value) return null
   if (
     value.startsWith("/shop/workbooks/") &&
-    value.endsWith("-cover.png")
+    value.endsWith("-mockup.png")
   ) {
-    return value.replace(/-cover\.png$/, "-mockup.png")
+    return value.replace(/-mockup\.png$/, "-cover.png")
   }
   return value
 }

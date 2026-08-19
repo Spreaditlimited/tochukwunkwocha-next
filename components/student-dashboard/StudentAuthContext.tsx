@@ -45,6 +45,7 @@ export function StudentAuthProvider({ children }: { children: ReactNode }) {
   const [confirmedProfilePictureUrl, setConfirmedProfilePictureUrl] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const expectedProfilePictureUrl = useRef<string | undefined>(undefined)
+  const loadedSessionOnce = useRef(false)
 
   const refreshAccount = useCallback(async () => {
     try {
@@ -91,6 +92,8 @@ export function StudentAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!pathname.startsWith("/dashboard") || pathname.startsWith("/dashboard/login")) return
+    if (loadedSessionOnce.current) return
+    loadedSessionOnce.current = true
     void refreshAccount()
   }, [pathname, refreshAccount])
 

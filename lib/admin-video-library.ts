@@ -5,7 +5,7 @@ import { applyAdminSettingsToProcessEnv, upsertAdminSettings } from "@/lib/admin
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { sanitizeRichNotes } from "@/lib/rich-notes"
-import { ensureCourseLiveSessionTables, listCourseLiveSessions } from "@/lib/course-live-sessions"
+import { listCourseLiveSessions } from "@/lib/course-live-sessions"
 
 export const PUBLIC_VIDEO_SLOTS = [
   { key: "home-introduction", label: "Home introduction", page: "Home" },
@@ -326,8 +326,6 @@ export async function ensureVideoLibraryTables() {
 }
 
 export async function listVideoLibrary() {
-  await ensureVideoLibraryTables()
-  await ensureCourseLiveSessionTables()
   const [courses, modules, lessons, videos, batches, moduleDripSchedules, publicVideoSlots, liveSessions] = await Promise.all([
     prisma.$queryRaw<Array<{
       id: bigint

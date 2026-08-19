@@ -139,7 +139,6 @@ export async function hasVerifiedStudentProjectProfile(accountId: bigint) {
 }
 
 export async function listStudentProjectLinks(accountId: bigint) {
-  await ensureStudentProjectLinkTables()
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
     SELECT link_uuid AS linkUuid, title, project_url AS projectUrl, host, description,
       course_slug AS courseSlug, certificate_no AS certificateNo, is_public AS isPublic,
@@ -156,7 +155,6 @@ export async function listStudentProjectLinks(accountId: bigint) {
 }
 
 export async function listPublicSelfDeclaredProjectLinks(accountIds: bigint[]) {
-  await ensureStudentProjectLinkTables()
   const ids = Array.from(new Set(accountIds.map((id) => id.toString()).filter(Boolean))).map((id) => BigInt(id))
   if (!ids.length) return new Map<string, StudentProjectLink[]>()
 

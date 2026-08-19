@@ -56,7 +56,6 @@ function sqlFromIso(value: unknown) {
 }
 
 export async function listSchoolCalls(): Promise<SchoolCallBooking[]> {
-  await ensureBuildServiceTables()
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT
       booking_uuid, full_name, school_name, work_email, phone, role_title, student_population,

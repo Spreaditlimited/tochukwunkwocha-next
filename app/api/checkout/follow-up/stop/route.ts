@@ -4,6 +4,7 @@ import {
   stopAbandonedEnrollmentFollowups,
   verifyAbandonedEnrollmentStopToken
 } from "@/lib/abandoned-enrollment-followups"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 export const dynamic = "force-dynamic"
 
@@ -19,9 +20,9 @@ export async function GET(request: NextRequest) {
       { headers: { "content-type": "text/html; charset=utf-8" } }
     )
   } catch (error) {
-    return NextResponse.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "Payment reminders could not be stopped."
-    }, { status: 500 })
+    return studentApiErrorResponse(error, "Payment reminders could not be stopped. Please try again.", {
+      status: 503,
+      context: "checkout_followup_stop_failed"
+    })
   }
 }

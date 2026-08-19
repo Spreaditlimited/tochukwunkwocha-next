@@ -85,7 +85,6 @@ export async function ensureAdminAccountsTable() {
 }
 
 export async function listAdminAccounts() {
-  await ensureAdminAccountsTable()
   return prisma.tochukwuAdminAccount.findMany({ orderBy: { createdAt: "desc" } })
 }
 

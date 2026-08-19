@@ -481,7 +481,6 @@ export async function makeUniqueBundleSlug(titleOrSlug: string, currentUuid?: st
 }
 
 export async function listAdminResources(search = "") {
-  await ensureResourceTables()
   const q = `%${clean(search, 120)}%`
   const rows = clean(search)
     ? await prisma.$queryRaw<Array<Record<string, unknown>>>`
@@ -558,7 +557,6 @@ async function getResourceBySlugUncached(slug: string, includeDraft = false) {
 export const getResourceBySlug = unstable_cache(getResourceBySlugUncached, ["published-resource-by-slug"], { revalidate: 300 })
 
 export async function listAdminBundles() {
-  await ensureResourceTables()
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT b.id, b.bundle_uuid AS bundleUuid, b.title, b.slug, b.summary, b.description, b.audience_key AS audienceKey,
       b.price_ngn_minor AS priceNgnMinor, b.price_usd_minor AS priceUsdMinor, b.status, b.featured,

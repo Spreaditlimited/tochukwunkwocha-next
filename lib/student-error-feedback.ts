@@ -29,13 +29,15 @@ function messageFrom(error: unknown) {
   return ""
 }
 
-export function studentSafeErrorMessage(error: unknown, fallback: string) {
+export function safeUserErrorMessage(error: unknown, fallback: string) {
   const safeFallback = String(fallback || "Something went wrong. Please try again.").trim()
   const candidate = messageFrom(error).replace(/\s+/g, " ").trim()
   if (!candidate || candidate.length > 500) return safeFallback
   if (TECHNICAL_ERROR_PATTERNS.some((pattern) => pattern.test(candidate))) return safeFallback
   return candidate
 }
+
+export const studentSafeErrorMessage = safeUserErrorMessage
 
 export function studentErrorLogValue(error: unknown) {
   if (error instanceof Error) return error.message

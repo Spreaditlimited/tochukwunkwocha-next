@@ -182,7 +182,6 @@ async function selectSiteShowcases(placement?: SiteShowcasePlacement, activeOnly
 }
 
 export async function listAdminSiteShowcases() {
-  await ensureSiteShowcaseTable()
   return selectSiteShowcases()
 }
 

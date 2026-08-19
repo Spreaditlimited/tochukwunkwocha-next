@@ -614,7 +614,6 @@ function mapLeadRow(row: {
 }
 
 export async function getMarketingDashboard(input: { days?: number; limit?: number } = {}): Promise<MarketingDashboard> {
-  await ensureMarketingLeadsTable()
   const days = Math.min(365, Math.max(1, toInt(input.days, 30)))
   const limit = Math.min(300, Math.max(1, toInt(input.limit, 100)))
 

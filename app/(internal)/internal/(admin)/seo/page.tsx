@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/utils"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { getSeoStats, listSeoImportRuns, listSeoOpportunities } from "@/lib/seo"
 import { buildMetadata } from "@/lib/site-seo"
+import { safeUserErrorMessage } from "@/lib/student-error-feedback"
 import { generateSeoDraftAction, updateOpportunityStatusAction } from "./actions"
 import { GscImportControl } from "./GscImportControl"
 import { GenerateDraftButton } from "./GenerateDraftButton"
@@ -137,7 +138,7 @@ export default async function SeoQueuePage({
       {params.error && (
         <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-semibold leading-relaxed">{params.error}</p>
+          <p className="font-semibold leading-relaxed">{safeUserErrorMessage(params.error, "The SEO request could not be completed. Please try again.")}</p>
         </div>
       )}
 

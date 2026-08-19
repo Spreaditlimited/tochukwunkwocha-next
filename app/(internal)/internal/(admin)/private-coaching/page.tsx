@@ -56,54 +56,7 @@ type CoachingLeadRow = {
   nextFollowUpAt: Date | null
 }
 
-async function ensurePrivateCoachingTables() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_private_ai_coaching_leads (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      lead_uuid VARCHAR(80) NOT NULL,
-      full_name VARCHAR(180) NOT NULL,
-      work_email VARCHAR(220) NOT NULL,
-      phone VARCHAR(80) NULL,
-      country VARCHAR(80) NULL,
-      goal_text LONGTEXT NULL,
-      experience_level VARCHAR(80) NULL,
-      availability VARCHAR(120) NULL,
-      source_path VARCHAR(255) NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_private_ai_coaching_lead_uuid (lead_uuid),
-      KEY idx_private_ai_coaching_email (work_email)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_private_ai_coaching_payments (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      payment_uuid VARCHAR(80) NOT NULL,
-      lead_uuid VARCHAR(80) NULL,
-      work_email VARCHAR(220) NOT NULL,
-      full_name VARCHAR(180) NOT NULL,
-      payment_type VARCHAR(40) NOT NULL DEFAULT 'discovery',
-      plan_key VARCHAR(80) NULL,
-      amount_minor INT NOT NULL DEFAULT 0,
-      currency VARCHAR(10) NOT NULL DEFAULT 'NGN',
-      payment_provider VARCHAR(40) NOT NULL DEFAULT 'paystack',
-      payment_reference VARCHAR(180) NOT NULL,
-      checkout_url VARCHAR(1200) NULL,
-      payment_order_id VARCHAR(180) NULL,
-      payment_status VARCHAR(40) NOT NULL DEFAULT 'initiated',
-      paid_at DATETIME NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_private_ai_coaching_payment_uuid (payment_uuid),
-      UNIQUE KEY uniq_private_ai_coaching_reference (payment_reference)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-}
-
 async function listCoachingLeads() {
-  await ensurePrivateCoachingTables()
   return prisma.$queryRaw<CoachingLeadRow[]>`
     SELECT
       l.lead_uuid AS leadUuid,

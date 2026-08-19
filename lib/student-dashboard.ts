@@ -1,12 +1,10 @@
 import { Prisma } from "@prisma/client"
 import { randomUUID } from "crypto"
 
-import { ensureAffiliateAlignment, matureAffiliateCommissions } from "@/lib/affiliate-alignment"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
 import { listCheckoutBatches } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
-import { addColumnIfMissing } from "@/lib/schema-guards"
 
 function cleanText(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -1100,15 +1098,7 @@ export async function listStudentCertificates(accountId: bigint): Promise<Studen
     .sort((a, b) => new Date(b.issuedAt || 0).getTime() - new Date(a.issuedAt || 0).getTime())
 }
 
-async function ensureStudentCertificateVerificationColumns() {
-  await addColumnIfMissing("student_certificates", "project_url", "TEXT NULL").catch(() => null)
-  await addColumnIfMissing("student_certificates", "project_verified_at", "DATETIME NULL").catch(() => null)
-  await addColumnIfMissing("student_certificates", "project_status_at_issue", "VARCHAR(80) NULL").catch(() => null)
-  await addColumnIfMissing("student_certificates", "share_image_url", "TEXT NULL").catch(() => null)
-}
-
 export async function getStudentCertificatePublic(certificateNo: string): Promise<StudentCertificatePublic | null> {
-  await ensureStudentCertificateVerificationColumns()
   const certNo = cleanText(certificateNo, 140).toUpperCase()
   if (!certNo) return null
   const rows = await prisma.$queryRaw<
@@ -1157,8 +1147,6 @@ export async function getStudentCertificatePublic(certificateNo: string): Promis
 }
 
 export async function getStudentAffiliateSummary(accountId: bigint): Promise<StudentAffiliateSummary> {
-  await ensureAffiliateAlignment()
-  await matureAffiliateCommissions().catch(() => 0)
   const defaultPolicy = {
     defaultHoldDays: defaultAffiliateHoldDays(),
     minPayoutMinor: affiliateMinPayoutMinor("NGN"),

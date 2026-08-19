@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 import { checkoutContext, formatMinorAmount, manualTransferAllowedForCountry } from "@/lib/payments/course-checkout"
 import {
@@ -61,6 +62,9 @@ export async function POST(request: Request) {
     if (isCourseEnrollmentConflict(error)) {
       return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
     }
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load manual payment details" }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not load bank transfer details. Please try again.", {
+      status: 503,
+      context: "manual_checkout_config_failed"
+    })
   }
 }

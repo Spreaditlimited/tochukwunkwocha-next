@@ -218,7 +218,6 @@ export async function ensureAdminSettingsTables() {
 }
 
 export async function listAdminSettings() {
-  await ensureAdminSettingsTables()
   const rows = await prisma.$queryRaw<Array<{ settingKey: string; settingValue: string | null; updatedBy: string | null; updatedAt: Date | null }>>`
     SELECT setting_key AS settingKey, setting_value AS settingValue, updated_by AS updatedBy, updated_at AS updatedAt
     FROM tochukwu_admin_settings
@@ -241,7 +240,6 @@ export async function listAdminSettings() {
 }
 
 export async function listAdminSettingsAudit(limit = 80) {
-  await ensureAdminSettingsTables()
   return prisma.$queryRaw<Array<{ settingKey: string; actionType: string; oldIsSet: number; newIsSet: number; updatedBy: string | null; createdAt: Date }>>`
     SELECT setting_key AS settingKey, action_type AS actionType, old_is_set AS oldIsSet, new_is_set AS newIsSet, updated_by AS updatedBy, created_at AS createdAt
     FROM tochukwu_admin_settings_audit

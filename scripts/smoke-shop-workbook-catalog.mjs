@@ -10,6 +10,11 @@ const sourceFiles = {
   verify: await readFile(path.join(root, "scripts/verify-shop-workbook-assets.mjs"), "utf8")
 }
 const shopSource = await readFile(path.join(root, "lib/shop.ts"), "utf8")
+const shopFormatSource = await readFile(path.join(root, "lib/shop-format.ts"), "utf8")
+const shopCardSource = await readFile(path.join(root, "components/shop/ShopProductCard.tsx"), "utf8")
+const shopDetailSource = await readFile(path.join(root, "app/(public)/shop/[slug]/page.tsx"), "utf8")
+const publicShopSource = await readFile(path.join(root, "app/(public)/shop/page.tsx"), "utf8")
+const dashboardShopSource = await readFile(path.join(root, "app/(student)/dashboard/shop/page.tsx"), "utf8")
 
 const workbooks = [
   {
@@ -78,5 +83,18 @@ assert.match(
   /process\.env\.NODE_ENV === "development"[\s\S]*?status: \{ in: \["published", "draft"\] \}[\s\S]*?status: "published"/,
   "Local development must preview drafts without exposing them in production"
 )
+
+assert.doesNotMatch(
+  shopFormatSource,
+  /-cover\\\.png\$\/,\s*"-mockup\.png"/,
+  "Shop workbook covers must not be replaced with 3D mockups"
+)
+assert.match(shopFormatSource, /-mockup\\\.png\$\/,\s*"-cover\.png"/, "Legacy mockup paths must resolve to flat covers")
+assert.match(shopCardSource, /aspect-\[113\/160\]/, "Public and dashboard shop cards must use the flat cover ratio")
+assert.match(shopCardSource, /workbook cover/, "Shop cards must describe the flat cover image")
+assert.match(shopDetailSource, /aspect-\[113\/160\]/, "Shop details must use the flat cover ratio")
+assert.match(shopDetailSource, /workbook cover/, "Shop details must describe the flat cover image")
+assert.match(publicShopSource, /lg:grid-cols-4/, "The public shop must show four workbooks per desktop row")
+assert.match(dashboardShopSource, /xl:grid-cols-4/, "The student shop must show four workbooks per desktop row")
 
 console.log("Shop workbook catalogue smoke test passed.")

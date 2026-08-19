@@ -292,7 +292,6 @@ export type AffiliateAdminOption = {
 }
 
 export async function listEligibleAffiliateOptions(): Promise<AffiliateAdminOption[]> {
-  await ensureAffiliateAdminTables()
   const rows = await prisma.$queryRaw<Array<{
     code: string | null
     fullName: string | null
@@ -317,7 +316,6 @@ export async function listEligibleAffiliateOptions(): Promise<AffiliateAdminOpti
 }
 
 export async function listAffiliateAdminData(sort = "latest_desc") {
-  await ensureAffiliateAdminTables()
   const [rules, courses, audit, affiliates] = await Promise.all([
     prisma.$queryRaw<Array<{
       id: bigint

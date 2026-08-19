@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { reconcileCoursePaystackOrders } from "@/lib/payments/paystack-reconciliation"
 import { reconcilePaidGroupOrders } from "@/lib/payments/group-order-reconciliation"
 import { acquireAutomationLease, releaseAutomationLease } from "@/lib/automation-leases"
+import { reconcileFinancialTransactions } from "@/lib/admin-financials"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -31,7 +32,8 @@ export async function GET(request: NextRequest) {
       limit: 120
     })
     const groupOrders = await reconcilePaidGroupOrders({ limit: 120, minimumAgeMinutes: 5 })
-    return NextResponse.json({ ok: true, result: paystack, groupOrders })
+    await reconcileFinancialTransactions()
+    return NextResponse.json({ ok: true, result: paystack, groupOrders, financialsReconciled: true })
   } catch (error) {
     return NextResponse.json(
       {

@@ -59,7 +59,7 @@ export default async function StudentShopPage() {
                 {products.length} {products.length === 1 ? "workbook" : "workbooks"}
               </span>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               {products.map((product) => (
                 <ShopProductCard key={product.productUuid} product={product} dashboard />
               ))}

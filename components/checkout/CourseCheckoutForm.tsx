@@ -25,6 +25,7 @@ import { SeatCountStepper } from "@/components/SeatCountStepper"
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { readAffiliateReferralCode, storeAffiliateReferralCode } from "@/components/AffiliateReferralCapture"
 import { TrademarkText } from "@/components/TrademarkText"
+import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import { getRecaptchaToken, preloadRecaptcha } from "@/lib/browser-recaptcha"
 import { resolveCheckoutCourseSlug, type Course } from "@/lib/public-offers"
 import type { CoursePriceValues } from "@/lib/course-price-display"
@@ -210,7 +211,7 @@ function requestAction(value: unknown) {
 
 function checkoutErrorDetails(error: unknown, fallback: string) {
   return {
-    message: error instanceof Error ? error.message : fallback,
+    message: studentSafeErrorMessage(error, fallback),
     action: error instanceof CheckoutRequestError ? error.action : null
   }
 }

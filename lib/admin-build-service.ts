@@ -312,7 +312,6 @@ export function buildCandidateSlots(days = 21, durationMinutes = 30): CallSlot[]
 }
 
 export async function listAvailableCallSlots() {
-  await ensureBuildServiceTables()
   const rows = await prisma.$queryRaw<Array<{ slotStartUtc: Date | string | null }>>`
     SELECT slot_start_utc AS slotStartUtc
     FROM school_call_bookings_tochukwu
@@ -324,7 +323,6 @@ export async function listAvailableCallSlots() {
 }
 
 export async function listBuildScorecardLeads(limit = 200): Promise<BuildScorecardLead[]> {
-  await ensureBuildServiceTables()
   const safeLimit = Math.max(10, Math.min(300, Math.round(Number(limit || 200))))
   const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`
     SELECT
@@ -416,7 +414,6 @@ export async function listBuildScorecardLeads(limit = 200): Promise<BuildScoreca
 }
 
 export async function listBuildCalls(): Promise<BuildCallBooking[]> {
-  await ensureBuildServiceTables()
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT
       c.booking_uuid, c.full_name, c.school_name, c.work_email, c.phone, c.role_title, c.student_population,

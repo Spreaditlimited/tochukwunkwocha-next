@@ -43,14 +43,16 @@ export function ShopProductCard({
     <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5">
 
       {/* Visual / Image Section */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-brand-ink">
+      <div className="relative aspect-[113/160] overflow-hidden border-b border-border bg-muted/30">
         {imageUrl ? (
           <Image
             src={imageUrl}
-            alt={`${product.title} workbook mockup`}
+            alt={`${product.title} workbook cover`}
             fill
-            className="object-cover transition-transform duration-700 group-hover:scale-[1.02]"
-            sizes={dashboard ? "(min-width: 1024px) 28vw, 90vw" : "(min-width: 1024px) 30vw, 90vw"}
+            className="object-cover transition-transform duration-500 group-hover:scale-[1.025]"
+            sizes={dashboard
+              ? "(min-width: 1280px) 20vw, (min-width: 768px) 45vw, 90vw"
+              : "(min-width: 1024px) 22vw, (min-width: 640px) 45vw, 90vw"}
           />
         ) : (
           <div className="flex h-full flex-col justify-between p-8 text-white">
@@ -65,7 +67,7 @@ export function ShopProductCard({
       </div>
 
       {/* Content Section */}
-      <div className="flex flex-1 flex-col p-6 sm:p-8">
+      <div className="flex flex-1 flex-col p-5 sm:p-6">
 
         {/* Fulfillment Badges */}
         <div className="mb-5 flex flex-wrap gap-2">

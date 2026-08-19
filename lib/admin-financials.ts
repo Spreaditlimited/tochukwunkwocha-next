@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
-import { getAdminSettingValue } from "@/lib/admin-settings"
+import { getAdminSettingValues } from "@/lib/admin-settings"
 import { ensureCourseRefundTable } from "@/lib/payment-refunds"
 import { prisma } from "@/lib/prisma"
 
@@ -130,14 +130,54 @@ function validVat(value: unknown, fallback: number) {
   return Number.isFinite(number) && number >= 0 && number <= 100 ? number : fallback
 }
 
+async function financialVatRates() {
+  const settings = await getAdminSettingValues(["SITE_VAT_PERCENT", "INTL_VAT_PERCENT"])
+  return {
+    ngVat: validVat(settings.SITE_VAT_PERCENT, 7.5),
+    internationalVat: validVat(settings.INTL_VAT_PERCENT, 20)
+  }
+}
+
+export async function recordManualPaymentFinancialTransaction(paymentUuidInput: string) {
+  const paymentUuid = clean(paymentUuidInput, 64)
+  if (!paymentUuid) return 0
+  const { ngVat, internationalVat } = await financialVatRates()
+
+  return prisma.$executeRaw(Prisma.sql`
+    INSERT IGNORE INTO tochukwu_financial_transactions
+      (transaction_uuid, source_type, source_uuid, category, payment_type, product_slug, product_label,
+       customer_name, customer_email, currency, sales_amount_minor, discount_minor, vat_minor,
+       processing_fee_minor, shipping_minor, total_collected_minor, provider, payment_reference,
+       paid_at, source_created_at, breakdown_quality, created_at, updated_at)
+    SELECT
+      CONCAT('fin_course_manual_', m.payment_uuid), 'course_manual', m.payment_uuid,
+      'course', 'Manual Transfer', m.course_slug, COALESCE(NULLIF(m.course_slug, ''), 'Course'),
+      m.first_name, m.email, UPPER(COALESCE(m.currency, 'NGN')),
+      COALESCE(m.course_amount_minor,
+        ROUND(COALESCE(m.base_amount_minor, m.amount_minor, 0) /
+          (1 + (CASE WHEN UPPER(COALESCE(m.currency, 'NGN')) = 'NGN' THEN ${ngVat} ELSE ${internationalVat} END / 100)))),
+      COALESCE(m.discount_minor, 0),
+      COALESCE(m.vat_amount_minor,
+        COALESCE(m.base_amount_minor, m.amount_minor, 0) -
+        ROUND(COALESCE(m.base_amount_minor, m.amount_minor, 0) /
+          (1 + (CASE WHEN UPPER(COALESCE(m.currency, 'NGN')) = 'NGN' THEN ${ngVat} ELSE ${internationalVat} END / 100)))),
+      COALESCE(m.processing_fee_minor, 0), 0,
+      COALESCE(m.final_amount_minor, m.amount_minor, 0), 'bank_transfer', m.transfer_reference,
+      COALESCE(m.updated_at, m.created_at), m.created_at,
+      CASE WHEN m.course_amount_minor IS NULL OR m.vat_amount_minor IS NULL OR m.processing_fee_minor IS NULL
+        THEN 'estimated' ELSE 'exact' END,
+      NOW(), NOW()
+    FROM course_manual_payments m
+    WHERE BINARY m.payment_uuid = BINARY ${paymentUuid}
+      AND m.status IN ('approved', 'refunded')
+      AND COALESCE(m.updated_at, m.created_at) IS NOT NULL
+    LIMIT 1
+  `)
+}
+
 export async function reconcileFinancialTransactions() {
   await ensureCourseRefundTable()
-  const [ngVatSetting, internationalVatSetting] = await Promise.all([
-    getAdminSettingValue("SITE_VAT_PERCENT"),
-    getAdminSettingValue("INTL_VAT_PERCENT")
-  ])
-  const ngVat = validVat(ngVatSetting, 7.5)
-  const internationalVat = validVat(internationalVatSetting, 20)
+  const { ngVat, internationalVat } = await financialVatRates()
   const now = new Date()
 
   await prisma.$executeRawUnsafe(`
@@ -322,7 +362,6 @@ function normalizeRow(row: Record<string, unknown>): FinancialTransaction {
 }
 
 export async function listFinancialTransactions(filters: FinancialFilters, allRows = false) {
-  await reconcileFinancialTransactions()
   const where = filterSql(filters)
   const order =
     filters.sort === "oldest" ? Prisma.sql`paid_at ASC, id ASC` :

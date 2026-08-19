@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { Prisma } from "@prisma/client"
+import { cache } from "react"
 
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
@@ -608,7 +609,6 @@ export async function verifyStudentPassword(accountId: bigint, passwordInput: st
 }
 
 export async function getStudentProfile(accountId: bigint) {
-  await ensureStudentDemographicColumns()
   const profilePicture = await getStudentProfilePicture(accountId)
   const account = await prisma.studentAccount.findUnique({ where: { id: accountId } })
   if (!account) throw new Error("Account not found")
@@ -746,7 +746,6 @@ export async function confirmStudentCertificateName(accountId: bigint) {
 }
 
 export async function listStudentSecurity(accountId: bigint, currentToken?: string) {
-  await ensureStudentSecurityTables().catch(() => null)
   const currentTokenHash = currentToken ? shaToken(currentToken) : ""
   const sessions = await prisma.studentSession.findMany({
     where: { accountId, expiresAt: { gt: new Date() } },
@@ -826,7 +825,7 @@ export async function clearStudentSession() {
   cookieStore.delete(COOKIE_NAME)
 }
 
-export async function getStudentSession() {
+const getStudentSessionForRequest = cache(async () => {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value || ""
   if (!token) return null
@@ -880,6 +879,10 @@ export async function getStudentSession() {
       certificateNameUpdatedAt: session.account.certificateNameUpdatedAt
     } satisfies StudentSessionAccount
   }
+})
+
+export async function getStudentSession() {
+  return getStudentSessionForRequest()
 }
 
 export async function requireStudent(returnTo = "") {

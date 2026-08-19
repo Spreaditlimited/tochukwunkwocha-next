@@ -198,7 +198,6 @@ export async function listStudentsProgressByCourse(input?: {
   batchKey?: string
   search?: string
 }) {
-  await ensureLearningProgressTable()
   const courseSlug = canonicalizeCourseSlug(input?.courseSlug)
   const search = clean(input?.search, 180).toLowerCase()
   const enrollmentType = ["all", "individual", "school"].includes(clean(input?.enrollmentType, 40).toLowerCase())
@@ -500,7 +499,6 @@ export async function getStudentCourseProgressDetail(input: {
   accountId?: string | number | null
   email?: string | null
 }) {
-  await ensureLearningProgressTable()
   const courseSlug = canonicalizeCourseSlug(input.courseSlug)
   const accountId = Number(input.accountId || 0)
   const emailInput = clean(input.email, 220).toLowerCase()

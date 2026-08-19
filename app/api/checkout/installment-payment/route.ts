@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 import {
   createInstallmentPayment,
@@ -66,6 +67,9 @@ export async function POST(request: Request) {
       callbackBaseUrl: siteBaseUrl()
     })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not start installment payment" }, { status: 500 })
+    return studentApiErrorResponse(error, "Could not start the installment payment. Please try again.", {
+      status: 503,
+      context: "installment_payment_start_failed"
+    })
   }
 }

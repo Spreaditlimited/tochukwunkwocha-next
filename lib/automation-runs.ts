@@ -54,7 +54,6 @@ export async function finishAutomationRun(runUuid: string, input: { ok: boolean;
 }
 
 export async function listAutomationRunHealth(keys: string[]) {
-  await ensureAutomationRunsTable()
   if (!keys.length) return []
   return prisma.$queryRaw<Array<{
     automationKey: string

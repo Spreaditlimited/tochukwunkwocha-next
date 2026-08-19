@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client"
 import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
-import { addColumnIfMissing } from "@/lib/schema-guards"
 import { listPublicSelfDeclaredProjectLinks, type StudentProjectLink } from "@/lib/student-project-links"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
@@ -62,7 +61,6 @@ function normalizePublicUrl(value: unknown) {
 }
 
 async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStudentProject[]> {
-  await addColumnIfMissing("student_accounts", "public_project_learner_type", "VARCHAR(24) NULL")
   const safeLimit = Math.max(6, Math.min(120, Number.isFinite(Number(limit)) ? Math.round(Number(limit)) : 60))
   const individual = await prisma.$queryRaw<Array<{
     id: bigint

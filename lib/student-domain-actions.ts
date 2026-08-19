@@ -183,7 +183,6 @@ export async function getDomainRegistrationPrice(domainNameInput: unknown, years
 export async function checkStudentDomainAvailability(domainNameInput: unknown) {
   const domainName = normalizeDomain(domainNameInput)
   if (!domainName) throw new Error("domainName is required")
-  await ensureDomainRequestTables()
   const rows = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
     SELECT (
       (SELECT COUNT(*) FROM user_domains WHERE domain_name COLLATE utf8mb4_unicode_ci = ${domainName} COLLATE utf8mb4_unicode_ci)
@@ -402,7 +401,6 @@ export async function saveNetlifyAccess(input: {
 
 export async function loadNetlifyAccess(accountId: bigint, domainNameInput: unknown) {
   const domain = await assertStudentDomain(accountId, domainNameInput)
-  await ensureDomainRequestTables()
   const rows = await prisma.$queryRaw<Array<{
     netlifyEmail: string | null
     netlifyWorkspace: string | null

@@ -19,6 +19,7 @@ import {
   siteBaseUrl
 } from "@/lib/payments/course-checkout"
 import { createStudentTemporaryPassword } from "@/lib/student-auth"
+import { recordManualPaymentFinancialTransaction } from "@/lib/admin-financials"
 
 type ManualPaymentRow = {
   payment_uuid: string
@@ -269,7 +270,14 @@ export async function reviewManualPayment(input: {
     sendManualPaymentMetaPurchase({
       paymentUuid,
       eventSourceUrl: `${siteBaseUrl()}/checkout/${clean(payment.course_slug, 120) || "prompt-to-profit"}`
-    }).catch(() => null)
+    }).catch(() => null),
+    recordManualPaymentFinancialTransaction(paymentUuid).catch(async (error) => {
+      await appendManualPaymentReviewNote(
+        paymentUuid,
+        `[FINANCIAL_RECORD_RETRY_REQUIRED] ${error instanceof Error ? error.message : "The financial record will be recovered by reconciliation."}`
+      )
+      return 0
+    })
   ])
   const activationEmailSent = postEnrollmentResults[0]
   const affiliateCommission = postEnrollmentResults[2]

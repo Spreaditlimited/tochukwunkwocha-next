@@ -912,7 +912,6 @@ export async function listLearningFollowupAdminData(input?: {
   courseSlug?: string
   search?: string
 }) {
-  await ensureLearningFollowupTables()
   const config = await learningFollowupConfig()
   const limit = Math.max(1, Math.min(input?.limit || 150, 300))
   const statusFilter = clean(input?.status, 32).toLowerCase()

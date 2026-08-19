@@ -1,4 +1,4 @@
-import { ensureVideoLibraryTables, PUBLIC_VIDEO_SLOTS, type PublicVideoSlotKey } from "@/lib/admin-video-library"
+import { PUBLIC_VIDEO_SLOTS, type PublicVideoSlotKey } from "@/lib/admin-video-library"
 import { buildSignedLessonEmbedUrlFromRuntimeSettings } from "@/lib/learning-playback"
 import { prisma } from "@/lib/prisma"
 
@@ -46,8 +46,7 @@ export async function getPublicVideoSlot(slotKey: PublicVideoSlotKey): Promise<P
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
     if (!/doesn't exist|does not exist|unknown table|1146/i.test(message)) throw error
-    await ensureVideoLibraryTables()
-    rows = await readSlot()
+    return null
   }
 
   const row = rows[0]

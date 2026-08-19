@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 import { checkoutContext, formatMinorAmount, providerForCountry } from "@/lib/payments/course-checkout"
 
@@ -36,6 +37,9 @@ export async function POST(request: Request) {
       }
     })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not apply coupon" }, { status: 400 })
+    return studentApiErrorResponse(error, "Could not apply this coupon. Please check it and try again.", {
+      status: 400,
+      context: "checkout_coupon_failed"
+    })
   }
 }

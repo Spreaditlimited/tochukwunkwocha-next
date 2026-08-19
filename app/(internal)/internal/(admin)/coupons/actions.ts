@@ -76,29 +76,6 @@ export async function saveCouponAction(formData: FormData) {
   if (discountType === "percent" && (!Number.isFinite(percentOff || 0) || Number(percentOff) <= 0)) throw new Error("Enter a valid percentage discount.")
   if (discountType === "fixed" && !fixedNgnMinor && !fixedGbpMinor) throw new Error("Enter at least one fixed amount.")
 
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS course_coupons (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      code VARCHAR(40) NOT NULL,
-      description VARCHAR(240) NULL,
-      discount_type VARCHAR(16) NOT NULL,
-      percent_off DECIMAL(6,2) NULL,
-      fixed_ngn_minor INT NULL,
-      fixed_gbp_minor INT NULL,
-      course_slug VARCHAR(120) NULL,
-      starts_at DATETIME NULL,
-      ends_at DATETIME NULL,
-      max_uses INT NULL,
-      max_uses_per_email INT NULL,
-      is_active TINYINT(1) NOT NULL DEFAULT 1,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_coupon_code (code),
-      KEY idx_coupon_active_dates (is_active, starts_at, ends_at),
-      KEY idx_coupon_course_slug (course_slug)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
   await prisma.$executeRaw`
     INSERT INTO course_coupons
       (code, description, discount_type, percent_off, fixed_ngn_minor, fixed_gbp_minor, course_slug, starts_at, ends_at,

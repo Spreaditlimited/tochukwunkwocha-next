@@ -381,7 +381,6 @@ export async function deleteCourseLiveSession(sessionUuid: string) {
 }
 
 export async function listStudentLiveSessionsForPairs(pairs: Array<{ courseSlug: string; batchKey: string | null }>) {
-  await ensureCourseLiveSessionTables()
   const cleanPairs = pairs
     .map((pair) => ({ courseSlug: normalizeSlug(pair.courseSlug), batchKey: normalizeBatchKey(pair.batchKey) }))
     .filter((pair) => pair.courseSlug && pair.batchKey)

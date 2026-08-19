@@ -164,7 +164,6 @@ export async function ensureLearningSupportTables() {
 }
 
 export async function listLearningSupportData(filters?: { courseSlug?: string; status?: string; search?: string }) {
-  await ensureLearningSupportTables()
   const courseSlug = normalizeCourseSlug(filters?.courseSlug || "all")
   const status = clean(filters?.status || "all", 32).toLowerCase()
   const search = clean(filters?.search || "", 220).toLowerCase()

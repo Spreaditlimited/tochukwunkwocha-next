@@ -19,7 +19,6 @@ import { sendManualPaymentMetaPurchase as dispatchManualPaymentMetaPurchase } fr
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { normalizeFamilyChildren, savePendingFamilyChildren } from "@/lib/family-enrollment"
 import { familyEnrollmentEnabledForCourse } from "@/lib/payments/course-checkout"
-import { ensurePaystackAuditTable } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { publicActionLinkVariants } from "@/lib/public-site-url"
 
@@ -448,10 +447,6 @@ export async function listEnrollmentPayments(input: {
   search?: string
   limit?: number
 }) {
-  await ensureManualPaymentReviewColumns()
-  const { ensureCourseRefundTable } = await import("@/lib/payment-refunds")
-  await ensureCourseRefundTable()
-  await ensurePaystackAuditTable().catch(() => null)
   const courseSlug = normalizeCourse(input.courseSlug) || "all"
   const status = clean(input.status, 40) || "all"
   const batchKey = clean(input.batchKey, 80) || "all"
@@ -1611,7 +1606,6 @@ export async function listLatestOnboardingEmailFailures(input: {
   batchKey?: string
   limit?: number
 }): Promise<OnboardingEmailFailureRow[]> {
-  await ensureOnboardingEmailRunTables()
   const courseSlug = normalizeCourse(input.courseSlug) || "all"
   const batchKey = clean(input.batchKey, 80) || "all"
   const limit = Math.max(1, Math.min(toInt(input.limit, 20), 100))
@@ -1660,7 +1654,6 @@ export async function sendManualPaymentMetaPurchase(input: {
 }
 
 export async function listHolidayWaitlistContacts(limitInput = 200): Promise<{ contacts: HolidayWaitlistContact[]; total: number }> {
-  await ensureWhatsAppWaitlistTables()
   const limit = Math.max(1, Math.min(toInt(limitInput, 200), 500))
   const [contacts, countRows] = await Promise.all([
     prisma.$queryRaw<Array<{
@@ -1729,7 +1722,6 @@ export async function listWhatsAppMarketingContacts(input: {
   search?: string
   limit?: number
 }): Promise<WhatsAppContact[]> {
-  await ensureWhatsAppMarketingTables()
   const courseSlug = normalizeCourse(input.courseSlug) || "all"
   const opted = clean(input.opted, 20).toLowerCase() || "in"
   const search = clean(input.search, 120).toLowerCase()
@@ -1784,7 +1776,6 @@ export async function listWhatsAppMarketingContacts(input: {
 }
 
 export async function listWhatsAppCampaigns(limitInput = 20): Promise<WhatsAppCampaignRow[]> {
-  await ensureWhatsAppMarketingTables()
   const limit = Math.max(1, Math.min(toInt(limitInput, 20), 80))
   const rows = await prisma.$queryRaw<Array<{
     campaignUuid: string

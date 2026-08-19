@@ -117,7 +117,6 @@ export async function ensureSchoolScorecardTables() {
 }
 
 export async function listSchoolScorecardLeads(limit = 200): Promise<SchoolScorecardLead[]> {
-  await ensureSchoolScorecardTables()
   const safeLimit = Math.max(10, Math.min(300, Math.round(Number(limit || 200))))
   const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`
     SELECT

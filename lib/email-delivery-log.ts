@@ -82,7 +82,6 @@ export async function finishEmailDeliveryLog(input: {
 }
 
 export async function listEmailDeliveryLogs(limit = 100) {
-  await ensureEmailDeliveryTable()
   return prisma.$queryRaw<Array<{
     logUuid: string
     recipient: string

@@ -12,6 +12,7 @@ import {
 } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
 import { trustedPaymentProof } from "@/lib/payment-proof-upload"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import {
   enqueueManualPaymentNotification,
   processPaymentNotificationOutbox
@@ -311,6 +312,9 @@ export async function POST(request: Request) {
     if (isCourseEnrollmentConflict(error)) {
       return NextResponse.json(enrollmentConflictPayload(error), { status: 409 })
     }
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not submit manual payment" }, { status: 500 })
+    return studentApiErrorResponse(error, "Could not submit the payment proof. Please try again.", {
+      status: 503,
+      context: "manual_payment_submit_failed"
+    })
   }
 }

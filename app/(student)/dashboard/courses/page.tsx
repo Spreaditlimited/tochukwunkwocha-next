@@ -17,6 +17,7 @@ import { BatchSwitchPanel, type BatchSwitchEnrollment } from "@/components/stude
 import { CourseWorkbookDownloadLink } from "@/components/student-dashboard/CourseWorkbookDownloadLink"
 import { TrademarkText } from "@/components/TrademarkText"
 import { listIncludedPromptToProfitWorkbooks } from "@/lib/course-workbooks"
+import { mapWithConcurrency } from "@/lib/async-pool"
 import { getBatchSwitchOptions } from "@/lib/student-batch-switch"
 import { getLearningCourseForStudent } from "@/lib/learning-player"
 import {
@@ -52,7 +53,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
   })
   const workbooksUnlocked = includedWorkbooks.some((workbook) => workbook.batchStarted)
   const workbookBatchStartAt = includedWorkbooks.find((workbook) => workbook.batchStartAt)?.batchStartAt || null
-  const progressEntries = await Promise.all(courses.map(async (course) => {
+  const progressEntries = await mapWithConcurrency(courses, 2, async (course) => {
     if (!course.isActive) return [course.courseSlug, { completedLessons: 0, totalLessons: 0, completionPercent: 0 }] as const
     const result = await getLearningCourseForStudent({
       accountId: session.account.id,
@@ -65,7 +66,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
         ? result.course.progress
         : { completedLessons: 0, totalLessons: 0, completionPercent: 0 }
     ] as const
-  }))
+  })
   const progressByCourse = new Map(progressEntries)
   const manualPaymentPending =
     String(params.manual_payment || "") === "pending" &&

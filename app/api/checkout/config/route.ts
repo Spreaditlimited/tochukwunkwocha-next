@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { checkoutContext, formatMinorAmount, normalizeCourse, providerForCountry } from "@/lib/payments/course-checkout"
 import { ServerTiming } from "@/lib/server-timing"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 
 export async function POST(request: Request) {
   const timing = new ServerTiming()
@@ -41,9 +42,10 @@ export async function POST(request: Request) {
     }, { headers: timing.headers() })
   } catch (error) {
     timing.mark("failed")
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not load checkout config" },
-      { status: 500, headers: timing.headers() }
-    )
+    return studentApiErrorResponse(error, "Could not load checkout details. Please try again.", {
+      status: 503,
+      headers: timing.headers(),
+      context: "course_checkout_config_failed"
+    })
   }
 }

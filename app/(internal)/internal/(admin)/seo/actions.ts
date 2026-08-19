@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 
 import { requireAdmin } from "@/lib/auth"
 import { setInternalToast } from "@/lib/internal-toast"
+import { safeUserErrorMessage } from "@/lib/student-error-feedback"
 import {
   generateSeoDraftForOpportunity,
   updateOpportunityStatus
@@ -35,7 +36,7 @@ export async function generateSeoDraftAction(formData: FormData) {
     revalidatePath("/internal/seo")
     nextUrl = `/internal/seo/changes/${result.pidChange}`
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Draft generation failed."
+    const message = safeUserErrorMessage(error, "Draft generation failed. Please try again.")
     nextUrl = `/internal/seo?error=${encodeURIComponent(message)}`
   }
   redirect(nextUrl)
@@ -57,7 +58,7 @@ export async function applySeoChangeAction(formData: FormData) {
     if (review?.blogSlug) revalidatePath(`/blog/${review.blogSlug}`)
     nextUrl = `/internal/seo/changes/${pidChange}?${result.status === "awaiting_link_review" ? "linkReview=1" : `applied=${result.status}`}`
   } catch (error) {
-    nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not apply SEO draft.")}`
+    nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(safeUserErrorMessage(error, "Could not apply SEO draft. Please try again."))}`
   }
   redirect(nextUrl)
 }
@@ -80,7 +81,7 @@ export async function generateSeoRewriteAction(formData: FormData) {
     const result = await prepareSeoRewrite(pidChange)
     revalidatePath(`/internal/seo/changes/${pidChange}`)
     nextUrl = `/internal/seo/changes/${pidChange}?${result.status === "processing" ? "rewrite=processing" : result.status === "awaiting_link_review" ? "linkReview=1" : "rewrite=ready"}`
-  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not generate rewrite.")}` }
+  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(safeUserErrorMessage(error, "Could not generate rewrite. Please try again."))}` }
   redirect(nextUrl)
 }
 
@@ -93,7 +94,7 @@ export async function approveSeoRewriteLinkAction(formData: FormData) {
     const result = await approveSeoRewriteLink({ pidChange, url, scope, approvedBy: admin.adminUuid, note })
     revalidatePath(`/internal/seo/changes/${pidChange}`)
     nextUrl = `/internal/seo/changes/${pidChange}?${result.status === "awaiting_link_review" ? "linkReview=1" : "rewrite=ready"}`
-  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not approve link.")}` }
+  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(safeUserErrorMessage(error, "Could not approve link. Please try again."))}` }
   redirect(nextUrl)
 }
 
@@ -105,7 +106,7 @@ export async function saveSeoInternalLinkSuggestionAction(formData: FormData) {
   try {
     await saveSeoInternalLinkSuggestionFeedback({ pidChange, originalUrl, decision: decision as "keep" | "rejected" | "amended", replacementUrl, note, updatedBy: admin.adminUuid })
     revalidatePath(`/internal/seo/changes/${pidChange}`)
-  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not save internal-link feedback.")}` }
+  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(safeUserErrorMessage(error, "Could not save internal-link feedback. Please try again."))}` }
   redirect(nextUrl)
 }
 
@@ -118,7 +119,7 @@ export async function reviewSeoRewriteLinkAction(formData: FormData) {
     const result = await reviewSeoRewriteLink({ pidChange, url, decision: decision as "rejected" | "amended", replacementUrl, note, reviewedBy: admin.adminUuid })
     revalidatePath(`/internal/seo/changes/${pidChange}`)
     nextUrl = `/internal/seo/changes/${pidChange}?${result.status === "awaiting_link_review" ? "linkReview=1" : "rewrite=ready"}`
-  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not review link.")}` }
+  } catch (error) { nextUrl = `/internal/seo/changes/${pidChange}?error=${encodeURIComponent(safeUserErrorMessage(error, "Could not review link. Please try again."))}` }
   redirect(nextUrl)
 }
 

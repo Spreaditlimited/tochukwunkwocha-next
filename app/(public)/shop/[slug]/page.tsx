@@ -123,15 +123,15 @@ export default async function ShopProductPage({ params }: PageProps) {
 
           <div className="min-w-0">
             {/* Product Cover Asset */}
-            <div className="surface-raised relative aspect-[4/3] w-full overflow-hidden bg-[#eef3fa]">
+            <div className="surface-raised relative mx-auto aspect-[113/160] w-full max-w-[520px] overflow-hidden bg-muted/30">
               {productImageUrl ? (
                 <Image
                   src={productImageUrl}
-                  alt={`${product.title} workbook mockup`}
+                  alt={`${product.title} workbook cover`}
                   fill
                   priority
-                  className="object-contain"
-                  sizes="(min-width: 1024px) 60vw, 100vw"
+                  className="object-cover"
+                  sizes="(min-width: 1280px) 520px, (min-width: 1024px) 45vw, (min-width: 640px) 520px, 92vw"
                 />
               ) : (
                 <div className="relative flex h-full w-full flex-col justify-between overflow-hidden bg-brand-ink p-8 text-white sm:p-12">

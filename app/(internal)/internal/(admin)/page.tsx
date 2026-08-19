@@ -16,7 +16,6 @@ import {
 } from "lucide-react"
 
 import { prisma } from "@/lib/prisma"
-import { ensureStudentDemographicColumns } from "@/lib/student-auth"
 import { requireAdmin } from "@/lib/auth"
 import {
   DashboardStatsVisibility,
@@ -26,171 +25,99 @@ import {
 
 export const dynamic = "force-dynamic"
 
-type CountRow = { total: number | bigint | null }
+type OperationsOverviewRow = {
+  pendingEnrollments: number | bigint | null
+  approvedEnrollments: number | bigint | null
+  students: number | bigint | null
+  individualCertificatesIssued: number | bigint | null
+  schoolCertificatesIssued: number | bigint | null
+  onboardedSchools: number | bigint | null
+  schoolStudents: number | bigint | null
+  demographicProfiles: number | bigint | null
+  installmentPlans: number | bigint | null
+  learningReviews: number | bigint | null
+  transcriptRequests: number | bigint | null
+  marketingLeads30d: number | bigint | null
+  schoolLeads: number | bigint | null
+  buildLeads: number | bigint | null
+  coachingLeads: number | bigint | null
+  seoOpportunities: number | bigint | null
+  videoLessons: number | bigint | null
+  trustedDevices: number | bigint | null
+  securityAlerts: number | bigint | null
+}
 
 function toInt(value: unknown) {
   const numberValue = Number(value || 0)
   return Number.isFinite(numberValue) ? Math.round(numberValue) : 0
 }
 
-async function firstCount(promise: Promise<CountRow[]>) {
-  const rows = await promise.catch(() => [{ total: 0 }])
-  return toInt(rows[0]?.total)
-}
-
 async function getOperationsOverview() {
-  await ensureStudentDemographicColumns().catch(() => null)
-  const [
-    pendingEnrollments,
-    approvedEnrollments,
-    students,
-    individualCertificatesIssued,
-    schoolCertificatesIssued,
-    onboardedSchools,
-    schoolStudents,
-    demographicProfiles,
-    installmentPlans,
-    learningReviews,
-    transcriptRequests,
-    marketingLeads30d,
-    schoolLeads,
-    buildLeads,
-    coachingLeads,
-    seoOpportunities,
-    videoLessons,
-    trustedDevices,
-    securityAlerts
-  ] = await Promise.all([
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COALESCE(SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END), 0) AS total
-      FROM course_manual_payments
-      WHERE status IN ('pending_verification', 'pending', 'submitted')
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT (
-        COALESCE((
-          SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
-          FROM course_orders
-          WHERE status = 'paid'
-        ), 0)
-        +
-        COALESCE((
-          SELECT SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END)
-          FROM course_manual_payments
-          WHERE status = 'approved'
-        ), 0)
-      ) AS total
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM student_accounts
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM student_certificates
-      WHERE status = 'issued'
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM school_certificates
-      WHERE status = 'issued'
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM school_accounts sc
-      WHERE COALESCE(sc.status, 'active') = 'active'
-        AND EXISTS (
-          SELECT 1
-          FROM school_students ss
-          WHERE ss.school_id = sc.id
-            AND COALESCE(ss.status, 'active') = 'active'
-        )
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM school_students ss
-      JOIN school_accounts sc ON sc.id = ss.school_id
-      WHERE COALESCE(ss.status, 'active') = 'active'
-        AND COALESCE(sc.status, 'active') = 'active'
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM student_accounts
-      WHERE COALESCE(demographic_country, '') <> ''
-        AND COALESCE(age_band, '') <> ''
-        AND COALESCE(learner_category, '') <> ''
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM student_installment_plans
-      WHERE status <> 'merged'
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_learning_assignments
-      WHERE status IN ('submitted', 'in_review')
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_transcript_access
-      WHERE status = 'pending'
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_marketing_leads
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_school_scorecard_leads
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_build_scorecard_leads
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_private_ai_coaching_leads
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_seo_opportunities
-      WHERE status NOT IN ('applied', 'dismissed')
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM tochukwu_learning_lessons
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM student_account_devices
-    `),
-    firstCount(prisma.$queryRaw<CountRow[]>`
-      SELECT COUNT(*) AS total
-      FROM student_security_alerts
-      WHERE status = 'open'
-    `)
-  ])
+  // One statement keeps this page to one connection and one round trip. The old
+  // Promise.all issued 19 concurrent queries against a production pool of two.
+  const rows = await prisma.$queryRaw<OperationsOverviewRow[]>`
+    SELECT
+      (SELECT COALESCE(SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END), 0)
+       FROM course_manual_payments
+       WHERE status IN ('pending_verification', 'pending', 'submitted')) AS pendingEnrollments,
+      ((SELECT COALESCE(SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END), 0)
+        FROM course_orders WHERE status = 'paid')
+       +
+       (SELECT COALESCE(SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END), 0)
+        FROM course_manual_payments WHERE status = 'approved')) AS approvedEnrollments,
+      (SELECT COUNT(*) FROM student_accounts) AS students,
+      (SELECT COUNT(*) FROM student_certificates WHERE status = 'issued') AS individualCertificatesIssued,
+      (SELECT COUNT(*) FROM school_certificates WHERE status = 'issued') AS schoolCertificatesIssued,
+      (SELECT COUNT(*)
+       FROM school_accounts sc
+       WHERE COALESCE(sc.status, 'active') = 'active'
+         AND EXISTS (
+           SELECT 1 FROM school_students ss
+           WHERE ss.school_id = sc.id AND COALESCE(ss.status, 'active') = 'active'
+         )) AS onboardedSchools,
+      (SELECT COUNT(*)
+       FROM school_students ss
+       JOIN school_accounts sc ON sc.id = ss.school_id
+       WHERE COALESCE(ss.status, 'active') = 'active'
+         AND COALESCE(sc.status, 'active') = 'active') AS schoolStudents,
+      (SELECT COUNT(*)
+       FROM student_accounts
+       WHERE COALESCE(demographic_country, '') <> ''
+         AND COALESCE(age_band, '') <> ''
+         AND COALESCE(learner_category, '') <> '') AS demographicProfiles,
+      (SELECT COUNT(*) FROM student_installment_plans WHERE status <> 'merged') AS installmentPlans,
+      (SELECT COUNT(*) FROM tochukwu_learning_assignments WHERE status IN ('submitted', 'in_review')) AS learningReviews,
+      (SELECT COUNT(*) FROM tochukwu_transcript_access WHERE status = 'pending') AS transcriptRequests,
+      (SELECT COUNT(*) FROM tochukwu_marketing_leads WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS marketingLeads30d,
+      (SELECT COUNT(*) FROM tochukwu_school_scorecard_leads) AS schoolLeads,
+      (SELECT COUNT(*) FROM tochukwu_build_scorecard_leads) AS buildLeads,
+      (SELECT COUNT(*) FROM tochukwu_private_ai_coaching_leads) AS coachingLeads,
+      (SELECT COUNT(*) FROM tochukwu_seo_opportunities WHERE status NOT IN ('applied', 'dismissed')) AS seoOpportunities,
+      (SELECT COUNT(*) FROM tochukwu_learning_lessons) AS videoLessons,
+      (SELECT COUNT(*) FROM student_account_devices) AS trustedDevices,
+      (SELECT COUNT(*) FROM student_security_alerts WHERE status = 'open') AS securityAlerts
+  `
+  const row = rows[0]
 
   return {
-    pendingEnrollments,
-    approvedEnrollments,
-    students,
-    certificatesIssued: individualCertificatesIssued + schoolCertificatesIssued,
-    onboardedSchools,
-    schoolStudents,
-    demographicProfiles,
-    installmentPlans,
-    learningReviews,
-    transcriptRequests,
-    marketingLeads30d,
-    schoolLeads,
-    buildLeads,
-    coachingLeads,
-    seoOpportunities,
-    videoLessons,
-    trustedDevices,
-    securityAlerts
+    pendingEnrollments: toInt(row?.pendingEnrollments),
+    approvedEnrollments: toInt(row?.approvedEnrollments),
+    students: toInt(row?.students),
+    certificatesIssued: toInt(row?.individualCertificatesIssued) + toInt(row?.schoolCertificatesIssued),
+    onboardedSchools: toInt(row?.onboardedSchools),
+    schoolStudents: toInt(row?.schoolStudents),
+    demographicProfiles: toInt(row?.demographicProfiles),
+    installmentPlans: toInt(row?.installmentPlans),
+    learningReviews: toInt(row?.learningReviews),
+    transcriptRequests: toInt(row?.transcriptRequests),
+    marketingLeads30d: toInt(row?.marketingLeads30d),
+    schoolLeads: toInt(row?.schoolLeads),
+    buildLeads: toInt(row?.buildLeads),
+    coachingLeads: toInt(row?.coachingLeads),
+    seoOpportunities: toInt(row?.seoOpportunities),
+    videoLessons: toInt(row?.videoLessons),
+    trustedDevices: toInt(row?.trustedDevices),
+    securityAlerts: toInt(row?.securityAlerts)
   }
 }
 

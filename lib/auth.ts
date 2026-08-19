@@ -1,6 +1,7 @@
 import crypto from "crypto"
 import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { cache } from "react"
 
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
 import { ensureAdminAccountsTable } from "@/lib/admin-accounts"
@@ -244,18 +245,16 @@ export async function clearAdminSession() {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value || ""
   if (token) {
-    await ensureAdminSecurityTables().catch(() => null)
     await prisma.$executeRaw`DELETE FROM tochukwu_admin_sessions WHERE token_hash = ${sha256(token)}`.catch(() => null)
   }
   cookieStore.delete(COOKIE_NAME)
 }
 
-export async function getAdminSession() {
+const getAdminSessionForRequest = cache(async () => {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value || ""
   if (!token) return null
   try {
-    await ensureAdminSecurityTables()
     const rows = await prisma.$queryRaw<Array<{
       adminUuid: string
       fullName: string
@@ -296,6 +295,10 @@ export async function getAdminSession() {
   } catch {
     return null
   }
+})
+
+export async function getAdminSession() {
+  return getAdminSessionForRequest()
 }
 
 export async function requireAdmin(path?: string) {

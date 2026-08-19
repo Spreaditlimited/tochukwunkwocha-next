@@ -58,7 +58,6 @@ export async function clearStudentProfilePicture(accountId: bigint) {
 }
 
 export async function getStudentProfilePicture(accountId: bigint) {
-  await ensureStudentProfilePictureColumns()
   const rows = await prisma.$queryRaw<Array<{
     profilePictureUrl: string | null
     profilePicturePublicId: string | null

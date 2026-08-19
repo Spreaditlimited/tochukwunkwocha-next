@@ -15,6 +15,7 @@ import {
 } from "@/lib/payments/course-checkout"
 import { clientIpFromRequest, verifyRecaptchaToken } from "@/lib/recaptcha"
 import { ServerTiming } from "@/lib/server-timing"
+import { studentApiErrorResponse } from "@/lib/student-api-error"
 import { enqueueAbandonedEnrollmentFollowup } from "@/lib/abandoned-enrollment-followups"
 import {
   assertNoActiveIndividualEnrollment,
@@ -162,9 +163,10 @@ export async function POST(request: Request) {
     if (isCourseEnrollmentConflict(error)) {
       return NextResponse.json(enrollmentConflictPayload(error), { status: 409, headers: timing.headers() })
     }
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Could not create checkout order" },
-      { status: 500, headers: timing.headers() }
-    )
+    return studentApiErrorResponse(error, "Could not create your checkout. Please try again.", {
+      status: 503,
+      headers: timing.headers(),
+      context: "course_checkout_order_failed"
+    })
   }
 }

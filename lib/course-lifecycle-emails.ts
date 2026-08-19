@@ -606,7 +606,6 @@ export async function listCourseLifecycleBatchOptions() {
 }
 
 export async function listCourseLifecycleDeliveryStats() {
-  await ensureCourseLifecycleTables()
   const rows = await prisma.$queryRaw<Array<{ status: string; total: bigint; latestSentAt: Date | null }>>`
     SELECT status, COUNT(*) AS total, MAX(sent_at) AS latestSentAt
     FROM tochukwu_course_lifecycle_deliveries GROUP BY status ORDER BY status
@@ -615,7 +614,6 @@ export async function listCourseLifecycleDeliveryStats() {
 }
 
 export async function listCourseLifecycleDeliveries(limit = 150) {
-  await ensureCourseLifecycleTables()
   const rows = await prisma.$queryRaw<Array<{
     deliveryUuid: string
     courseSlug: string

@@ -26,6 +26,7 @@
     "smoke:admin-installments-search": "node scripts/smoke-admin-installments-search.mjs",
     "smoke:installment-reminders": "node scripts/smoke-installment-reminders.mjs",
     "smoke:student-scale-readiness": "node scripts/smoke-student-scale-readiness.mjs",
+    "smoke:dashboard-resilience": "node scripts/smoke-dashboard-resilience.mjs",
     "smoke:course-enrollment-guard": "node scripts/smoke-course-enrollment-guard.mjs",
     "smoke:course-enrollment-guard-db": "node --env-file=.env scripts/smoke-course-enrollment-guard-db.mjs",
     "smoke:group-seat-batches": "node scripts/smoke-group-seat-batch-assignment.mjs",

@@ -20,6 +20,7 @@ import { hasVerifiedStudentProjectProfile, listStudentProjectLinks } from "@/lib
 import { getLearningCourseForStudent } from "@/lib/learning-player"
 import { courseName, getStudentCertificatePublic, listStudentCertificates, listStudentCourses, statusLabel, statusTone } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
+import { mapWithConcurrency } from "@/lib/async-pool"
 import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -165,7 +166,7 @@ export default async function StudentCertificatesPage({
         .map((course) => [course.courseSlug, { courseSlug: course.courseSlug, courseName: course.courseName }])
     ).values()
   )
-  const activeCourses = await Promise.all(activeCourseEntries.map(async (course) => {
+  const activeCourses = await mapWithConcurrency(activeCourseEntries, 2, async (course) => {
     const result = await getLearningCourseForStudent({
       accountId: session.account.id,
       email: session.account.email,
@@ -180,7 +181,7 @@ export default async function StudentCertificatesPage({
       totalLessons: progress.totalLessons,
       completionPercent: progress.completionPercent
     }
-  }))
+  })
   const certificateProofEnabledSlugs = new Set(
     await getCertificateProofEnabledCourseSlugs(activeCourses.map((course) => course.courseSlug))
   )
