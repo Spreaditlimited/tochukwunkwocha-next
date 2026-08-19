@@ -17,7 +17,9 @@ import {
 } from "lucide-react"
 
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { brand } from "@/lib/brand"
+import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { buildMetadata } from "@/lib/site-seo"
 
 export const metadata = buildMetadata({
@@ -26,9 +28,17 @@ export const metadata = buildMetadata({
   path: "/courses"
 })
 
+export const dynamic = "force-dynamic"
+
 const sectionContainer = "site-container"
 
-export default function ProgrammesPage() {
+export default async function ProgrammesPage() {
+  const [basicPrices, advancedPrices, businessPrices, schoolPrices] = await Promise.all([
+    getPublicCourseSettings("prompt-to-profit-holiday"),
+    getPublicCourseSettings("prompt-to-production"),
+    getPublicCourseSettings("ai-for-everyday-business-owners"),
+    getPublicCourseSettings("prompt-to-profit-schools")
+  ])
   const builtProjects = [
     "Business websites", "Personal portfolio websites", "Inventory management systems",
     "Expense trackers", "Invoice generators", "School management tools",
@@ -86,6 +96,7 @@ export default function ProgrammesPage() {
                   <p>Our flagship programme for complete beginners. You do not need programming experience or a technical background.</p>
                   <p>We start from the fundamentals and gradually guide you through the process of working effectively with AI to build practical digital solutions. Learn how to think clearly, solve problems, and collaborate with AI in a structured way.</p>
                 </div>
+                <CourseFeeDisplay prices={basicPrices} className="mt-8" />
                 <div className="mt-10 hidden lg:block">
                   <Link href="/courses/prompt-to-profit" className="btn-primary px-8 py-3.5 text-base">
                     Explore
@@ -127,6 +138,7 @@ export default function ProgrammesPage() {
                   <p>Designed for learners who are ready to move beyond beginner projects.</p>
                   <p>The programme focuses on developing larger applications, working with databases, user authentication, structured project architecture, and AI-assisted software development for real business use cases.</p>
                 </div>
+                <CourseFeeDisplay prices={advancedPrices} tone="dark" className="mt-8" />
                 <div className="mt-10 hidden lg:block">
                   <Link href="/courses/prompt-to-production" className="btn-inverse px-8 py-3.5 text-base">
                     Explore
@@ -170,6 +182,7 @@ export default function ProgrammesPage() {
                   <p>A practical programme for business owners who want useful results from AI without learning to code.</p>
                   <p>Learn how to use ChatGPT to save time, improve customer communication, create stronger content, organise ideas, and work through everyday business tasks with greater clarity.</p>
                 </div>
+                <CourseFeeDisplay prices={businessPrices} className="mt-8" />
                 <div className="mt-10 hidden lg:block">
                   <Link href="/courses/ai-for-everyday-business-owners" className="btn-primary px-8 py-3.5 text-base">
                     Explore
@@ -218,6 +231,7 @@ export default function ProgrammesPage() {
                   <p>Enable your educational institution to introduce structured AI learning without increasing administrative complexity.</p>
                   <p>Suitable for primary schools, secondary schools, after-school clubs, and other educational organisations that want to prepare learners for a future shaped by Artificial Intelligence.</p>
                 </div>
+                <CourseFeeDisplay prices={schoolPrices} tone="dark" perLearner className="mt-8" />
                 <div className="mt-10 hidden lg:block">
                   <Link href="/courses/prompt-to-profit-schools" className="btn-inverse px-8 py-3.5 text-base">
                     Explore

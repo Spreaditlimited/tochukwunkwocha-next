@@ -13,6 +13,8 @@ import {
   XCircle 
 } from "lucide-react"
 
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
+import type { CoursePriceValues } from "@/lib/course-price-display"
 import { buildMetadata } from "@/lib/site-seo"
 
 export const metadata = buildMetadata({
@@ -23,7 +25,7 @@ export const metadata = buildMetadata({
 
 const sectionContainer = "site-container"
 
-export default function EverydayBusinessOwnersPage() {
+export default function EverydayBusinessOwnersPage({ coursePrices }: { coursePrices: CoursePriceValues | null }) {
   const modules = [
     {
       num: "01",
@@ -254,6 +256,7 @@ export default function EverydayBusinessOwnersPage() {
           <p className="mt-6 text-lg leading-relaxed text-slate-300 sm:text-xl">
             AI is not here to replace serious business people. It is here to help serious business people work better. Learn how to use it properly today.
           </p>
+          <CourseFeeDisplay prices={coursePrices} tone="dark" className="mx-auto mt-8 max-w-2xl" showCheckoutNote />
           
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link href="/checkout/ai-for-everyday-business-owners" className="btn-primary flex w-full items-center justify-center bg-white text-brand-ink hover:bg-slate-100 sm:w-auto px-8 py-4 text-base">

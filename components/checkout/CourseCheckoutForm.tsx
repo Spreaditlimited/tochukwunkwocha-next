@@ -22,10 +22,12 @@ import {
 import { PremiumPicker } from "@/components/PremiumPicker"
 import { RecaptchaDisclosure } from "@/components/RecaptchaDisclosure"
 import { SeatCountStepper } from "@/components/SeatCountStepper"
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { readAffiliateReferralCode, storeAffiliateReferralCode } from "@/components/AffiliateReferralCapture"
 import { TrademarkText } from "@/components/TrademarkText"
 import { getRecaptchaToken, preloadRecaptcha } from "@/lib/browser-recaptcha"
 import { resolveCheckoutCourseSlug, type Course } from "@/lib/public-offers"
+import type { CoursePriceValues } from "@/lib/course-price-display"
 
 type Provider = "paystack" | "stripe" | "manual_transfer" | "installment"
 
@@ -318,7 +320,7 @@ function uploadDirectToCloudinary(
   })
 }
 
-export function CourseCheckoutForm({ course }: { course: Course }) {
+export function CourseCheckoutForm({ course, coursePrices }: { course: Course; coursePrices: CoursePriceValues | null }) {
   const checkoutCourseSlug = resolveCheckoutCourseSlug(course)
   const publicCourseSlug = course.slug
   const [firstName, setFirstName] = useState("")
@@ -1001,6 +1003,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
                   <p className="eyebrow text-sky-400">Order Summary</p>
                   <h2 className="mt-2 font-heading text-2xl font-black tracking-tight"><TrademarkText text={course.title} /></h2>
                   <p className="mt-4 text-sm leading-relaxed text-slate-300">{course.description}</p>
+                  <CourseFeeDisplay prices={coursePrices} tone="dark" compact className="mt-6" showCheckoutNote />
 
                   <div className="mt-8 border-t border-dashed border-white/20 pt-8">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Investment</p>
@@ -1062,6 +1065,7 @@ export function CourseCheckoutForm({ course }: { course: Course }) {
               <p className="eyebrow text-sky-400">Order Summary</p>
               <h2 className="mt-2 font-heading text-2xl font-black tracking-tight"><TrademarkText text={course.title} /></h2>
               <p className="mt-4 text-sm leading-relaxed text-slate-300">{course.description}</p>
+              <CourseFeeDisplay prices={coursePrices} tone="dark" compact className="mt-6" showCheckoutNote />
 
               <div className="mt-8 border-t border-dashed border-white/20 pt-8">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Investment</p>

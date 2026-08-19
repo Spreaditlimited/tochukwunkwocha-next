@@ -24,7 +24,9 @@ import {
 import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
+import type { CoursePriceValues } from "@/lib/course-price-display"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { getCourse } from "@/lib/public-offers"
 
@@ -32,7 +34,7 @@ type Course = NonNullable<ReturnType<typeof getCourse>>
 
 const sectionContainer = "site-container"
 
-export async function PromptToProfitAdvancedCoursePage({ course }: { course: Course }) {
+export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }: { course: Course; coursePrices: CoursePriceValues | null }) {
   const introductionVideo = await getPublicVideoSlot("prompt-to-profit-advanced-intro")
   const tools = [
     { name: "Visual Studio Code", icon: Terminal },
@@ -176,14 +178,13 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
 
       <section id="course-overview" className="scroll-mt-20 bg-background py-10">
         <div className={sectionContainer}>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
             {[
               { label: "Duration", value: "4 Weeks", icon: Calendar },
               { label: "Delivery", value: "46 Recorded + 4 Live Classes", icon: Video },
               { label: "Skill Level", value: "Intermediate", icon: ShieldCheck },
               { label: "Access", value: "One Full Year", icon: MonitorPlay },
-              { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 },
-              { label: "Course Cost", value: "₦150,000", icon: CreditCard }
+              { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 }
             ].map((stat) => {
               const Icon = stat.icon
               return (
@@ -194,6 +195,11 @@ export async function PromptToProfitAdvancedCoursePage({ course }: { course: Cou
                 </div>
               )
             })}
+            <CourseFeeDisplay
+              prices={coursePrices}
+              className="surface-raised flex flex-col items-center justify-center bg-card p-6 text-center"
+              statCard
+            />
           </div>
         </div>
       </section>

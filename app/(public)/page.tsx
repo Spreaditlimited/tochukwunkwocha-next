@@ -17,9 +17,11 @@ import {
 
 import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark } from "@/components/TrademarkText"
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { brand } from "@/lib/brand"
 import { getBlogImageSrc, getPublishedPosts } from "@/lib/blog"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
+import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { buildMetadata } from "@/lib/site-seo"
 import { formatDate } from "@/lib/utils"
 
@@ -34,9 +36,12 @@ export const metadata = buildMetadata({
 const sectionContainer = "site-container"
 
 export default async function HomePage() {
-  const [posts, introductionVideo] = await Promise.all([
+  const [posts, introductionVideo, basicPrices, advancedPrices, schoolPrices] = await Promise.all([
     getPublishedPosts(3),
-    getPublicVideoSlot("home-introduction")
+    getPublicVideoSlot("home-introduction"),
+    getPublicCourseSettings("prompt-to-profit-holiday"),
+    getPublicCourseSettings("prompt-to-production"),
+    getPublicCourseSettings("prompt-to-profit-schools")
   ])
 
   const buildProjects = [
@@ -191,6 +196,7 @@ export default async function HomePage() {
                 <p className="mt-4 text-base leading-relaxed text-muted-foreground">
                   Our flagship beginner programme introduces learners to AI through practical projects. No previous programming experience required. Build real digital solutions from the very beginning.
                 </p>
+                <CourseFeeDisplay prices={basicPrices} compact className="mt-6" />
               </div>
               <Link href="/courses/prompt-to-profit" className="mt-10 btn-primary w-fit">
                 Explore Programme
@@ -205,6 +211,7 @@ export default async function HomePage() {
                 <p className="mt-4 text-base leading-relaxed text-slate-300">
                   Designed for learners who want to build larger, more sophisticated applications. Work with databases, authentication, deployment, and advanced AI-assisted software development techniques.
                 </p>
+                <CourseFeeDisplay prices={advancedPrices} tone="dark" compact className="mt-6" />
               </div>
               <Link href="/courses/prompt-to-production" className="mt-10 inline-flex items-center font-bold text-sky-400 hover:text-sky-300">
                 Explore Programme <ArrowRight className="ml-2 h-4 w-4" />
@@ -219,6 +226,7 @@ export default async function HomePage() {
                 <p className="mt-4 text-base leading-relaxed text-muted-foreground">
                   A complete AI learning platform designed specifically for schools. Administrators manage enrolment and monitor progress. Students access learning securely using unique access codes.
                 </p>
+                <CourseFeeDisplay prices={schoolPrices} compact perLearner className="mt-6" />
               </div>
               <Link href="/courses/prompt-to-profit-schools" className="mt-10 btn-secondary w-fit border-primary/30">
                 Learn More

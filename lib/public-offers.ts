@@ -38,7 +38,7 @@ export const courses = [
     legacyHref: "/enrol-prompt-to-profit",
     logo: "/brand/prompt-to-profit-logo.webp",
     status: "Enrolling",
-    price: "Pricing confirmed at checkout",
+    price: "Available in NGN, USD, GBP, and EUR",
     audience: "Beginners, students, parents, entrepreneurs, and early builders",
     duration: "Project-based cohort",
     includes: [
@@ -66,7 +66,7 @@ export const courses = [
     legacyHref: "/enrol-prompt-to-production",
     logo: "/brand/prompt-to-profit-logo.webp",
     status: "Applications open",
-    price: "Pricing confirmed at checkout",
+    price: "Available in NGN, USD, GBP, and EUR",
     audience: "Prompt to Profit Basic graduates and learners with equivalent AI-assisted building experience",
     duration: "4-week advanced cohort",
     includes: [
@@ -96,7 +96,7 @@ export const courses = [
     legacyHref: "/enrol-ai-for-everyday-business-owners",
     logo: null,
     status: "Business path",
-    price: "Pricing confirmed at checkout",
+    price: "Available in NGN, USD, GBP, and EUR",
     audience: "Business owners and operators adopting AI for daily work",
     duration: "Self-paced or cohort-based",
     includes: [
@@ -124,7 +124,7 @@ export const courses = [
     legacyHref: "/enrol-prompt-to-profit-schools",
     logo: "/brand/prompt-to-profit-logo.webp",
     status: "School enquiries",
-    price: "School pricing confirmed after enquiry",
+    price: "Per-learner pricing available in NGN, USD, GBP, and EUR",
     audience: "School owners, administrators, teachers, and student cohorts",
     duration: "School implementation programme",
     includes: [

@@ -132,7 +132,7 @@ export function courseJsonLd(course: {
   href: string
   audience?: string
   duration?: string
-}) {
+}, offers: Array<Record<string, unknown>> = []) {
   return {
     "@context": "https://schema.org",
     "@type": "Course",
@@ -145,7 +145,8 @@ export function courseJsonLd(course: {
       url: getSiteUrl()
     },
     audience: course.audience,
-    timeRequired: course.duration
+    timeRequired: course.duration,
+    offers: offers.length ? offers : undefined
   }
 }
 

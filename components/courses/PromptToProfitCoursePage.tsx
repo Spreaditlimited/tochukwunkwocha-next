@@ -26,6 +26,7 @@ import {
 import { PublicVideoSlotPlayer } from "@/components/PublicVideoSlotPlayer"
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
@@ -517,11 +518,8 @@ export async function PromptToProfitCoursePage({
                       <Award className="h-4 w-4 text-primary" />
                       Project Certificate
                     </li>
-                    <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                      <CreditCard className="h-4 w-4 text-primary" />
-                      For N10,000 only
-                    </li>
                   </ul>
+                  <CourseFeeDisplay prices={courseSettings} tone="dark" className="mt-6" showCheckoutNote />
                 </div>
               </div>
             </div>

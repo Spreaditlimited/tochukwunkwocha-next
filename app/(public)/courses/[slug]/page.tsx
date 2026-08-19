@@ -8,8 +8,10 @@ import AiForEverydayBusinessOwnersCoursePage from "@/components/courses/AiForEve
 import { PromptToProfitAdvancedCoursePage } from "@/components/courses/PromptToProfitAdvancedCoursePage"
 import { PromptToProfitCoursePage } from "@/components/courses/PromptToProfitCoursePage"
 import { PromptToProfitSchoolsCoursePage } from "@/components/courses/PromptToProfitSchoolsCoursePage"
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { JsonLd } from "@/components/JsonLd"
 import { TrademarkText } from "@/components/TrademarkText"
+import { courseOffers } from "@/lib/course-price-display"
 import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { getCourse, resolveCourseSlug } from "@/lib/public-offers"
 import { listPublishedSiteShowcases } from "@/lib/site-showcases"
@@ -39,9 +41,16 @@ export default async function CoursePage({ params }: CoursePageProps) {
   }
 
   const course = getCourse(canonicalSlug)
+  const showcaseSlug = course?.slug === "prompt-to-profit" || course?.slug === "prompt-to-profit-schools"
+    ? course.slug
+    : ""
+  const [courseSettings, studentWebsites] = await Promise.all([
+    course ? getPublicCourseSettings(course.checkoutCourseSlug) : Promise.resolve(null),
+    showcaseSlug ? listPublishedSiteShowcases(showcaseSlug) : Promise.resolve([])
+  ])
   const pageJsonLd = course
     ? [
-        courseJsonLd(course),
+        courseJsonLd(course, courseOffers(courseSettings)),
         breadcrumbJsonLd([
           { name: "Home", path: "/" },
           { name: "Courses", path: "/courses" },
@@ -51,10 +60,6 @@ export default async function CoursePage({ params }: CoursePageProps) {
     : null
 
   if (course?.slug === "prompt-to-profit") {
-    const [courseSettings, studentWebsites] = await Promise.all([
-      getPublicCourseSettings(course.checkoutCourseSlug),
-      listPublishedSiteShowcases("prompt-to-profit")
-    ])
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
@@ -67,7 +72,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <PromptToProfitAdvancedCoursePage course={course} />
+        <PromptToProfitAdvancedCoursePage course={course} coursePrices={courseSettings} />
       </>
     )
   }
@@ -76,17 +81,16 @@ export default async function CoursePage({ params }: CoursePageProps) {
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <AiForEverydayBusinessOwnersCoursePage />
+        <AiForEverydayBusinessOwnersCoursePage coursePrices={courseSettings} />
       </>
     )
   }
 
   if (course?.slug === "prompt-to-profit-schools") {
-    const studentWebsites = await listPublishedSiteShowcases("prompt-to-profit-schools")
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <PromptToProfitSchoolsCoursePage studentWebsites={studentWebsites} />
+        <PromptToProfitSchoolsCoursePage studentWebsites={studentWebsites} coursePrices={courseSettings} />
       </>
     )
   }
@@ -101,7 +105,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
     legacyHref: "",
     logo: null,
     status: "Route scaffold",
-    price: "Pricing confirmed at checkout",
+    price: "Available in NGN, USD, GBP, and EUR",
     audience: "Learners",
     duration: "Programme",
     includes: ["Product page route is ready for migrated content."],
@@ -158,7 +162,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
               </div>
               <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-4">
                 <p className="text-xs font-black uppercase text-slate-400">Price</p>
-                <p className="mt-2 text-sm font-bold text-white">{displayCourse.price}</p>
+                <CourseFeeDisplay prices={courseSettings} tone="dark" compact className="mt-3" showCheckoutNote />
               </div>
               <div className="mt-4 flex items-center gap-2 text-sm text-slate-300">
                 <CheckCircle2 className="h-4 w-4 text-brand-sky" />

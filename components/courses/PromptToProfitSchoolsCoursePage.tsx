@@ -13,6 +13,8 @@ import {
   Trophy
 } from "lucide-react"
 
+import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
+import type { CoursePriceValues } from "@/lib/course-price-display"
 import type { SiteShowcase } from "@/lib/site-showcases"
 
 function BrowserMockup({ title, url, iframeSrc }: { title: string; url: string; iframeSrc?: string }) {
@@ -88,7 +90,7 @@ const parentTestimonials = [
   }
 ]
 
-export function PromptToProfitSchoolsCoursePage({ studentWebsites }: { studentWebsites: SiteShowcase[] }) {
+export function PromptToProfitSchoolsCoursePage({ studentWebsites, coursePrices }: { studentWebsites: SiteShowcase[]; coursePrices: CoursePriceValues | null }) {
   const [view, setView] = useState<"landing" | "intro" | "questions" | "lead" | "result">("landing")
   const [currentQ, setCurrentQ] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -256,6 +258,7 @@ export function PromptToProfitSchoolsCoursePage({ studentWebsites }: { studentWe
             <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
               Find out in 3 minutes. Take the readiness scorecard to see if your school has what it takes to roll out real-world AI learning in the next 30 days.
             </p>
+            <CourseFeeDisplay prices={coursePrices} tone="dark" perLearner className="mx-auto mt-8 max-w-2xl" showCheckoutNote />
 
             <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
               <button onClick={handleStartScorecard} className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto">

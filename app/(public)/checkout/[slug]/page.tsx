@@ -5,6 +5,7 @@ import { CourseCheckoutForm } from "@/components/checkout/CourseCheckoutForm"
 import { ServiceCheckoutForm } from "@/components/checkout/ServiceCheckoutForm"
 import { getServiceCheckoutDetails, isServiceCheckoutSlug } from "@/lib/payments/service-checkout"
 import { getCourse, resolveCourseSlug } from "@/lib/public-offers"
+import { getPublicCourseSettings } from "@/lib/public-course-settings"
 import { buildMetadata } from "@/lib/site-seo"
 
 type CheckoutPageProps = {
@@ -56,6 +57,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
   const course = getCourse(canonicalSlug)
   if (!course) notFound()
+  const coursePrices = await getPublicCourseSettings(course.checkoutCourseSlug)
 
-  return <CourseCheckoutForm course={course} />
+  return <CourseCheckoutForm course={course} coursePrices={coursePrices} />
 }
