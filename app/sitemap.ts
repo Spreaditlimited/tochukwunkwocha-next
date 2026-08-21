@@ -5,6 +5,7 @@ import { courses, services } from "@/lib/public-offers"
 import { listPublishedResources, resourceAudiences } from "@/lib/resources"
 import { absoluteUrl } from "@/lib/site-seo"
 import { listPublishedShopProducts } from "@/lib/shop"
+import { listPublicStudentProjects } from "@/lib/public-student-projects"
 
 export const dynamic = "force-dynamic"
 
@@ -27,11 +28,13 @@ const staticRoutes = [
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date()
-  const [posts, resources, products] = await Promise.all([
+  const [posts, resources, products, studentProjects] = await Promise.all([
     getPublishedPosts(500),
     listPublishedResources({ limit: 500 }),
-    listPublishedShopProducts()
+    listPublishedShopProducts(),
+    listPublicStudentProjects(120)
   ])
+  const studentProfiles = Array.from(new Map(studentProjects.filter((project) => project.profileSlug && project.enhancedProfilePublished).map((project) => [project.profileSlug, project])).values())
 
   return [
     ...staticRoutes.map((path) => ({
@@ -69,6 +72,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: product.updatedAt || product.publishedAt || now,
       changeFrequency: "monthly" as const,
       priority: product.featured ? 0.85 : 0.7
+    })),
+    ...studentProfiles.map((project) => ({
+      url: absoluteUrl(`/projects/${project.profileSlug}`),
+      lastModified: project.publishedAt || now,
+      changeFrequency: "monthly" as const,
+      priority: project.enhancedProfilePublished ? 0.7 : 0.55
     })),
     ...posts.map((post) => ({
       url: absoluteUrl(`/blog/${post.blogSlug}`),

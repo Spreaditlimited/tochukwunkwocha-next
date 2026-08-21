@@ -30,6 +30,7 @@ import {
   Smartphone,
   MessageCircle,
   UserRound,
+  UserRoundSearch,
   WalletCards
 } from "lucide-react"
 
@@ -69,6 +70,7 @@ const navSections = [
     items: [
       { href: "/internal/video-library", label: "Video Library", icon: MonitorPlay },
       { href: "/internal/learning", label: "Learning Support", icon: GraduationCap },
+      { href: "/internal/learning/portfolios", label: "Student Portfolios", icon: UserRoundSearch },
       { href: "/internal/learning-progress", label: "Learning Progress", icon: ListChecks },
       { href: "/internal/security", label: "Security", icon: Smartphone }
     ]

@@ -14,6 +14,7 @@
     "db:setup:resources": "node scripts/setup-resource-tables.mjs",
     "db:seed:resources": "node scripts/seed-resource-library.mjs",
     "db:seed:shop": "node scripts/seed-shop-workbooks.mjs",
+    "db:setup:student-portfolios": "node --env-file=.env scripts/setup-student-portfolio-tables.mjs",
     "shop:upload:workbooks": "node --env-file=.env scripts/upload-shop-workbooks-cloudinary.mjs",
     "shop:verify:workbooks": "node --env-file=.env scripts/verify-shop-workbook-assets.mjs",
     "shop:publish:workbooks": "node --env-file=.env scripts/publish-shop-workbooks.mjs",
@@ -54,7 +55,8 @@
     "smoke:dashboard-modal-contract": "node scripts/smoke-dashboard-modal-contract.mjs",
     "smoke:public-project-name": "node scripts/smoke-public-student-project-name.mjs",
     "smoke:global-course-prices": "node scripts/smoke-global-course-prices.mjs",
-    "smoke:course-social-images": "node scripts/smoke-course-social-images.mjs"
+    "smoke:course-social-images": "node scripts/smoke-course-social-images.mjs",
+    "smoke:student-portfolios": "node scripts/smoke-student-portfolios.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

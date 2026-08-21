@@ -3,6 +3,12 @@ import { unstable_cache } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
 import { listPublicSelfDeclaredProjectLinks, type StudentProjectLink } from "@/lib/student-project-links"
+import {
+  isAdultPortfolioAgeBand,
+  parsePortfolioList,
+  safeJsonObject,
+  studentPortfolioSlug
+} from "@/lib/student-portfolio-shared"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
 
@@ -25,6 +31,20 @@ export type PublicStudentProject = {
   schoolName: string
   publishedAt: Date | null
   links: PublicStudentProjectLink[]
+  accountKey: string
+  profileSlug: string
+  profilePictureUrl: string
+  professionalHeadline: string
+  biography: string
+  country: string
+  skills: string[]
+  featuredProjectSummary: string
+  projectChallenge: string
+  projectSolution: string
+  projectLearning: string
+  opportunityTypes: string[]
+  openToWork: boolean
+  enhancedProfilePublished: boolean
 }
 
 function clean(value: unknown, max = 500) {
@@ -65,15 +85,19 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
   const individual = await prisma.$queryRaw<Array<{
     id: bigint
     accountId: bigint
+    accountUuid: string
     projectUrl: string | null
     courseSlug: string | null
     studentName: string | null
     certificateNo: string | null
     isGroupLearner: number | bigint | boolean
     publicProjectLearnerType: string | null
+    profilePictureUrl: string | null
+    ageBand: string | null
     publishedAt: Date | null
   }>>(Prisma.sql`
-    SELECT a.id, a.account_id AS accountId, a.submission_link AS projectUrl, a.course_slug AS courseSlug,
+    SELECT a.id, a.account_id AS accountId, sa.account_uuid AS accountUuid,
+      a.submission_link AS projectUrl, a.course_slug AS courseSlug,
       COALESCE(NULLIF(sa.full_name, ''), NULLIF(c.recipient_name, ''), NULLIF(a.student_name, '')) AS studentName,
       c.certificate_no AS certificateNo,
       EXISTS (
@@ -85,6 +109,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
           AND family.status = 'active'
       ) AS isGroupLearner,
       sa.public_project_learner_type AS publicProjectLearnerType,
+      sa.profile_picture_url AS profilePictureUrl, sa.age_band AS ageBand,
       COALESCE(a.reviewed_at, a.updated_at, a.created_at) AS publishedAt
     FROM tochukwu_learning_assignments a
     JOIN student_accounts sa ON sa.id = a.account_id
@@ -99,7 +124,30 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
     ORDER BY COALESCE(a.reviewed_at, a.updated_at, a.created_at) DESC, a.id DESC
     LIMIT ${safeLimit}
   `).catch(() => [])
-  const selfDeclaredLinksByAccount = await listPublicSelfDeclaredProjectLinks(individual.map((row) => row.accountId)).catch(() => new Map<string, StudentProjectLink[]>())
+  const accountIds = individual.map((row) => row.accountId)
+  const [selfDeclaredLinksByAccount, publicProfiles] = await Promise.all([
+    listPublicSelfDeclaredProjectLinks(accountIds).catch(() => new Map<string, StudentProjectLink[]>()),
+    accountIds.length ? prisma.$queryRaw<Array<{
+      accountId: bigint
+      publicSlug: string
+      publicProfileConsent: number | bigint | boolean
+      profilePictureConsent: number | bigint | boolean
+      guardianConsentConfirmed: number | bigint | boolean
+      openToWork: number | bigint | boolean
+      isPublic: number | bigint | boolean
+      publishedSnapshotJson: string | null
+    }>>(Prisma.sql`
+      SELECT account_id AS accountId, public_slug AS publicSlug,
+        public_profile_consent AS publicProfileConsent,
+        profile_picture_consent AS profilePictureConsent,
+        guardian_consent_confirmed AS guardianConsentConfirmed,
+        open_to_work AS openToWork, is_public AS isPublic,
+        published_snapshot_json AS publishedSnapshotJson
+      FROM student_public_profiles
+      WHERE account_id IN (${Prisma.join(accountIds)})
+    `).catch(() => []) : Promise.resolve([])
+  ])
+  const publicProfileMap = new Map(publicProfiles.map((profile) => [profile.accountId.toString(), profile]))
 
   const school = await prisma.$queryRaw<Array<{
     id: bigint
@@ -130,13 +178,35 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
       const courseSlug = clean(row.courseSlug, 120)
       const certificateNo = clean(row.certificateNo, 140)
       const additionalLinks = selfDeclaredLinksByAccount.get(row.accountId.toString()) || []
+      const profile = publicProfileMap.get(row.accountId.toString())
+      const snapshot = safeJsonObject(profile?.publishedSnapshotJson)
+      const sourceType = Number(row.isGroupLearner || 0) === 1 || clean(row.publicProjectLearnerType, 24) === "young" ? "group" as const : "individual" as const
+      const snapshotValue = (key: string, max: number) => clean(snapshot?.[key], max)
+      const snapshotFlag = (key: string) => snapshot?.[key] === true || Number(snapshot?.[key] || 0) === 1
+      const snapshotSkills = parsePortfolioList(snapshot?.skills, undefined, 12)
+      const snapshotOpportunities = parsePortfolioList(snapshot?.opportunityTypes, undefined, 4)
+      const profilePictureAuthorized = Boolean(clean(row.profilePictureUrl, 2000)) && Number(profile?.profilePictureConsent || 0) === 1 && snapshotFlag("profilePictureConsent")
+      const requiredContentComplete = [
+        snapshotValue("professionalHeadline", 220),
+        snapshotValue("biography", 1800),
+        snapshotValue("country", 120),
+        snapshotValue("featuredProjectSummary", 1800),
+        snapshotValue("projectChallenge", 1400),
+        snapshotValue("projectSolution", 1800),
+        snapshotValue("projectLearning", 1400)
+      ].every(Boolean) && snapshotSkills.length >= 2
+      const hiringChoiceComplete = !snapshotFlag("openToWork") || snapshotOpportunities.length > 0
+      const enhancedProfilePublished = Boolean(snapshot) && Number(profile?.isPublic || 0) === 1 && Number(profile?.publicProfileConsent || 0) === 1 && profilePictureAuthorized && requiredContentComplete && hiringChoiceComplete && (sourceType === "individual" || Number(profile?.guardianConsentConfirmed || 0) === 1)
+      const snapshotText = (key: string, max: number) => enhancedProfilePublished ? snapshotValue(key, max) : ""
+      const snapshotBool = (key: string) => enhancedProfilePublished && snapshotFlag(key)
+      const profilePictureVisible = enhancedProfilePublished && profilePictureAuthorized
       return {
         id: `individual-${row.id.toString()}`,
         ...url,
         courseSlug,
         courseLabel: courseLabel(courseSlug),
         learnerLabel: clean(row.studentName, 80) || "Student project",
-        sourceType: Number(row.isGroupLearner || 0) === 1 || clean(row.publicProjectLearnerType, 24) === "young" ? "group" : "individual",
+        sourceType,
         schoolName: "",
         publishedAt: row.publishedAt,
         links: [
@@ -156,7 +226,21 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
             kind: "self_declared" as const,
             description: link.description
           }))
-        ]
+        ],
+        accountKey: row.accountId.toString(),
+        profileSlug: enhancedProfilePublished ? clean(profile?.publicSlug, 190) || studentPortfolioSlug(row.studentName, row.accountUuid) : "",
+        profilePictureUrl: profilePictureVisible ? clean(row.profilePictureUrl, 2000) : "",
+        professionalHeadline: snapshotText("professionalHeadline", 220),
+        biography: snapshotText("biography", 1800),
+        country: snapshotText("country", 120),
+        skills: enhancedProfilePublished ? snapshotSkills : [],
+        featuredProjectSummary: snapshotText("featuredProjectSummary", 1800),
+        projectChallenge: snapshotText("projectChallenge", 1400),
+        projectSolution: snapshotText("projectSolution", 1800),
+        projectLearning: snapshotText("projectLearning", 1400),
+        opportunityTypes: enhancedProfilePublished ? snapshotOpportunities : [],
+        openToWork: sourceType === "individual" && isAdultPortfolioAgeBand(row.ageBand) && Number(profile?.openToWork || 0) === 1 && snapshotBool("openToWork"),
+        enhancedProfilePublished
       }
     }),
     ...school.map((row): PublicStudentProject | null => {
@@ -182,7 +266,21 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
               kind: "certificate_verification" as const,
               description: "Academy-issued certificate verification page."
             }]
-          : []
+          : [],
+        accountKey: `school-${row.id.toString()}`,
+        profileSlug: "",
+        profilePictureUrl: "",
+        professionalHeadline: "",
+        biography: "",
+        country: "",
+        skills: [],
+        featuredProjectSummary: "",
+        projectChallenge: "",
+        projectSolution: "",
+        projectLearning: "",
+        opportunityTypes: [],
+        openToWork: false,
+        enhancedProfilePublished: false
       }
     })
   ].filter((item): item is PublicStudentProject => Boolean(item))
@@ -203,3 +301,25 @@ export const listPublicStudentProjects = unstable_cache(listPublicStudentProject
   revalidate: 300,
   tags: ["public-student-projects"]
 })
+
+export async function getPublicStudentPortfolio(slugInput: string) {
+  const slug = clean(slugInput, 190).toLowerCase()
+  if (!slug) return null
+  const projects = await listPublicStudentProjects(120)
+  const primary = projects.find((project) => project.profileSlug.toLowerCase() === slug)
+  if (!primary || primary.sourceType === "school") return null
+  const studentProjects = projects.filter((project) => project.accountKey === primary.accountKey)
+  const firstName = primary.learnerLabel.split(/\s+/).filter(Boolean)[0] || "this learner"
+  const fallbackHeadline = `${primary.courseLabel} graduate and digital project builder`
+  const fallbackBiography = `${primary.learnerLabel} is a graduate of ${primary.courseLabel} at Tochukwu Tech and AI Academy. Through practical, project-based learning, ${firstName} moved from learning core AI-assisted creation skills to publishing a working digital project that can be explored online. This portfolio documents verified work completed during that learning journey.`
+  const fallbackSummary = `${primary.learnerLabel} planned, built and published a functional digital project while completing ${primary.courseLabel}. The finished work demonstrates the ability to turn an idea into a live result, review the outcome and share it publicly.`
+  return {
+    ...primary,
+    projects: studentProjects,
+    professionalHeadline: primary.professionalHeadline || fallbackHeadline,
+    biography: primary.biography || fallbackBiography,
+    featuredProjectSummary: primary.featuredProjectSummary || fallbackSummary,
+    skills: primary.skills.length ? primary.skills : ["AI-assisted project development", "Digital problem solving"],
+    enhancedProfilePublished: primary.enhancedProfilePublished
+  }
+}

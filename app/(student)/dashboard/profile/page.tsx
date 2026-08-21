@@ -1,14 +1,19 @@
 import { ProfileSecurityPanel } from "@/components/student-dashboard/ProfileSecurityPanel"
 import { StudentDashboardShell } from "@/components/student-dashboard/StudentDashboardShell"
+import { StudentPublicPortfolioPanel } from "@/components/student-dashboard/StudentPublicPortfolioPanel"
 import { getStudentProfile, isManagedGroupLearnerAccount, listStudentSecurity, requireStudent } from "@/lib/student-auth"
+import { getStudentPublicPortfolioEditor } from "@/lib/student-public-profile"
 
 export const dynamic = "force-dynamic"
 
 export default async function StudentProfilePage() {
   const session = await requireStudent()
   const profile = await getStudentProfile(session.account.id)
-  const security = await listStudentSecurity(session.account.id, session.token)
-  const isManagedGroupLearner = await isManagedGroupLearnerAccount(session.account.id)
+  const [security, isManagedGroupLearner, publicPortfolio] = await Promise.all([
+    listStudentSecurity(session.account.id, session.token),
+    isManagedGroupLearnerAccount(session.account.id),
+    getStudentPublicPortfolioEditor(session.account.id)
+  ])
 
   return (
     <StudentDashboardShell 
@@ -18,6 +23,7 @@ export default async function StudentProfilePage() {
       eyebrow="Account Settings"
       hideAccountEmail={isManagedGroupLearner}
     >
+      <div className="grid gap-8">
       <ProfileSecurityPanel
         isManagedGroupLearner={isManagedGroupLearner}
         profile={{
@@ -54,6 +60,8 @@ export default async function StudentProfilePage() {
           }))
         }}
       />
+      <StudentPublicPortfolioPanel initialPortfolio={publicPortfolio} />
+      </div>
     </StudentDashboardShell>
   )
 }

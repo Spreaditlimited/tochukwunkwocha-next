@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Image from "next/image"
 import Link from "next/link"
 import { 
   ArrowRight, 
@@ -18,6 +19,7 @@ import {
 
 import { listPublicStudentProjects } from "@/lib/public-student-projects"
 import { buildMetadata } from "@/lib/site-seo"
+import { cloudinaryTransformUrl, resolveMediaUrl } from "@/lib/cloudinary/url"
 
 export const dynamic = "force-dynamic"
 
@@ -150,9 +152,15 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                 >
                   <div className="flex flex-1 flex-col">
                     <div className="flex items-start justify-between gap-4">
-                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${project.sourceType === "school" ? "bg-sky-500/10 text-sky-600 dark:text-sky-400" : project.sourceType === "group" ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" : "bg-primary/10 text-primary"}`}>
-                        {project.sourceType === "school" ? <School className="h-6 w-6" /> : project.sourceType === "group" ? <Users className="h-6 w-6" /> : <FolderKanban className="h-6 w-6" />}
-                      </div>
+                      {project.profileSlug ? (
+                        <div className={`relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-background shadow-sm ${project.sourceType === "group" ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" : "bg-primary/10 text-primary"}`}>
+                          <Image src={cloudinaryTransformUrl(resolveMediaUrl(project.profilePictureUrl), { width: 160, height: 160, crop: "fill", quality: "auto", format: "auto" })} alt={`${project.learnerLabel}'s profile picture`} fill sizes="56px" className="object-cover" />
+                        </div>
+                      ) : (
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${project.sourceType === "school" ? "bg-sky-500/10 text-sky-600 dark:text-sky-400" : project.sourceType === "group" ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" : "bg-primary/10 text-primary"}`}>
+                          {project.sourceType === "school" ? <School className="h-6 w-6" /> : project.sourceType === "group" ? <Users className="h-6 w-6" /> : <FolderKanban className="h-6 w-6" />}
+                        </div>
+                      )}
                       <a
                         href={project.projectUrl}
                         target="_blank"
@@ -176,8 +184,10 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                         ) : null}
                       </div>
                       <h3 className="mt-2 font-heading text-xl font-black leading-tight tracking-tight text-foreground line-clamp-2">
-                        {project.learnerLabel}
+                        {project.profileSlug ? <Link href={`/projects/${project.profileSlug}`} className="no-underline transition-colors hover:text-primary">{project.learnerLabel}</Link> : project.learnerLabel}
                       </h3>
+                      {project.professionalHeadline ? <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{project.professionalHeadline}</p> : null}
+                      {project.openToWork ? <span className="mt-3 inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Open to opportunities</span> : null}
                       <p className="mt-3 truncate font-mono text-xs font-medium text-muted-foreground">
                         {project.host}
                       </p>
@@ -235,15 +245,22 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                       <GraduationCap className="h-4 w-4 opacity-70" />
                       {formatDate(project.publishedAt) || "Approved"}
                     </span>
-                    <a
-                      href={project.projectUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-sm font-bold text-foreground no-underline transition-colors group-hover:text-primary"
-                    >
-                      Visit Live
-                      <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                    </a>
+                    {project.profileSlug ? (
+                      <div className="flex items-center gap-3">
+                        <Link href={`/projects/${project.profileSlug}`} className="inline-flex items-center gap-1 text-sm font-bold text-primary no-underline">View profile <ArrowRight className="h-4 w-4" /></Link>
+                        <a href={project.projectUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-muted-foreground no-underline transition-colors hover:text-primary" aria-label={`Visit ${project.learnerLabel}'s live project`}><ExternalLink className="h-4 w-4" /></a>
+                      </div>
+                    ) : (
+                      <a
+                        href={project.projectUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-sm font-bold text-foreground no-underline transition-colors group-hover:text-primary"
+                      >
+                        Visit Live
+                        <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                      </a>
+                    )}
                   </div>
                 </article>
                 )

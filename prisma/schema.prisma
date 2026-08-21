@@ -280,8 +280,78 @@ model StudentAccount {
 
   sessions   StudentSession[]
   shopOrders ShopOrder[]
+  publicProfile StudentPublicProfile?
+  hireEnquiries StudentHireEnquiry[]
 
   @@map("student_accounts")
+}
+
+model StudentPublicProfile {
+  id                       BigInt    @id @default(autoincrement())
+  profileUuid              String    @unique(map: "uniq_student_public_profiles_uuid") @map("profile_uuid") @db.VarChar(64)
+  accountId                BigInt    @unique(map: "uniq_student_public_profiles_account") @map("account_id")
+  publicSlug               String    @unique(map: "uniq_student_public_profiles_slug") @map("public_slug") @db.VarChar(190)
+  displayName              String    @map("display_name") @db.VarChar(180)
+  professionalHeadline     String?   @map("professional_headline") @db.VarChar(220)
+  biography                String?   @db.Text
+  country                  String?   @db.VarChar(120)
+  skillsJson               String?   @map("skills_json") @db.Text
+  featuredProjectSummary   String?   @map("featured_project_summary") @db.Text
+  projectChallenge         String?   @map("project_challenge") @db.Text
+  projectSolution          String?   @map("project_solution") @db.Text
+  projectLearning          String?   @map("project_learning") @db.Text
+  opportunityTypesJson     String?   @map("opportunity_types_json") @db.Text
+  publicProfileConsent     Boolean   @default(false) @map("public_profile_consent")
+  profilePictureConsent    Boolean   @default(false) @map("profile_picture_consent")
+  guardianConsentConfirmed Boolean   @default(false) @map("guardian_consent_confirmed")
+  openToWork               Boolean   @default(false) @map("open_to_work")
+  isPublic                 Boolean   @default(false) @map("is_public")
+  reviewStatus             String    @default("pending") @map("review_status") @db.VarChar(24)
+  reviewNote               String?   @map("review_note") @db.Text
+  reviewedBy               String?   @map("reviewed_by") @db.VarChar(180)
+  reviewedAt               DateTime? @map("reviewed_at") @db.DateTime(0)
+  publishedSnapshotJson    String?   @map("published_snapshot_json") @db.LongText
+  publishedAt              DateTime? @map("published_at") @db.DateTime(0)
+  createdAt                DateTime  @map("created_at") @db.DateTime(0)
+  updatedAt                DateTime  @map("updated_at") @db.DateTime(0)
+
+  account       StudentAccount       @relation(fields: [accountId], references: [id])
+  hireEnquiries StudentHireEnquiry[]
+
+  @@index([reviewStatus, updatedAt], map: "idx_student_public_profiles_review")
+  @@index([isPublic, publishedAt], map: "idx_student_public_profiles_public")
+  @@map("student_public_profiles")
+}
+
+model StudentHireEnquiry {
+  id              BigInt   @id @default(autoincrement())
+  enquiryUuid     String   @unique(map: "uniq_student_hire_enquiries_uuid") @map("enquiry_uuid") @db.VarChar(64)
+  profileId       BigInt   @map("profile_id")
+  accountId       BigInt   @map("account_id")
+  enquirerName    String   @map("enquirer_name") @db.VarChar(180)
+  organisation    String?  @db.VarChar(220)
+  enquirerEmail   String   @map("enquirer_email") @db.VarChar(190)
+  opportunityType String   @map("opportunity_type") @db.VarChar(60)
+  timeline        String?  @db.VarChar(120)
+  budgetRange     String?  @map("budget_range") @db.VarChar(120)
+  message         String   @db.Text
+  status          String   @default("new") @db.VarChar(32)
+  deliveryStatus  String   @default("pending") @map("delivery_status") @db.VarChar(32)
+  deliveryError   String?  @map("delivery_error") @db.Text
+  adminNote       String?  @map("admin_note") @db.Text
+  ipHash          String?  @map("ip_hash") @db.VarChar(128)
+  consentAt       DateTime @map("consent_at") @db.DateTime(0)
+  createdAt       DateTime @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime @map("updated_at") @db.DateTime(0)
+
+  profile StudentPublicProfile @relation(fields: [profileId], references: [id])
+  account StudentAccount       @relation(fields: [accountId], references: [id])
+
+  @@index([profileId, createdAt], map: "idx_student_hire_enquiries_profile")
+  @@index([accountId, createdAt], map: "idx_student_hire_enquiries_account")
+  @@index([status, createdAt], map: "idx_student_hire_enquiries_status")
+  @@index([enquirerEmail, createdAt], map: "idx_student_hire_enquiries_email")
+  @@map("student_hire_enquiries")
 }
 
 model ShopProduct {
