@@ -13,11 +13,14 @@ import {
   GraduationCap, 
   Lightbulb, 
   School, 
+  Search,
+  SlidersHorizontal,
   Sparkles,
-  Users
+  Users,
+  X
 } from "lucide-react"
 
-import { listPublicStudentProjects } from "@/lib/public-student-projects"
+import { listPublicStudentProjects, type PublicStudentProject } from "@/lib/public-student-projects"
 import { buildMetadata } from "@/lib/site-seo"
 import { cloudinaryTransformUrl, resolveMediaUrl } from "@/lib/cloudinary/url"
 
@@ -40,17 +43,97 @@ type StudentProjectsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+function firstParam(value: string | string[] | undefined, max = 120) {
+  return String(Array.isArray(value) ? value[0] : value || "").trim().slice(0, max)
+}
+
+function searchableText(value: unknown) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
+
+function projectSearchScore(project: PublicStudentProject, rawQuery: string) {
+  const query = searchableText(rawQuery)
+  if (!query) return 1
+  const terms = Array.from(new Set(query.split(/\s+/).filter((term) => term.length > 1))).slice(0, 10)
+  if (!terms.length) return 1
+  const primary = searchableText([project.learnerLabel, project.host, project.courseLabel, project.schoolName].join(" "))
+  const expertise = searchableText([project.professionalHeadline, project.country, project.skills.join(" "), project.opportunityTypes.join(" ")].join(" "))
+  const portfolio = searchableText([
+    project.featuredProjectSummary,
+    project.projectChallenge,
+    project.projectSolution,
+    project.projectLearning,
+    project.biography,
+    ...project.links.flatMap((link) => [link.label, link.host, link.description])
+  ].join(" "))
+  const all = `${primary} ${expertise} ${portfolio}`
+  if (!terms.every((term) => all.includes(term))) return 0
+
+  let score = 0
+  if (primary === query) score += 120
+  if (primary.startsWith(query)) score += 60
+  if (primary.includes(query)) score += 35
+  if (expertise.includes(query)) score += 20
+  if (portfolio.includes(query)) score += 10
+  for (const term of terms) {
+    if (primary.includes(term)) score += 8
+    if (expertise.includes(term)) score += 4
+    if (portfolio.includes(term)) score += 2
+  }
+  return score || 1
+}
+
 export default async function StudentProjectsPage({ searchParams }: StudentProjectsPageProps) {
   const params = searchParams ? await searchParams : {}
-  const source = Array.isArray(params.from) ? params.from[0] : params.from
-  const audience = Array.isArray(params.audience) ? params.audience[0] : params.audience
+  const source = firstParam(params.from, 80)
+  const query = firstParam(params.q)
+  const audience = firstParam(params.audience, 20)
+  const selectedCourse = firstParam(params.course, 120)
+  const availability = firstParam(params.availability, 20)
   const buildYoursHref = source === "prompt-to-profit"
     ? "/checkout/prompt-to-profit"
     : "/courses/prompt-to-profit"
-  const publicProjects = await listPublicStudentProjects(90)
-  const projects = audience === "young"
-    ? publicProjects.filter((project) => project.sourceType !== "individual")
-    : publicProjects
+  const publicProjects = await listPublicStudentProjects(120)
+  const courseGroups = new Map<string, { label: string; slugs: string[] }>()
+  for (const project of publicProjects) {
+    if (!project.courseSlug) continue
+    const key = searchableText(project.courseLabel)
+    const existing = courseGroups.get(key)
+    if (existing) {
+      if (!existing.slugs.includes(project.courseSlug)) existing.slugs.push(project.courseSlug)
+    } else {
+      courseGroups.set(key, { label: project.courseLabel, slugs: [project.courseSlug] })
+    }
+  }
+  const courseOptions = Array.from(courseGroups.values())
+    .map((option) => ({
+      ...option,
+      value: option.slugs.includes("prompt-to-profit") ? "prompt-to-profit" : option.slugs.slice().sort()[0]
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label))
+  const selectedCourseSlugs = selectedCourse
+    ? courseOptions.find((option) => option.value === selectedCourse)?.slugs || [selectedCourse]
+    : []
+  const projects = publicProjects
+    .map((project) => ({ project, score: projectSearchScore(project, query) }))
+    .filter(({ project, score }) => {
+      if (!score) return false
+      if (audience === "adult" && project.sourceType !== "individual") return false
+      if (audience === "young" && project.sourceType === "individual") return false
+      if (audience === "school" && project.sourceType !== "school") return false
+      if (selectedCourse && !selectedCourseSlugs.includes(project.courseSlug)) return false
+      if (availability === "open" && !project.openToWork) return false
+      return true
+    })
+    .sort((left, right) => query ? right.score - left.score || new Date(right.project.publishedAt || 0).getTime() - new Date(left.project.publishedAt || 0).getTime() : 0)
+    .map(({ project }) => project)
+  const hasActiveSearch = Boolean(query || audience || selectedCourse || availability)
+  const clearSearchHref = source ? `/projects?from=${encodeURIComponent(source)}` : "/projects"
 
   return (
     <main className="bg-background">
@@ -94,7 +177,7 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
                 <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-400/10 text-sky-400">
                   <FolderKanban className="h-6 w-6" />
                 </div>
-                <p className="font-heading text-4xl font-black text-white">{projects.length}</p>
+                <p className="font-heading text-4xl font-black text-white">{publicProjects.length}</p>
                 <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">Published Projects</p>
               </div>
               <div className="flex flex-col justify-center rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl transition-transform hover:-translate-y-1">
@@ -131,14 +214,62 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
       {/* The Gallery Section */}
       <section className="bg-background py-16 sm:py-24">
         <div className="site-container">
-          <div className="mb-12 max-w-2xl">
+          <div className="mb-10 max-w-3xl">
             <h2 className="font-heading text-3xl font-black tracking-tight text-foreground sm:text-4xl">
-              Explore Student Projects
+              {query ? `Projects matching “${query}”` : "Explore Student Projects"}
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
               Scroll through the projects below and explore what our learners have built. Click any project to explore it live. Each project reflects the creativity, effort, and progress of the learner who built it.
             </p>
           </div>
+
+          <form action="/projects" method="get" role="search" className="mb-10 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+            {source ? <input type="hidden" name="from" value={source} /> : null}
+            <div className="grid gap-4 lg:grid-cols-[minmax(280px,1fr)_220px_220px_190px_auto] lg:items-end">
+              <div>
+                <label htmlFor="project-search" className="mb-2 block text-xs font-black uppercase tracking-widest text-muted-foreground">Search projects</label>
+                <div className="flex h-12 items-center gap-3 rounded-xl border border-input bg-background px-4 transition focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
+                  <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <input id="project-search" name="q" type="search" defaultValue={query} maxLength={120} autoComplete="off"
+                    placeholder="Name, skill, project, course, or country…"
+                    className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground" />
+                  {query ? <Link href={clearSearchHref} aria-label="Clear project search" className="rounded-full p-1.5 text-muted-foreground no-underline hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></Link> : null}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="project-audience" className="mb-2 block text-xs font-black uppercase tracking-widest text-muted-foreground">Learner type</label>
+                <select id="project-audience" name="audience" defaultValue={audience} className="h-12 w-full rounded-xl border border-input bg-background px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                  <option value="">All learners</option>
+                  <option value="adult">Adult learners</option>
+                  <option value="young">Young &amp; school learners</option>
+                  <option value="school">School learners only</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="project-course" className="mb-2 block text-xs font-black uppercase tracking-widest text-muted-foreground">Programme</label>
+                <select id="project-course" name="course" defaultValue={selectedCourse} className="h-12 w-full rounded-xl border border-input bg-background px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                  <option value="">All programmes</option>
+                  {courseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="project-availability" className="mb-2 block text-xs font-black uppercase tracking-widest text-muted-foreground">Availability</label>
+                <select id="project-availability" name="availability" defaultValue={availability} className="h-12 w-full rounded-xl border border-input bg-background px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                  <option value="">Any availability</option>
+                  <option value="open">Open to opportunities</option>
+                </select>
+              </div>
+              <button type="submit" className="btn-primary h-12 w-full justify-center gap-2 px-6 lg:w-auto"><SlidersHorizontal className="h-4 w-4" /> Find projects</button>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 border-t border-border/60 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-medium text-muted-foreground" aria-live="polite">
+                {hasActiveSearch
+                  ? `${projects.length} matching project${projects.length === 1 ? "" : "s"} from ${publicProjects.length} published projects.`
+                  : `Browse all ${publicProjects.length} published projects.`}
+              </p>
+              {hasActiveSearch ? <Link href={clearSearchHref} className="inline-flex items-center gap-2 font-bold text-primary no-underline"><X className="h-4 w-4" /> Clear all filters</Link> : null}
+            </div>
+          </form>
 
           {projects.length ? (
             <div className="grid items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -271,10 +402,11 @@ export default async function StudentProjectsPage({ searchParams }: StudentProje
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
                 <FolderKanban className="h-8 w-8" />
               </div>
-              <h3 className="mt-6 font-heading text-2xl font-black text-foreground">No public projects yet.</h3>
+              <h3 className="mt-6 font-heading text-2xl font-black text-foreground">{hasActiveSearch ? "No projects match your search." : "No public projects yet."}</h3>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                Approved student projects will appear here after they pass the project review process.
+                {hasActiveSearch ? "Try fewer words, a different programme, or clear the filters to browse every published project." : "Approved student projects will appear here after they pass the project review process."}
               </p>
+              {hasActiveSearch ? <Link href={clearSearchHref} className="btn-secondary mt-6 px-5 py-3 text-sm">Clear search and filters</Link> : null}
             </div>
           )}
         </div>
