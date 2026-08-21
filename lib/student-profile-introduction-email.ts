@@ -152,13 +152,13 @@ export async function listStudentProfileIntroductionRecipients(): Promise<Profil
       AND (
         EXISTS (
           SELECT 1 FROM course_orders enrollment
-          WHERE LOWER(enrollment.email) = LOWER(sa.email)
+          WHERE LOWER(enrollment.email) COLLATE utf8mb4_unicode_ci = LOWER(sa.email) COLLATE utf8mb4_unicode_ci
             AND COALESCE(enrollment.buyer_type, 'student') <> 'family'
             AND LOWER(COALESCE(enrollment.status, '')) IN ('paid', 'success', 'completed')
         )
         OR EXISTS (
           SELECT 1 FROM course_manual_payments enrollment
-          WHERE LOWER(enrollment.email) = LOWER(sa.email)
+          WHERE LOWER(enrollment.email) COLLATE utf8mb4_unicode_ci = LOWER(sa.email) COLLATE utf8mb4_unicode_ci
             AND COALESCE(enrollment.buyer_type, 'student') <> 'family'
             AND LOWER(COALESCE(enrollment.status, '')) IN ('approved', 'paid', 'success', 'completed')
         )
