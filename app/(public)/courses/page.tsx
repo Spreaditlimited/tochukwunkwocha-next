@@ -19,7 +19,7 @@ import {
 import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { brand } from "@/lib/brand"
-import { getPublicCourseSettings } from "@/lib/public-course-settings"
+import { getCurrentPromptToProfitSettings, getPublicCourseSettings } from "@/lib/public-course-settings"
 import { buildMetadata } from "@/lib/site-seo"
 
 export const metadata = buildMetadata({
@@ -36,7 +36,7 @@ const sectionContainer = "site-container"
 
 export default async function ProgrammesPage() {
   const [basicPrices, advancedPrices, businessPrices, schoolPrices] = await Promise.all([
-    getPublicCourseSettings("prompt-to-profit-holiday"),
+    getCurrentPromptToProfitSettings(),
     getPublicCourseSettings("prompt-to-production"),
     getPublicCourseSettings("ai-for-everyday-business-owners"),
     getPublicCourseSettings("prompt-to-profit-schools")

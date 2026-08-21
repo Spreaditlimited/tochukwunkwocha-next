@@ -3,10 +3,14 @@ import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
+import { sendEmail } from "@/lib/email"
+import { issueBuildBookingAccess, issuePrivateCoachingBookingAccess, markBuildDiscoveryPaymentPaid, markPrivateCoachingPaymentPaid } from "@/lib/discovery-booking-access"
 import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
-import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
+import { completePaidDomainRenewal } from "@/lib/payments/domain-renewal"
+import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid, siteBaseUrl } from "@/lib/payments/course-checkout"
 import { recordPaystackAuditEvent, validateCourseOrderPaystackPayment } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
+import { confirmPaystackSchoolAdvanced } from "@/lib/payments/school-advanced"
 import { fulfillPaidShopOrder, SHOP_PAYMENT_SCOPE } from "@/lib/shop"
 import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
@@ -16,6 +20,18 @@ function timingSafeEqual(a: string, b: string) {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
   return left.length === right.length && crypto.timingSafeEqual(left, right)
+}
+
+type PaystackWebhookPayload = {
+  event?: unknown
+  data?: {
+    reference?: unknown
+    metadata?: Record<string, unknown>
+    id?: unknown
+    status?: unknown
+    amount?: unknown
+    currency?: unknown
+  }
 }
 
 export async function POST(request: Request) {
@@ -30,7 +46,12 @@ export async function POST(request: Request) {
   const expected = crypto.createHmac("sha512", secret).update(rawBody).digest("hex")
   if (!timingSafeEqual(signature, expected)) return NextResponse.json({ ok: false, error: "Invalid webhook signature." }, { status: 401 })
 
-  const payload = JSON.parse(rawBody || "{}")
+  let payload: PaystackWebhookPayload
+  try {
+    payload = JSON.parse(rawBody || "{}") as PaystackWebhookPayload
+  } catch {
+    return NextResponse.json({ ok: false, error: "Malformed webhook payload." }, { status: 400 })
+  }
   const event = String(payload?.event || "").toLowerCase()
   const data = payload?.data || {}
   const reference = String(data.reference || "").trim()
@@ -68,9 +89,57 @@ export async function POST(request: Request) {
     const result = await completePaidDomainCheckout(reference)
     return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })
   }
+  if (paymentScope === "domain_renewal") {
+    const result = await completePaidDomainRenewal(reference)
+    return NextResponse.json({ ok: true, scope: "domain_renewal", domainName: result.domainName })
+  }
+  if (paymentScope === "school_advanced") {
+    await confirmPaystackSchoolAdvanced(reference)
+    return NextResponse.json({ ok: true, scope: "school_advanced" })
+  }
+  if (paymentScope === "build-discovery") {
+    const payment = await markBuildDiscoveryPaymentPaid(reference, data.id ? String(data.id) : null, {
+      amountMinor: Number.isFinite(Number(data.amount)) ? Math.round(Number(data.amount)) : null,
+      currency: data.currency ? String(data.currency) : null,
+      leadUuid: String(metadata.lead_uuid || ""),
+      provider: "paystack"
+    })
+    if (!payment.alreadyPaid) {
+      const issued = await issueBuildBookingAccess({ leadUuid: payment.leadUuid, score: payment.score, discoveryApproved: true })
+      const bookingUrl = `${siteBaseUrl()}/schools/book-call?source=build&build_access=${encodeURIComponent(issued.token)}&payment=success`
+      await sendEmail({
+        to: payment.email,
+        subject: "Payment confirmed — book your build discovery call",
+        text: `Hello ${payment.fullName || "there"},\n\nYour payment has been confirmed. Book your build discovery call here:\n${bookingUrl}\n\nThis secure link expires in 3 days.`
+      })
+    }
+    return NextResponse.json({ ok: true, scope: "build-discovery" })
+  }
+  if (paymentScope === "private-ai-coaching-discovery") {
+    const payment = await markPrivateCoachingPaymentPaid(reference, data.id ? String(data.id) : null, {
+      amountMinor: Number.isFinite(Number(data.amount)) ? Math.round(Number(data.amount)) : null,
+      currency: data.currency ? String(data.currency) : null,
+      leadUuid: String(metadata.lead_uuid || ""),
+      provider: "paystack"
+    })
+    if (!payment.alreadyPaid && payment.paymentType === "discovery") {
+      const issued = await issuePrivateCoachingBookingAccess(payment.leadUuid)
+      const bookingUrl = `${siteBaseUrl()}/schools/book-call?source=private_ai_coaching&coaching_access=${encodeURIComponent(issued.token)}&payment=success`
+      await sendEmail({
+        to: payment.email,
+        subject: "Payment confirmed — book your private AI coaching call",
+        text: `Hello ${payment.fullName || "there"},\n\nYour payment has been confirmed. Book your private AI coaching discovery call here:\n${bookingUrl}\n\nThis secure link expires in 3 days.`
+      })
+    }
+    return NextResponse.json({ ok: true, scope: "private-ai-coaching-discovery" })
+  }
   if (paymentScope === "installment" || metadata.installment_plan_uuid) {
     try {
-      await markInstallmentPaymentPaid(reference, data.id ? String(data.id) : null)
+      await markInstallmentPaymentPaid(reference, data.id ? String(data.id) : null, {
+        amountMinor: Number.isFinite(Number(data.amount)) ? Math.round(Number(data.amount)) : null,
+        currency: data.currency ? String(data.currency) : null,
+        planUuid: String(metadata.installment_plan_uuid || "")
+      })
     } catch (error) {
       if (isCourseEnrollmentConflict(error)) {
         return NextResponse.json({ ok: true, scope: "installment", duplicateReview: true })
@@ -78,6 +147,10 @@ export async function POST(request: Request) {
       throw error
     }
     return NextResponse.json({ ok: true, scope: "installment" })
+  }
+
+  if (paymentScope && paymentScope !== "course_checkout") {
+    return NextResponse.json({ ok: true, ignored: true, reason: "unknown_payment_scope" })
   }
 
   const orderUuid = metadataOrderUuid

@@ -27,6 +27,7 @@ import { readAffiliateReferralCode, storeAffiliateReferralCode } from "@/compone
 import { TrademarkText } from "@/components/TrademarkText"
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import { getRecaptchaToken, preloadRecaptcha } from "@/lib/browser-recaptcha"
+import { validatePaymentEmail } from "@/lib/payment-email"
 import { resolveCheckoutCourseSlug, type Course } from "@/lib/public-offers"
 import type { CoursePriceValues } from "@/lib/course-price-display"
 
@@ -321,8 +322,16 @@ function uploadDirectToCloudinary(
   })
 }
 
-export function CourseCheckoutForm({ course, coursePrices }: { course: Course; coursePrices: CoursePriceValues | null }) {
-  const checkoutCourseSlug = resolveCheckoutCourseSlug(course)
+export function CourseCheckoutForm({
+  course,
+  coursePrices,
+  checkoutCourseSlugOverride
+}: {
+  course: Course
+  coursePrices: CoursePriceValues | null
+  checkoutCourseSlugOverride?: string
+}) {
+  const checkoutCourseSlug = checkoutCourseSlugOverride || resolveCheckoutCourseSlug(course)
   const publicCourseSlug = course.slug
   const [firstName, setFirstName] = useState("")
   const [email, setEmail] = useState("")
@@ -630,6 +639,8 @@ export function CourseCheckoutForm({ course, coursePrices }: { course: Course; c
     setIsSubmitting(true)
 
     try {
+      const emailValidation = validatePaymentEmail(email)
+      if (!emailValidation.valid) throw new Error(emailValidation.error)
       if (provider === "manual_transfer") {
         let result: { paymentUuid: string; pendingReview?: boolean } | null = null
         let lastError: unknown = null

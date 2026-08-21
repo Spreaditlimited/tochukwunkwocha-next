@@ -13,7 +13,7 @@ import { JsonLd } from "@/components/JsonLd"
 import { TrademarkText } from "@/components/TrademarkText"
 import { brand } from "@/lib/brand"
 import { courseOffers } from "@/lib/course-price-display"
-import { getPublicCourseSettings } from "@/lib/public-course-settings"
+import { getCurrentPromptToProfitSettings, getPublicCourseSettings } from "@/lib/public-course-settings"
 import { getCourse, resolveCourseSlug } from "@/lib/public-offers"
 import { listPublishedSiteShowcases } from "@/lib/site-showcases"
 import { breadcrumbJsonLd, buildMetadata, courseJsonLd } from "@/lib/site-seo"
@@ -47,7 +47,9 @@ export default async function CoursePage({ params }: CoursePageProps) {
     ? course.slug
     : ""
   const [courseSettings, studentWebsites] = await Promise.all([
-    course ? getPublicCourseSettings(course.checkoutCourseSlug) : Promise.resolve(null),
+    course?.slug === "prompt-to-profit"
+      ? getCurrentPromptToProfitSettings()
+      : course ? getPublicCourseSettings(course.checkoutCourseSlug) : Promise.resolve(null),
     showcaseSlug ? listPublishedSiteShowcases(showcaseSlug) : Promise.resolve([])
   ])
   const pageJsonLd = course

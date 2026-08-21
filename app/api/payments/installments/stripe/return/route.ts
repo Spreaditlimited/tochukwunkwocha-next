@@ -8,7 +8,11 @@ export async function GET(request: Request) {
   if (!sessionId) return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=failed`)
   try {
     const session = await retrieveStripeSession(sessionId)
-    await markInstallmentPaymentPaid(session.id, session.paymentIntentId)
+    await markInstallmentPaymentPaid(session.id, session.paymentIntentId, {
+      amountMinor: session.amountMinor,
+      currency: session.currency,
+      planUuid: String(session.metadata?.installment_plan_uuid || "")
+    })
     return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=success`)
   } catch (_error) {
     return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=failed`)

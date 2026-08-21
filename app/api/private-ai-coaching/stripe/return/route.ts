@@ -9,7 +9,12 @@ export async function GET(request: Request) {
   try {
     if (!sessionId) throw new Error("Missing Stripe session.")
     const session = await retrieveStripeSession(sessionId)
-    const payment = await markPrivateCoachingPaymentPaid(session.id, session.paymentIntentId)
+    const payment = await markPrivateCoachingPaymentPaid(session.id, session.paymentIntentId, {
+      amountMinor: session.amountMinor,
+      currency: session.currency,
+      leadUuid: String(session.metadata?.lead_uuid || ""),
+      provider: "stripe"
+    })
     if (payment.paymentType !== "discovery") {
       return NextResponse.redirect(`${siteBaseUrl()}/private-ai-build-coaching/subscribe?payment=success`)
     }

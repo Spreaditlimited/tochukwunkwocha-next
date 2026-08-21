@@ -1039,7 +1039,7 @@ export async function PromptToProfitCoursePage({
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Once your payment has been completed, your enrolment is automatically activated and you will receive full access.</p>
                 <p>Begin planning your learning journey immediately while paying at a pace that works for you.</p>
               </div>
-              <Link href="/dashboard/installments?course=prompt-to-profit-holiday#start-installment-plan" className="btn-primary mt-7 px-6 py-3">
+              <Link href={`/dashboard/installments?course=${courseSettings?.courseSlug || "prompt-to-profit"}#start-installment-plan`} className="btn-primary mt-7 px-6 py-3">
                 Start an Installment Plan
               </Link>
             </div>

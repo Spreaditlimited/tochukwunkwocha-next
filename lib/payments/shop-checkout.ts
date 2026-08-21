@@ -24,7 +24,8 @@ export async function initializeShopPayment(input: {
       callbackUrl: absoluteUrl(
         `/api/shop/payments/paystack/return?order=${encodeURIComponent(input.orderUuid)}`
       ),
-      metadata
+      metadata,
+      currency: input.currency
     })
   }
 

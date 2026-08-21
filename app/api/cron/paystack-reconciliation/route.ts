@@ -12,7 +12,7 @@ const AUTOMATION_KEY = "paystack-provider-work"
 
 function authorized(request: NextRequest) {
   const secret = String(process.env.CRON_SECRET || "").trim()
-  if (!secret) return true
+  if (!secret) return process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production"
   return request.headers.get("authorization") === `Bearer ${secret}`
 }
 

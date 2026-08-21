@@ -79,6 +79,7 @@ async function queueManualPaymentNotifications(input: {
   dashboardPath: string
   accountCreated: boolean
   temporaryPassword: string | null
+  sendWhatsApp: boolean
 }) {
   let eventUuid = ""
   try {
@@ -90,7 +91,8 @@ async function queueManualPaymentNotifications(input: {
       courseSlug: input.courseSlug,
       dashboardPath: input.dashboardPath,
       temporaryPassword: input.temporaryPassword,
-      sendEmail: input.accountCreated
+      sendEmail: input.accountCreated,
+      sendWhatsApp: input.sendWhatsApp
     })
   } catch (error) {
     console.error("[manual-payment] could not enqueue notifications", {
@@ -150,6 +152,14 @@ export async function POST(request: Request) {
         courseSlug,
         dashboardPath
       })
+      await upsertWhatsAppContact({
+        email,
+        fullName: firstName,
+        phone,
+        courseSlug,
+        source: "manual_enrollment_retry",
+        optedIn: body.whatsappOptIn === true
+      })
       await queueManualPaymentNotifications({
         paymentUuid: existingPayment.paymentUuid,
         email,
@@ -158,7 +168,8 @@ export async function POST(request: Request) {
         courseSlug,
         dashboardPath,
         accountCreated: pendingSession.accountCreated,
-        temporaryPassword: pendingSession.temporaryPassword
+        temporaryPassword: pendingSession.temporaryPassword,
+        sendWhatsApp: body.whatsappOptIn === true
       })
       return NextResponse.json({
         ok: true,
@@ -296,7 +307,8 @@ export async function POST(request: Request) {
       courseSlug,
       dashboardPath,
       accountCreated: pendingSession.accountCreated,
-      temporaryPassword: pendingSession.temporaryPassword
+      temporaryPassword: pendingSession.temporaryPassword,
+      sendWhatsApp: body.whatsappOptIn === true
     })
 
     return NextResponse.json({

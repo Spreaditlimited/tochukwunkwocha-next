@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { provisionFamilyOrder } from "@/lib/family-enrollment"
 import { enqueueEnrollmentConfirmationNotification, processPaymentNotificationOutbox } from "@/lib/payment-notification-outbox"
 import { createStudentSessionForAccount, createStudentTemporaryPassword } from "@/lib/student-auth"
-import { findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
+import { findOrCreateStudentAccount, hasWhatsAppEnrollmentConsent, normalizeEmail } from "@/lib/payments/course-checkout"
 
 type PaidOrderRow = {
   order_uuid?: string | null
@@ -53,19 +53,22 @@ export async function provisionStudentForPaidOrder(
   const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
   let activationEmailSent = false
   if (sendNotifications) {
+    const notificationPhone = String(order?.phone || "").trim() || account.phoneE164 || ""
+    const sendWhatsApp = await hasWhatsAppEnrollmentConsent({ phone: notificationPhone })
     const sourceUuid = String(order?.order_uuid || `${order?.course_slug || "course"}:${order?.batch_key || "batch"}:${email}`)
     const eventUuid = await enqueueEnrollmentConfirmationNotification({
       sourceType: "course_order",
       sourceUuid,
       email: account.email,
       fullName: account.fullName,
-      phone: account.phoneE164 || String(order?.phone || ""),
+      phone: notificationPhone,
       courseSlug: order?.course_slug || "",
       batchKey: order?.batch_key || "",
       batchLabel: order?.batch_label || "",
       dashboardPath: isGroupEnrollment ? "/dashboard/family" : "/dashboard/courses",
       temporaryPassword: temporary?.password || null,
-      syncBrevo: !isGroupEnrollment
+      syncBrevo: !isGroupEnrollment,
+      sendWhatsApp
     })
     const delivery = await processPaymentNotificationOutbox({ eventUuid })
     activationEmailSent = delivery.completed === 1

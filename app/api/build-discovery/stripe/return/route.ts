@@ -9,7 +9,12 @@ export async function GET(request: Request) {
   try {
     if (!sessionId) throw new Error("Missing Stripe session.")
     const session = await retrieveStripeSession(sessionId)
-    const payment = await markBuildDiscoveryPaymentPaid(session.id, session.paymentIntentId)
+    const payment = await markBuildDiscoveryPaymentPaid(session.id, session.paymentIntentId, {
+      amountMinor: session.amountMinor,
+      currency: session.currency,
+      leadUuid: String(session.metadata?.lead_uuid || ""),
+      provider: "stripe"
+    })
     const issued = await issueBuildBookingAccess({ leadUuid: payment.leadUuid, score: payment.score, discoveryApproved: true })
     return NextResponse.redirect(`${siteBaseUrl()}/schools/book-call?source=build&build_access=${encodeURIComponent(issued.token)}&payment=success`)
   } catch {

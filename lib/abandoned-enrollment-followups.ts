@@ -179,9 +179,8 @@ async function backfillExistingAttempts() {
     WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
       AND co.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
       AND COALESCE(co.order_uuid, '') <> ''
-      AND LOWER(COALESCE(co.status, 'pending')) NOT IN (
-        'paid', 'duplicate_payment_review', 'cancelled', 'canceled', 'abandoned', 'failed', 'reversed', 'expired'
-      )
+      AND COALESCE(TRIM(co.provider_reference), '') <> ''
+      AND LOWER(COALESCE(co.status, 'pending')) = 'pending'
   `
 }
 

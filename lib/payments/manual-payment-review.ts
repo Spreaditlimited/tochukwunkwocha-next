@@ -13,6 +13,7 @@ import {
   assertBatchCapacity,
   createAffiliateCommissionForOrder,
   findOrCreateStudentAccount,
+  hasWhatsAppEnrollmentConsent,
   normalizeEmail,
   recordCouponRedemption,
   resolveCheckoutBatch,
@@ -235,18 +236,21 @@ export async function reviewManualPayment(input: {
   const needsFirstUsePassword = !existingAccount || (existingAccount.mustResetPassword && !existingAccount.resetRequestedAt)
   const temporary = needsFirstUsePassword ? await createStudentTemporaryPassword(email) : null
   const isFamilyEnrollment = clean(payment.buyer_type, 40).toLowerCase() === "family"
+  const notificationPhone = clean(payment.phone, 80) || account.phoneE164 || ""
+  const sendWhatsApp = await hasWhatsAppEnrollmentConsent({ phone: notificationPhone })
   const enrollmentNotificationUuid = await enqueueEnrollmentConfirmationNotification({
     sourceType: "manual_payment",
     sourceUuid: paymentUuid,
     email,
     fullName: account.fullName || clean(payment.first_name, 180) || "Student",
-    phone: account.phoneE164 || clean(payment.phone, 80),
+    phone: notificationPhone,
     courseSlug: clean(payment.course_slug, 120),
     batchKey: clean(payment.batch_key, 64),
     batchLabel: clean(payment.batch_label, 120),
     dashboardPath: isFamilyEnrollment ? "/dashboard/family" : "/dashboard/courses",
     temporaryPassword: temporary?.password || null,
-    syncBrevo: !isFamilyEnrollment
+    syncBrevo: !isFamilyEnrollment,
+    sendWhatsApp
   })
   const activationEmailTask = processPaymentNotificationOutbox({ eventUuid: enrollmentNotificationUuid })
     .then((result) => result.completed === 1)

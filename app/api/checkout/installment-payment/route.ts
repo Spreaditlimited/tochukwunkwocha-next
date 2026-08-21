@@ -5,16 +5,17 @@ import {
   createInstallmentPayment,
   initializePaystack,
   initializeStripe,
+  normalizeEmail,
   quoteInstallmentPayment,
   siteBaseUrl
 } from "@/lib/payments/course-checkout"
 
 export async function POST(request: Request) {
   try {
-    const origin = new URL(request.url).origin
+    const origin = siteBaseUrl()
     const body = await request.json()
     const planUuid = String(body.planUuid || "").trim()
-    const email = String(body.email || "").trim().toLowerCase()
+    const email = normalizeEmail(body.email)
     const provider = String(body.provider || "paystack").toLowerCase() === "stripe" ? "stripe" : "paystack"
     const currency = String(body.currency || (provider === "paystack" ? "NGN" : "USD")).trim().toUpperCase()
     const amountMinor = Math.round(Number(body.amountMinor || 0))
@@ -47,7 +48,8 @@ export async function POST(request: Request) {
             amountMinor: quote.amountMinor,
             reference,
             callbackUrl: `${origin}/api/payments/installments/paystack/return`,
-            metadata: { payment_scope: "installment", installment_plan_uuid: planUuid }
+            metadata: { payment_scope: "installment", installment_plan_uuid: planUuid },
+            currency: quote.currency
           })
 
     const saved = await createInstallmentPayment({

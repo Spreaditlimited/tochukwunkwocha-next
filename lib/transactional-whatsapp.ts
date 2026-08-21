@@ -1,5 +1,6 @@
 import { getAdminSettingValue } from "@/lib/admin-settings"
 import { publicAbsoluteUrl } from "@/lib/public-site-url"
+import { formatDateTimeWAT } from "@/lib/utils"
 
 type TransactionalWhatsAppPayload = {
   event: "manual_payment_submitted" | "enrollment_confirmed" | "live_class_reminder" | "enrollment_payment_reminder"
@@ -117,8 +118,14 @@ export function sendEnrollmentConfirmedWhatsApp(input: {
   phone?: string | null
   fullName?: string | null
   courseSlug?: string | null
+  batchLabel?: string | null
+  batchStartAt?: Date | string | null
   dashboardPath?: string | null
 }) {
+  const course = transactionalCourseName(input.courseSlug)
+  const batch = clean(input.batchLabel, 120)
+  const startsAt = formatDateTimeWAT(input.batchStartAt)
+  const enrollment = [course, batch, startsAt ? `starts ${startsAt}` : ""].filter(Boolean).join(" — ")
   // Keep this in sync with the approved Meta WhatsApp template name.
   return sendTransactionalWhatsApp({
     event: "enrollment_confirmed",
@@ -127,7 +134,7 @@ export function sendEnrollmentConfirmedWhatsApp(input: {
     templateLanguage: "en_GB",
     templateVariables: [
       firstName(input.fullName),
-      transactionalCourseName(input.courseSlug),
+      enrollment,
       dashboardUrl(input.dashboardPath || "/dashboard/courses")
     ],
     metadata: {

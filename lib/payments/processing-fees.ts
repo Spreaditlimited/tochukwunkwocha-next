@@ -44,7 +44,25 @@ export function grossUpStripeAmount(netMinorInput: number, bpsInput: number, fix
 
 export function grossUpPaystackAmount(netMinorInput: number) {
   const netMinor = Math.max(0, Math.round(Number(netMinorInput || 0)))
-  const feeAtNet = Math.round(netMinor * 0.015) + (netMinor < 250_000 ? 0 : 10_000)
-  if (feeAtNet > 200_000) return netMinor + 200_000
-  return Math.ceil((netMinor + (netMinor < 250_000 ? 0 : 10_000)) / (1 - 0.015) + 1)
+  if (/^(1|true|yes)$/i.test(String(process.env.PAYSTACK_FEES_PASSED_BY_DASHBOARD || ""))) return netMinor
+  const numberSetting = (key: string, fallback: number) => {
+    const value = Number(process.env[key])
+    return Number.isFinite(value) && value >= 0 ? Math.round(value) : fallback
+  }
+  const bps = Math.min(9999, numberSetting("PAYSTACK_FEE_BPS", 150))
+  const fixedMinor = numberSetting("PAYSTACK_FEE_FIXED_NGN_MINOR", 10_000)
+  const fixedWaiverBelowMinor = numberSetting("PAYSTACK_FEE_FIXED_WAIVER_BELOW_NGN_MINOR", 250_000)
+  const capMinor = numberSetting("PAYSTACK_FEE_CAP_NGN_MINOR", 200_000)
+  const feeAt = (totalMinor: number) => Math.min(
+    capMinor,
+    Math.round((totalMinor * bps) / 10_000) + (totalMinor < fixedWaiverBelowMinor ? 0 : fixedMinor)
+  )
+  let low = netMinor
+  let high = netMinor + capMinor + fixedMinor + 10_000
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (middle - feeAt(middle) >= netMinor) high = middle
+    else low = middle + 1
+  }
+  return low
 }

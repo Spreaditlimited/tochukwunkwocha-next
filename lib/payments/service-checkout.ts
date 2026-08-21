@@ -3,6 +3,7 @@ import { randomUUID } from "crypto"
 import { ensureBuildServiceTables } from "@/lib/admin-build-service"
 import { getAdminSettingValue } from "@/lib/admin-settings"
 import { prisma } from "@/lib/prisma"
+import { normalizePaymentEmail } from "@/lib/payment-email"
 import {
   initializePaystack,
   initializeStripe,
@@ -31,8 +32,7 @@ function clean(value: unknown, max = 500) {
 }
 
 function normalizeEmail(value: unknown) {
-  const email = clean(value, 220).toLowerCase()
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ""
+  return normalizePaymentEmail(value)
 }
 
 function toMinor(value: unknown) {
@@ -248,6 +248,7 @@ export async function createServiceCheckout(input: { slug: ServiceCheckoutSlug; 
   const referencePrefix = input.slug === "build-discovery" ? "BLD" : "PAIC"
   const reference = `${referencePrefix}_${details.leadUuid.replace(/[^a-z0-9]/gi, "").slice(0, 34).toUpperCase()}_${Date.now().toString().slice(-6)}`
   const metadata = {
+    payment_scope: input.slug,
     service_slug: input.slug,
     lead_uuid: details.leadUuid,
     full_name: details.fullName,
@@ -271,7 +272,8 @@ export async function createServiceCheckout(input: { slug: ServiceCheckoutSlug; 
         amountMinor: pricing.finalAmountMinor,
         reference,
         callbackUrl: `${siteBaseUrl()}/api/${input.slug === "build-discovery" ? "build-discovery" : "private-ai-coaching"}/paystack/return`,
-        metadata
+        metadata,
+        currency: pricing.currency
       })
 
   if (input.slug === "build-discovery") {

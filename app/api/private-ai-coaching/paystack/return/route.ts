@@ -9,7 +9,12 @@ export async function GET(request: Request) {
   try {
     if (!reference) throw new Error("Missing payment reference.")
     const tx = await verifyPaystackTransaction(reference)
-    const payment = await markPrivateCoachingPaymentPaid(tx.reference, tx.providerOrderId)
+    const payment = await markPrivateCoachingPaymentPaid(tx.reference, tx.providerOrderId, {
+      amountMinor: tx.amountMinor,
+      currency: tx.currency,
+      leadUuid: String(tx.metadata?.lead_uuid || ""),
+      provider: "paystack"
+    })
     if (payment.paymentType !== "discovery") {
       return NextResponse.redirect(`${siteBaseUrl()}/private-ai-build-coaching/subscribe?payment=success`)
     }

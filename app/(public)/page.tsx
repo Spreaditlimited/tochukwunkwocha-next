@@ -21,7 +21,7 @@ import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { brand } from "@/lib/brand"
 import { getBlogImageSrc, getPublishedPosts } from "@/lib/blog"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
-import { getPublicCourseSettings } from "@/lib/public-course-settings"
+import { getCurrentPromptToProfitSettings, getPublicCourseSettings } from "@/lib/public-course-settings"
 import { buildMetadata } from "@/lib/site-seo"
 import { formatDate } from "@/lib/utils"
 
@@ -39,7 +39,7 @@ export default async function HomePage() {
   const [posts, introductionVideo, basicPrices, advancedPrices, schoolPrices] = await Promise.all([
     getPublishedPosts(3),
     getPublicVideoSlot("home-introduction"),
-    getPublicCourseSettings("prompt-to-profit-holiday"),
+    getCurrentPromptToProfitSettings(),
     getPublicCourseSettings("prompt-to-production"),
     getPublicCourseSettings("prompt-to-profit-schools")
   ])

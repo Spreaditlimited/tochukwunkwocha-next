@@ -2,14 +2,18 @@ import { NextResponse } from "next/server"
 
 import {
   checkoutContext,
+  beginCourseOrderProviderInitialization,
   courseReferencePrefix,
   createCourseOrder,
+  failCourseOrderProviderInitialization,
   initializePaystack,
   initializeStripe,
   normalizeCourse,
   normalizeEmail,
   recordAffiliateAttribution,
   providerForCountry,
+  PaystackInitializationError,
+  siteBaseUrl,
   upsertWhatsAppContact,
   updateCourseOrderProvider
 } from "@/lib/payments/course-checkout"
@@ -25,8 +29,11 @@ import {
 
 export async function POST(request: Request) {
   const timing = new ServerTiming()
+  let createdOrderUuid = ""
+  let createdProvider = ""
+  let providerInitialized = false
   try {
-    const origin = new URL(request.url).origin
+    const origin = siteBaseUrl()
     const body = await request.json()
     const firstName = String(body.firstName || "").trim().slice(0, 160)
     const email = normalizeEmail(body.email)
@@ -87,17 +94,10 @@ export async function POST(request: Request) {
       userAgent: request.headers.get("user-agent") || "",
       affiliateCode: body.affiliateCode
     })
-    await enqueueAbandonedEnrollmentFollowup({
-      orderUuid,
-      whatsappOptedIn: body.whatsappOptIn === true
-    }).catch((error) => {
-      console.error("[checkout] abandoned enrollment follow-up could not be queued", {
-        orderUuid,
-        error: error instanceof Error ? error.message : String(error)
-      })
-    })
+    createdOrderUuid = orderUuid
+    createdProvider = provider
     timing.mark("order")
-    const metadata = { order_uuid: orderUuid, course_slug: returnSlug, checkout_course_slug: courseSlug, first_name: firstName }
+    const metadata = { payment_scope: "course_checkout", order_uuid: orderUuid, course_slug: returnSlug, checkout_course_slug: courseSlug, first_name: firstName }
     const affiliateTask = recordAffiliateAttribution({
       sourceUuid: orderUuid,
       courseSlug,
@@ -122,6 +122,8 @@ export async function POST(request: Request) {
       source: "course_checkout",
       optedIn: body.whatsappOptIn === true
     })
+    const paystackReference = `${courseReferencePrefix(courseSlug)}_${orderUuid.replace(/-/g, "").slice(0, 24)}`
+    if (provider === "paystack") await beginCourseOrderProviderInitialization(orderUuid, paystackReference)
     const payment =
       provider === "stripe"
         ? await initializeStripe({
@@ -133,21 +135,32 @@ export async function POST(request: Request) {
             courseSlug: returnSlug,
             successUrl: `${origin}/api/payments/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
             cancelUrl: `${origin}/checkout/${returnSlug}?payment=cancelled&order=${orderUuid}`,
-            metadata: {
-              checkout_course_slug: courseSlug
-            }
+            metadata
           })
         : await initializePaystack({
             email,
             amountMinor: result.pricing.finalAmountMinor,
-            reference: `${courseReferencePrefix(courseSlug)}_${orderUuid.replace(/-/g, "").slice(0, 24)}`,
+            reference: paystackReference,
             callbackUrl: `${origin}/api/payments/paystack/return`,
-            metadata
+            metadata,
+            currency: result.pricing.currency
           })
     timing.mark("provider")
 
     await updateCourseOrderProvider(orderUuid, payment.providerReference, payment.providerOrderId)
+    providerInitialized = true
     timing.mark("provider_save")
+    if (provider === "paystack") {
+      await enqueueAbandonedEnrollmentFollowup({
+        orderUuid,
+        whatsappOptedIn: body.whatsappOptIn === true
+      }).catch((error) => {
+        console.error("[checkout] abandoned enrollment follow-up could not be queued", {
+          orderUuid,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      })
+    }
     await Promise.all([affiliateTask, whatsappTask])
     timing.mark("attribution")
 
@@ -160,11 +173,14 @@ export async function POST(request: Request) {
     }, { headers: timing.headers() })
   } catch (error) {
     timing.mark("failed")
+    if (createdOrderUuid && createdProvider === "paystack" && !providerInitialized) {
+      await failCourseOrderProviderInitialization(createdOrderUuid, error).catch(() => null)
+    }
     if (isCourseEnrollmentConflict(error)) {
       return NextResponse.json(enrollmentConflictPayload(error), { status: 409, headers: timing.headers() })
     }
     return studentApiErrorResponse(error, "Could not create your checkout. Please try again.", {
-      status: 503,
+      status: error instanceof PaystackInitializationError ? error.status : 503,
       headers: timing.headers(),
       context: "course_checkout_order_failed"
     })

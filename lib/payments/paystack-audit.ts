@@ -2,7 +2,7 @@ import { randomUUID } from "crypto"
 
 import { prisma } from "@/lib/prisma"
 
-type AuditSource = "webhook" | "return" | "reconciliation"
+type AuditSource = "initialization" | "webhook" | "return" | "reconciliation"
 
 export type PaystackAuditEvent = {
   orderUuid?: string | null
@@ -10,7 +10,7 @@ export type PaystackAuditEvent = {
   providerEventId?: string | null
   source: AuditSource
   eventType: string
-  outcome: "received" | "verified" | "processing" | "not_paid" | "mismatch" | "failed" | "ignored" | "provisioned"
+  outcome: "initialized" | "received" | "verified" | "processing" | "not_paid" | "mismatch" | "failed" | "ignored" | "provisioned"
   providerStatus?: string | null
   expectedAmountMinor?: number | null
   receivedAmountMinor?: number | null

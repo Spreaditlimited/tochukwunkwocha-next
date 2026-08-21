@@ -3,9 +3,12 @@ import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
+import { sendEmail } from "@/lib/email"
+import { issueBuildBookingAccess, issuePrivateCoachingBookingAccess, markBuildDiscoveryPaymentPaid, markPrivateCoachingPaymentPaid } from "@/lib/discovery-booking-access"
 import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
-import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid } from "@/lib/payments/course-checkout"
+import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid, siteBaseUrl } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
+import { confirmStripeSchoolAdvanced } from "@/lib/payments/school-advanced"
 import { fulfillPaidShopOrder, SHOP_PAYMENT_SCOPE } from "@/lib/shop"
 import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
@@ -70,9 +73,45 @@ export async function POST(request: Request) {
     const result = await completePaidDomainCheckout(String(session.id || ""))
     return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })
   }
+  if (paymentScope === "school_advanced") {
+    await confirmStripeSchoolAdvanced(String(session.id || ""))
+    return NextResponse.json({ ok: true, scope: "school_advanced" })
+  }
+  if (paymentScope === "build-discovery") {
+    const payment = await markBuildDiscoveryPaymentPaid(String(session.id || ""), session.payment_intent ? String(session.payment_intent) : null, {
+      amountMinor: Number.isFinite(Number(session.amount_total)) ? Math.round(Number(session.amount_total)) : null,
+      currency: session.currency ? String(session.currency) : null,
+      leadUuid: String(metadata.lead_uuid || ""),
+      provider: "stripe"
+    })
+    if (!payment.alreadyPaid) {
+      const issued = await issueBuildBookingAccess({ leadUuid: payment.leadUuid, score: payment.score, discoveryApproved: true })
+      const bookingUrl = `${siteBaseUrl()}/schools/book-call?source=build&build_access=${encodeURIComponent(issued.token)}&payment=success`
+      await sendEmail({ to: payment.email, subject: "Payment confirmed — book your build discovery call", text: `Hello ${payment.fullName || "there"},\n\nYour payment has been confirmed. Book your build discovery call here:\n${bookingUrl}\n\nThis secure link expires in 3 days.` })
+    }
+    return NextResponse.json({ ok: true, scope: "build-discovery" })
+  }
+  if (paymentScope === "private-ai-coaching-discovery") {
+    const payment = await markPrivateCoachingPaymentPaid(String(session.id || ""), session.payment_intent ? String(session.payment_intent) : null, {
+      amountMinor: Number.isFinite(Number(session.amount_total)) ? Math.round(Number(session.amount_total)) : null,
+      currency: session.currency ? String(session.currency) : null,
+      leadUuid: String(metadata.lead_uuid || ""),
+      provider: "stripe"
+    })
+    if (!payment.alreadyPaid && payment.paymentType === "discovery") {
+      const issued = await issuePrivateCoachingBookingAccess(payment.leadUuid)
+      const bookingUrl = `${siteBaseUrl()}/schools/book-call?source=private_ai_coaching&coaching_access=${encodeURIComponent(issued.token)}&payment=success`
+      await sendEmail({ to: payment.email, subject: "Payment confirmed — book your private AI coaching call", text: `Hello ${payment.fullName || "there"},\n\nYour payment has been confirmed. Book your private AI coaching discovery call here:\n${bookingUrl}\n\nThis secure link expires in 3 days.` })
+    }
+    return NextResponse.json({ ok: true, scope: "private-ai-coaching-discovery" })
+  }
   if (paymentScope === "installment" || metadata.installment_plan_uuid) {
     try {
-      await markInstallmentPaymentPaid(String(session.id || ""), session.payment_intent ? String(session.payment_intent) : null)
+      await markInstallmentPaymentPaid(String(session.id || ""), session.payment_intent ? String(session.payment_intent) : null, {
+        amountMinor: Number.isFinite(Number(session.amount_total)) ? Math.round(Number(session.amount_total)) : null,
+        currency: session.currency ? String(session.currency) : null,
+        planUuid: String(metadata.installment_plan_uuid || "")
+      })
     } catch (error) {
       if (isCourseEnrollmentConflict(error)) {
         return NextResponse.json({ ok: true, scope: "installment", duplicateReview: true })
@@ -80,6 +119,10 @@ export async function POST(request: Request) {
       throw error
     }
     return NextResponse.json({ ok: true, scope: "installment" })
+  }
+
+  if (paymentScope && paymentScope !== "course_checkout") {
+    return NextResponse.json({ ok: true, ignored: true, reason: "unknown_payment_scope" })
   }
 
   const orderUuid = String(session.client_reference_id || metadata.order_uuid || "").trim()

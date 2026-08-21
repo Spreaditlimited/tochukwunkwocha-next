@@ -108,7 +108,8 @@ export async function createPaidDomainRenewal(input: {
         domain_name: domain.domainName,
         account_id: input.accountId.toString(),
         years
-      }
+      },
+      currency: quote.currency
     })
     return {
       renewalUuid,

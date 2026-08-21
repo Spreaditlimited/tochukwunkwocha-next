@@ -81,3 +81,9 @@ export async function getPublicCourseSettings(courseSlug: string): Promise<Publi
     openBatches
   }
 }
+
+export async function getCurrentPromptToProfitSettings() {
+  const holiday = await getPublicCourseSettings("prompt-to-profit-holiday")
+  if (holiday?.openBatches.length) return holiday
+  return getPublicCourseSettings("prompt-to-profit")
+}

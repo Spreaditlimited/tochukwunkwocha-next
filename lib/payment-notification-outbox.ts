@@ -15,6 +15,7 @@ type ManualPaymentNotification = {
   temporaryPassword?: string | null
   resetToken?: string | null
   sendEmail: boolean
+  sendWhatsApp?: boolean
 }
 
 export type EnrollmentConfirmationNotification = {
@@ -43,6 +44,17 @@ type OutboxRow = {
   brevoSyncedAt: Date | null
   emailSentAt: Date | null
   whatsappSentAt: Date | null
+}
+
+async function resolveEnrollmentBatchStartAt(courseSlug: string, batchKey: string) {
+  if (!courseSlug || !batchKey) return null
+  const rows = await prisma.$queryRaw<Array<{ batchStartAt: Date | null }>>`
+    SELECT batch_start_at AS batchStartAt
+    FROM course_batches
+    WHERE course_slug = ${courseSlug} AND batch_key = ${batchKey}
+    LIMIT 1
+  `.catch(() => [])
+  return rows[0]?.batchStartAt || null
 }
 
 let outboxColumnsReady: Promise<void> | null = null
@@ -222,10 +234,13 @@ export async function processPaymentNotificationOutbox(input?: { limit?: number;
           await prisma.$executeRaw`UPDATE tochukwu_notification_outbox SET whatsapp_sent_at=NOW(), whatsapp_status='skipped', updated_at=NOW() WHERE id=${row.id}`
         } else if (!row.whatsappSentAt) {
           try {
+            const batchStartAt = await resolveEnrollmentBatchStartAt(payload.courseSlug, payload.batchKey)
             const result = await sendEnrollmentConfirmedWhatsApp({
               phone: payload.phone,
               fullName: payload.fullName,
               courseSlug: payload.courseSlug,
+              batchLabel: payload.batchLabel,
+              batchStartAt,
               dashboardPath: payload.dashboardPath
             })
             if (!result.ok || result.skipped) throw new Error(result.reason || "Enrollment confirmation WhatsApp was skipped.")
@@ -248,7 +263,9 @@ export async function processPaymentNotificationOutbox(input?: { limit?: number;
           if (!result.ok) throw new Error("Pending-payment email was skipped.")
           await prisma.$executeRaw`UPDATE tochukwu_notification_outbox SET email_sent_at=NOW(), email_status='sent', updated_at=NOW() WHERE id=${row.id}`
         }
-        if (payload.phone && !row.whatsappSentAt) {
+        if (payload.sendWhatsApp === false && !row.whatsappSentAt) {
+          await prisma.$executeRaw`UPDATE tochukwu_notification_outbox SET whatsapp_sent_at=NOW(), whatsapp_status='skipped', updated_at=NOW() WHERE id=${row.id}`
+        } else if (payload.phone && !row.whatsappSentAt) {
           const result = await sendManualPaymentSubmittedWhatsApp({
             phone: payload.phone,
             fullName: payload.fullName,

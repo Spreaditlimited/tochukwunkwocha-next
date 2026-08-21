@@ -1,4 +1,7 @@
+import crypto from "crypto"
+
 import { sendEmail } from "@/lib/email"
+import { prisma } from "@/lib/prisma"
 
 type PaymentProvider = "stripe" | "paystack"
 
@@ -22,6 +25,31 @@ function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
 }
 
+async function claimPersistentAlert(throttleKey: string) {
+  const bucket = Math.floor(Date.now() / ALERT_THROTTLE_MS)
+  const hash = crypto.createHash("sha256").update(`${bucket}:${throttleKey}`).digest("hex")
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS tochukwu_payment_provider_alert_claims (
+        throttle_hash CHAR(64) NOT NULL,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY (throttle_hash),
+        KEY idx_payment_provider_alert_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    const inserted = await prisma.$executeRaw`
+      INSERT IGNORE INTO tochukwu_payment_provider_alert_claims (throttle_hash, created_at)
+      VALUES (${hash}, UTC_TIMESTAMP())
+    `
+    return { claimed: Number(inserted || 0) === 1, hash, persistent: true }
+  } catch {
+    const lastSentAt = recentAlerts.get(throttleKey) || 0
+    if (Date.now() - lastSentAt < ALERT_THROTTLE_MS) return { claimed: false, hash, persistent: false }
+    recentAlerts.set(throttleKey, Date.now())
+    return { claimed: true, hash, persistent: false }
+  }
+}
+
 export async function reportPaymentProviderIssue(issue: ProviderIssue) {
   const details = {
     provider: issue.provider,
@@ -39,9 +67,8 @@ export async function reportPaymentProviderIssue(issue: ProviderIssue) {
   console.error(`[payment-provider] ${issue.provider} ${details.operation} failed.`, details)
 
   const throttleKey = [issue.provider, details.operation, details.status, details.errorType, details.errorCode, details.errorMessage].join(":")
-  const lastSentAt = recentAlerts.get(throttleKey) || 0
-  if (Date.now() - lastSentAt < ALERT_THROTTLE_MS) return { sent: false, throttled: true }
-  recentAlerts.set(throttleKey, Date.now())
+  const claim = await claimPersistentAlert(throttleKey)
+  if (!claim.claimed) return { sent: false, throttled: true }
 
   try {
     const delivery = await sendEmail({
@@ -63,10 +90,18 @@ export async function reportPaymentProviderIssue(issue: ProviderIssue) {
         "No API keys or payment credentials are included in this alert."
       ].join("\n")
     })
-    if (!delivery.ok) recentAlerts.delete(throttleKey)
+    if (!delivery.ok) {
+      recentAlerts.delete(throttleKey)
+      if (claim.persistent) {
+        await prisma.$executeRaw`DELETE FROM tochukwu_payment_provider_alert_claims WHERE throttle_hash = ${claim.hash}`.catch(() => 0)
+      }
+    }
     return { sent: delivery.ok, throttled: false }
   } catch (error) {
     recentAlerts.delete(throttleKey)
+    if (claim.persistent) {
+      await prisma.$executeRaw`DELETE FROM tochukwu_payment_provider_alert_claims WHERE throttle_hash = ${claim.hash}`.catch(() => 0)
+    }
     console.error("[payment-provider] Could not send provider alert email.", {
       provider: issue.provider,
       operation: details.operation,

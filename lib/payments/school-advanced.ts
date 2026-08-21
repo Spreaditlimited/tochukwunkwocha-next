@@ -207,36 +207,53 @@ export async function createSchoolAdvancedSeatCheckout(input: {
   await captureSchoolOrderReferral({ orderUuid, affiliateCode: input.affiliateCode }).catch(() => null)
   const reference = `SCHADV_${orderUuid.replace(/[^a-z0-9]/gi, "").slice(0, 22).toUpperCase()}`
   const metadata = {
+    payment_scope: "school_advanced",
     school_order_uuid: orderUuid,
     school_id: String(input.schoolId),
     order_kind: "advanced_seat_purchase",
     seat_course_slug: "prompt-to-production",
     seat_count: String(quote.seats)
   }
-  const payment = quote.provider === "stripe"
-    ? await initializeStripe({
-        email: input.adminEmail.toLowerCase(),
-        amountMinor: quote.totalMinor,
-        currency: quote.currency,
-        courseName: "Prompt to Profit Advanced School Seats",
-        orderUuid,
-        courseSlug: "prompt-to-production",
-        metadata,
-        successUrl: `${siteBaseUrl()}/api/schools/advanced/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${siteBaseUrl()}/schools/dashboard?advanced_payment=cancelled`
-      })
-    : await initializePaystack({
-        email: input.adminEmail.toLowerCase(),
-        amountMinor: quote.totalMinor,
-        reference,
-        callbackUrl: `${siteBaseUrl()}/api/schools/advanced/paystack/return`,
-        metadata
-      })
+  let payment
+  try {
+    await prisma.$executeRaw`
+      UPDATE school_orders
+      SET status = 'initializing', provider_reference = ${reference}, updated_at = ${new Date()}
+      WHERE order_uuid = ${orderUuid} LIMIT 1
+    `
+    payment = quote.provider === "stripe"
+      ? await initializeStripe({
+          email: input.adminEmail.toLowerCase(),
+          amountMinor: quote.totalMinor,
+          currency: quote.currency,
+          courseName: "Prompt to Profit Advanced School Seats",
+          orderUuid,
+          courseSlug: "prompt-to-production",
+          metadata,
+          successUrl: `${siteBaseUrl()}/api/schools/advanced/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${siteBaseUrl()}/schools/dashboard?advanced_payment=cancelled`
+        })
+      : await initializePaystack({
+          email: input.adminEmail.toLowerCase(),
+          amountMinor: quote.totalMinor,
+          reference,
+          callbackUrl: `${siteBaseUrl()}/api/schools/advanced/paystack/return`,
+          metadata,
+          currency: quote.currency
+        })
+  } catch (error) {
+    await prisma.$executeRaw`
+      UPDATE school_orders SET status = 'initialization_failed', updated_at = ${new Date()}
+      WHERE order_uuid = ${orderUuid} AND status <> 'paid' LIMIT 1
+    `.catch(() => 0)
+    throw error
+  }
 
   await prisma.$executeRaw`
     UPDATE school_orders
     SET provider_reference = ${payment.providerReference || reference},
         provider_order_id = ${payment.providerOrderId || null},
+        status = CASE WHEN status = 'initializing' THEN 'pending' ELSE status END,
         updated_at = ${new Date()}
     WHERE order_uuid = ${orderUuid}
     LIMIT 1
@@ -332,20 +349,42 @@ export async function markSchoolAdvancedOrderPaid(input: {
 
 export async function confirmPaystackSchoolAdvanced(reference: string) {
   const tx = await verifyPaystackTransaction(reference)
+  const metadata = tx.metadata as Record<string, unknown>
+  const orderUuid = clean(metadata?.school_order_uuid, 80)
+  const scope = clean(metadata?.payment_scope, 80).toLowerCase()
+  if (!orderUuid || scope !== "school_advanced") throw new Error("Payment metadata does not match an advanced school order.")
+  const rows = await prisma.$queryRaw<Array<{ totalMinor: number | bigint; currency: string; providerReference: string | null }>>`
+    SELECT total_minor AS totalMinor, currency, provider_reference AS providerReference
+    FROM school_orders
+    WHERE order_uuid = ${orderUuid}
+    LIMIT 1
+  `
+  const order = rows[0]
+  if (!order) throw new Error("School order not found.")
+  if (Number(order.totalMinor || 0) !== Number(tx.amountMinor || 0)) throw new Error("Paid amount does not match this advanced school order.")
+  if (clean(order.currency, 10).toUpperCase() !== clean(tx.currency, 10).toUpperCase()) throw new Error("Paid currency does not match this advanced school order.")
+  if (clean(order.providerReference, 190) && clean(order.providerReference, 190) !== tx.reference) throw new Error("Payment reference does not match this advanced school order.")
   await markSchoolAdvancedOrderPaid({
     provider: "paystack",
     providerReference: tx.reference,
     providerOrderId: tx.providerOrderId,
-    orderUuid: clean((tx.metadata as Record<string, unknown>)?.school_order_uuid, 80)
+    orderUuid
   })
 }
 
 export async function confirmStripeSchoolAdvanced(sessionId: string) {
   const session = await retrieveStripeSession(sessionId)
+  const orderUuid = clean(session.metadata?.school_order_uuid || session.orderUuid, 80)
+  const rows = await prisma.$queryRaw<Array<{ totalMinor: number | bigint; currency: string }>>`
+    SELECT total_minor AS totalMinor, currency FROM school_orders WHERE order_uuid = ${orderUuid} LIMIT 1
+  `
+  const order = rows[0]
+  if (!order || Number(order.totalMinor || 0) !== Number(session.amountMinor || 0)) throw new Error("Paid amount does not match this advanced school order.")
+  if (clean(order.currency, 10).toUpperCase() !== clean(session.currency, 10).toUpperCase()) throw new Error("Paid currency does not match this advanced school order.")
   await markSchoolAdvancedOrderPaid({
     provider: "stripe",
     providerReference: session.id,
     providerOrderId: session.paymentIntentId,
-    orderUuid: session.orderUuid || ""
+    orderUuid
   })
 }

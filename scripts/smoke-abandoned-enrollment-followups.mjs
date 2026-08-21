@@ -22,9 +22,11 @@ const brevoTransport = read("lib/brevo-transactional.ts")
 assert.match(checkoutForm, /useState\(true\)/)
 assert.match(checkout, /enqueueAbandonedEnrollmentFollowup\(/)
 assert.ok(
-  checkout.indexOf("enqueueAbandonedEnrollmentFollowup({") < checkout.indexOf("initializePaystack({"),
-  "Follow-up must be queued even when provider initialization fails"
+  checkout.indexOf("enqueueAbandonedEnrollmentFollowup({") > checkout.indexOf("updateCourseOrderProvider(orderUuid"),
+  "Follow-up must only be queued after provider initialization succeeds"
 )
+assert.match(checkout, /beginCourseOrderProviderInitialization/)
+assert.match(checkout, /failCourseOrderProviderInitialization/)
 assert.match(followups, /20 \* 60_000/)
 assert.match(followups, /24 \* 60 \* 60_000/)
 assert.match(followups, /MAX_ABANDONED_ENROLLMENT_REMINDERS = 3/)
@@ -36,6 +38,7 @@ assert.match(followups, /Paystack verification was unavailable; the reminder was
 assert.match(followups, /historical_retry_suppressed/)
 assert.match(followups, /co\.created_at < DATE_SUB\(NOW\(\), INTERVAL 24 HOUR\)/)
 assert.match(followups, /co\.created_at >= DATE_SUB\(NOW\(\), INTERVAL 24 HOUR\)/)
+assert.match(followups, /COALESCE\(TRIM\(co\.provider_reference\), ''\) <> ''/)
 assert.match(followups, /isPermanentPaystackReconciliationError/)
 assert.match(followups, /payment_review_required/)
 assert.match(followups, /matchingPaidOrderExists/)

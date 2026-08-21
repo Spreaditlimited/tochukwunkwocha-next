@@ -13,6 +13,7 @@ import {
 import { prisma } from "@/lib/prisma"
 import { absoluteUrl } from "@/lib/site-seo"
 import { createShopDownloadToken } from "@/lib/shop-download-token"
+import { normalizePaymentEmail } from "@/lib/payment-email"
 export { formatShopMoney } from "@/lib/shop-format"
 
 export const SHOP_PAYMENT_SCOPE = "shop_order"
@@ -36,8 +37,7 @@ function escapeHtml(value: unknown) {
 }
 
 function normalizedEmail(value: unknown) {
-  const email = clean(value, 190).toLowerCase()
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ""
+  return normalizePaymentEmail(value)
 }
 
 function safeJson<T>(value: string | null | undefined, fallback: T): T {

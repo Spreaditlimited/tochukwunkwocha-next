@@ -15,6 +15,8 @@ import { prisma } from "@/lib/prisma"
 import { getConfiguredStripeFee, grossUpPaystackAmount, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { getCourse } from "@/lib/public-offers"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
+import { normalizePaymentEmail, validatePaymentEmail } from "@/lib/payment-email"
+import { recordPaystackAuditEvent } from "@/lib/payments/paystack-audit"
 import { batchHasNotStarted } from "@/lib/utils"
 
 export type CheckoutProvider = "paystack" | "stripe"
@@ -98,6 +100,11 @@ const courseReferencePrefixes: Record<string, string> = {
 }
 
 const HOLIDAY_COURSE_SLUG = "prompt-to-profit-holiday"
+const HOLIDAY_ENROLLMENT_RETIRES_AT = Date.UTC(2026, 7, 23, 23, 0, 0) // 24 August, 00:00 WAT
+
+export function isPromptToProfitHolidayEnrollmentRetired(at = new Date()) {
+  return at.getTime() >= HOLIDAY_ENROLLMENT_RETIRES_AT
+}
 const IMMEDIATE_ACCESS_COURSE_SLUGS = new Set(["ai-for-everyday-business-owners"])
 const HOLIDAY_GROUP_DISCOUNT_MIN_SEATS = 10
 const HOLIDAY_GROUP_DISCOUNT_UNIT_MINOR_NGN = 900_000
@@ -112,8 +119,7 @@ function toInt(value: unknown, fallback = 0) {
 }
 
 export function normalizeEmail(value: unknown) {
-  const email = String(value || "").trim().toLowerCase()
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ""
+  return normalizePaymentEmail(value)
 }
 
 export function normalizeCourse(value: unknown) {
@@ -228,7 +234,11 @@ function groupPricingForSeats(courseSlug: string, standardUnitMinor: number, sea
 }
 
 export function siteBaseUrl() {
-  const configured = process.env.SITE_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+  const vercelProduction = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || "").trim()
+  const configured = process.env.SITE_BASE_URL
+    || process.env.NEXT_PUBLIC_SITE_URL
+    || (vercelProduction ? `https://${vercelProduction}` : "")
+    || (process.env.NODE_ENV === "production" ? "https://www.tochukwunkwocha.com" : "http://localhost:3000")
   return configured.replace(/\/$/, "")
 }
 
@@ -269,6 +279,7 @@ export async function courseUsesImmediateAccess(courseSlug: string) {
 
 export async function listCheckoutBatches(courseSlugInput: string): Promise<CheckoutBatch[]> {
   const courseSlug = normalizeCourse(courseSlugInput)
+  if (courseSlug === HOLIDAY_COURSE_SLUG && isPromptToProfitHolidayEnrollmentRetired()) return []
   if (await courseUsesImmediateAccess(courseSlug)) return []
   const rows = await prisma.$queryRaw<CourseBatchRow[]>`
     SELECT cb.course_slug, cb.batch_key, cb.batch_label, cb.status, cb.is_active, cb.brevo_list_id,
@@ -770,8 +781,25 @@ export async function createCourseOrder(input: {
 export async function updateCourseOrderProvider(orderUuid: string, providerReference: string, providerOrderId?: string | null) {
   await prisma.$executeRaw`
     UPDATE course_orders
-    SET provider_reference = ${providerReference}, provider_order_id = ${providerOrderId || null}, updated_at = ${new Date()}
+    SET provider_reference = ${providerReference}, provider_order_id = ${providerOrderId || null},
+        status = CASE WHEN status = 'initializing' THEN 'pending' ELSE status END, updated_at = ${new Date()}
     WHERE order_uuid = ${orderUuid}
+  `
+}
+
+export async function beginCourseOrderProviderInitialization(orderUuid: string, providerReference: string) {
+  await prisma.$executeRaw`
+    UPDATE course_orders
+    SET provider_reference = ${providerReference}, status = 'initializing', updated_at = ${new Date()}
+    WHERE order_uuid = ${orderUuid} AND COALESCE(status, 'pending') NOT IN ('paid', 'duplicate_payment_review')
+  `
+}
+
+export async function failCourseOrderProviderInitialization(orderUuid: string, _error?: unknown) {
+  await prisma.$executeRaw`
+    UPDATE course_orders
+    SET status = 'initialization_failed', updated_at = ${new Date()}
+    WHERE order_uuid = ${orderUuid} AND COALESCE(status, 'pending') NOT IN ('paid', 'duplicate_payment_review')
   `
 }
 
@@ -948,25 +976,41 @@ export async function upsertWhatsAppContact(input: {
   source: string
   optedIn: boolean
 }) {
-  if (!input.optedIn || !input.phone) return
+  if (!input.phone) return
   const phone = String(input.phone || "").trim().replace(/[^\d+]/g, "")
   const phoneE164 = phone.startsWith("+") ? phone : phone.startsWith("0") ? `+234${phone.slice(1)}` : phone ? `+${phone}` : ""
   if (!phoneE164) return
   const timestamp = now()
+  const optedIn = input.optedIn ? 1 : 0
   await prisma.$executeRaw`
     INSERT INTO tochukwu_whatsapp_contacts
       (email, full_name, phone_e164, course_slug, source, whatsapp_opted_in, whatsapp_opted_in_at, whatsapp_opted_out_at, opt_in_version, created_at, updated_at)
     VALUES
-      (${input.email}, ${input.fullName}, ${phoneE164}, ${input.courseSlug}, ${input.source}, 1, ${timestamp}, NULL, 'enrollment_whatsapp_v1', ${timestamp}, ${timestamp})
+      (${input.email}, ${input.fullName}, ${phoneE164}, ${input.courseSlug}, ${input.source}, ${optedIn},
+       ${input.optedIn ? timestamp : null}, ${input.optedIn ? null : timestamp}, 'enrollment_whatsapp_v1', ${timestamp}, ${timestamp})
     ON DUPLICATE KEY UPDATE
+      email = VALUES(email),
       full_name = VALUES(full_name),
       course_slug = VALUES(course_slug),
       source = VALUES(source),
-      whatsapp_opted_in = 1,
+      whatsapp_opted_in = VALUES(whatsapp_opted_in),
       whatsapp_opted_in_at = VALUES(whatsapp_opted_in_at),
-      whatsapp_opted_out_at = NULL,
+      whatsapp_opted_out_at = VALUES(whatsapp_opted_out_at),
       updated_at = VALUES(updated_at)
   `.catch(() => null)
+}
+
+export async function hasWhatsAppEnrollmentConsent(input: { phone?: string | null }) {
+  const phone = String(input.phone || "").trim().replace(/[^\d+]/g, "")
+  const phoneE164 = phone.startsWith("+") ? phone : phone.startsWith("0") ? `+234${phone.slice(1)}` : phone ? `+${phone}` : ""
+  if (!phoneE164) return false
+  const rows = await prisma.$queryRaw<Array<{ optedIn: number | bigint | boolean }>>`
+    SELECT whatsapp_opted_in AS optedIn
+    FROM tochukwu_whatsapp_contacts
+    WHERE phone_e164 = ${phoneE164}
+    LIMIT 1
+  `.catch(() => [])
+  return Boolean(Number(rows[0]?.optedIn || 0))
 }
 
 export async function recordAffiliateAttribution(input: {
@@ -1701,18 +1745,35 @@ export async function quoteInstallmentPayment(input: {
   return { amountMinor, remainingMinor, currency }
 }
 
-export async function markInstallmentPaymentPaid(reference: string, providerOrderId?: string | null) {
+export async function markInstallmentPaymentPaid(
+  reference: string,
+  providerOrderId?: string | null,
+  verification?: { amountMinor?: number | null; currency?: string | null; planUuid?: string | null }
+) {
   const payment = await prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: bigint; plan_id: bigint; status: string | null }>>`
-      SELECT id, plan_id, status
-      FROM student_installment_payments
-      WHERE provider_reference = ${reference}
+    const rows = await tx.$queryRaw<Array<{ id: bigint; plan_id: bigint; status: string | null; amount_minor: number | bigint; currency: string | null; plan_uuid: string | null }>>`
+      SELECT payment.id, payment.plan_id, payment.status, payment.amount_minor, payment.currency, plan.plan_uuid
+      FROM student_installment_payments payment
+      JOIN student_installment_plans plan ON plan.id = payment.plan_id
+      WHERE payment.provider_reference = ${reference}
       ORDER BY id DESC
       LIMIT 1
       FOR UPDATE
     `
     const row = rows[0]
     if (!row) throw new Error("Installment payment not found.")
+    const receivedAmount = verification?.amountMinor
+    const receivedCurrency = String(verification?.currency || "").trim().toUpperCase()
+    const receivedPlanUuid = String(verification?.planUuid || "").trim()
+    if (receivedAmount !== undefined && receivedAmount !== null && Math.round(Number(receivedAmount)) !== Number(row.amount_minor || 0)) {
+      throw new Error("Paid amount does not match this installment payment.")
+    }
+    if (receivedCurrency && receivedCurrency !== String(row.currency || "").trim().toUpperCase()) {
+      throw new Error("Paid currency does not match this installment payment.")
+    }
+    if (receivedPlanUuid && receivedPlanUuid !== String(row.plan_uuid || "").trim()) {
+      throw new Error("Payment metadata does not match this installment plan.")
+    }
     const timestamp = now()
     if (String(row.status || "").toLowerCase() !== "paid") {
       await tx.$executeRaw`
@@ -1927,14 +1988,62 @@ export function courseReferencePrefix(courseSlug: string) {
   return courseReferencePrefixes[slug] || slug.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "COURSE"
 }
 
+export class PaystackInitializationError extends Error {
+  code: string
+  status: number
+  inputRelated: boolean
+  retryable: boolean
+
+  constructor(input: { message: string; code?: string; status?: number; inputRelated?: boolean; retryable?: boolean }) {
+    super(input.message)
+    this.name = "PaystackInitializationError"
+    this.code = String(input.code || "paystack_initialization_failed")
+    this.status = Number(input.status || 503)
+    this.inputRelated = input.inputRelated === true
+    this.retryable = input.retryable === true
+  }
+}
+
 export async function initializePaystack(input: {
   email: string
   amountMinor: number
   reference: string
   metadata: Record<string, unknown>
   callbackUrl?: string
+  currency?: string
 }) {
   const customerMessage = "Card checkout is temporarily unavailable. Please try again shortly."
+  const emailValidation = validatePaymentEmail(input.email)
+  const reference = String(input.reference || "").trim()
+  const amountMinor = Math.round(Number(input.amountMinor || 0))
+  const currency = String(input.currency || "NGN").trim().toUpperCase()
+  const callbackUrl = input.callbackUrl || `${siteBaseUrl()}/api/payments/paystack/return`
+  let callback: URL | null = null
+  try { callback = new URL(callbackUrl) } catch {}
+  const localCallback = callback?.hostname === "localhost" || callback?.hostname === "127.0.0.1"
+  const callbackAllowed = Boolean(callback && (callback.protocol === "https:" || (process.env.NODE_ENV !== "production" && localCallback)))
+  const inputError = !emailValidation.valid
+    ? emailValidation.error
+    : !(amountMinor > 0)
+      ? "The payment amount is invalid. Please refresh and try again."
+      : !/^[A-Za-z0-9.=-]+$/.test(reference)
+        ? "The payment reference is invalid. Please refresh and try again."
+        : currency !== "NGN"
+          ? "Paystack checkout currently requires NGN."
+          : !callbackAllowed
+            ? "The payment callback is invalid. Please refresh and try again."
+            : ""
+  if (inputError) {
+    await recordPaystackAuditEvent({
+      providerReference: reference || null,
+      source: "initialization",
+      eventType: "transaction.initialize",
+      outcome: "failed",
+      errorCode: "invalid_local_input",
+      errorMessage: inputError
+    })
+    throw new PaystackInitializationError({ message: inputError, code: "invalid_local_input", status: 400, inputRelated: true })
+  }
   const secret = String(process.env.PAYSTACK_SECRET_KEY || "").trim()
   if (!secret) {
     await reportPaymentProviderIssue({
@@ -1944,7 +2053,7 @@ export async function initializePaystack(input: {
       reference: input.reference,
       errorCode: "missing_secret_key"
     })
-    throw new Error(customerMessage)
+    throw new PaystackInitializationError({ message: customerMessage, code: "missing_secret_key", status: 503 })
   }
   let response: Response
   try {
@@ -1956,10 +2065,11 @@ export async function initializePaystack(input: {
         Accept: "application/json"
       },
       body: JSON.stringify({
-        email: input.email,
-        amount: input.amountMinor,
-        reference: input.reference,
-        callback_url: input.callbackUrl || `${siteBaseUrl()}/api/payments/paystack/return`,
+        email: emailValidation.email,
+        amount: amountMinor,
+        currency,
+        reference,
+        callback_url: callbackUrl,
         metadata: input.metadata
       }),
       signal: AbortSignal.timeout(10_000)
@@ -1973,22 +2083,33 @@ export async function initializePaystack(input: {
       errorType: "network_error",
       errorMessage: error instanceof Error ? error.message : String(error)
     })
-    throw new Error(customerMessage)
+    await recordPaystackAuditEvent({ providerReference: reference, source: "initialization", eventType: "transaction.initialize", outcome: "failed", errorCode: "network_error", errorMessage: error instanceof Error ? error.message : String(error) })
+    throw new PaystackInitializationError({ message: customerMessage, code: "network_error", status: 503, retryable: true })
   }
   const json = await response.json().catch(() => null)
   if (!response.ok || !json?.status || !json?.data?.authorization_url) {
-    await reportPaymentProviderIssue({
-      provider: "paystack",
-      operation: "checkout initialization",
-      summary: "Paystack rejected the checkout initialization request.",
-      reference: input.reference,
-      status: response.status,
-      requestId: response.headers.get("x-request-id") || response.headers.get("request-id"),
-      errorCode: json?.code || null,
-      errorMessage: json?.message || `Paystack initialize failed (${response.status})`
-    })
-    throw new Error(customerMessage)
+    const errorCode = String(json?.code || "").trim().toLowerCase()
+    const providerMessage = String(json?.message || `Paystack initialize failed (${response.status})`).trim()
+    const inputRelated = response.status >= 400 && response.status < 500 && errorCode === "invalid_params"
+    await recordPaystackAuditEvent({ providerReference: reference, source: "initialization", eventType: "transaction.initialize", outcome: "failed", httpStatus: response.status, errorCode: errorCode || null, errorMessage: providerMessage })
+    if (!inputRelated) {
+      await reportPaymentProviderIssue({
+        provider: "paystack",
+        operation: "checkout initialization",
+        summary: "Paystack rejected the checkout initialization request.",
+        reference,
+        status: response.status,
+        requestId: response.headers.get("x-request-id") || response.headers.get("request-id"),
+        errorCode: errorCode || null,
+        errorMessage: providerMessage
+      })
+    }
+    const message = inputRelated && /email/i.test(providerMessage)
+      ? "Paystack could not accept that email address. Check it for typing errors and try again."
+      : inputRelated ? "Some checkout details were not accepted. Check them and try again." : customerMessage
+    throw new PaystackInitializationError({ message, code: errorCode || "provider_rejected", status: inputRelated ? 400 : 503, inputRelated, retryable: response.status >= 500 })
   }
+  await recordPaystackAuditEvent({ providerReference: String(json.data.reference || reference), providerEventId: json.data.access_code ? String(json.data.access_code) : null, source: "initialization", eventType: "transaction.initialize", outcome: "initialized", providerStatus: "initialized" })
   return {
     checkoutUrl: String(json.data.authorization_url),
     providerReference: String(json.data.reference || input.reference),

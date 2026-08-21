@@ -8,7 +8,11 @@ export async function GET(request: Request) {
   if (!reference) return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=failed`)
   try {
     const tx = await verifyPaystackTransaction(reference)
-    await markInstallmentPaymentPaid(tx.reference, tx.providerOrderId)
+    await markInstallmentPaymentPaid(tx.reference, tx.providerOrderId, {
+      amountMinor: tx.amountMinor,
+      currency: tx.currency,
+      planUuid: String(tx.metadata?.installment_plan_uuid || "")
+    })
     return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=success`)
   } catch (_error) {
     return NextResponse.redirect(`${siteBaseUrl()}/dashboard/installments?payment=failed`)

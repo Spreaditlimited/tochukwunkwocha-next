@@ -239,7 +239,8 @@ export async function createDomainCheckout(input: {
           amountMinor: quote.totalAmountMinor,
           reference,
           callbackUrl: `${siteBaseUrl()}/api/domains/paystack/return`,
-          metadata
+          metadata,
+          currency: quote.currency
         })
     const paymentReference = payment.providerReference || reference
     await prisma.$executeRaw(Prisma.sql`
