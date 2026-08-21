@@ -53,6 +53,14 @@ export function isAdultPortfolioAgeBand(value: unknown) {
   return ["18-24", "25-34", "35-44", "45-plus"].includes(cleanPortfolioText(value, 40).toLowerCase())
 }
 
+export function isYoungPortfolioAgeBand(value: unknown) {
+  return ["under-13", "13-17"].includes(cleanPortfolioText(value, 40).toLowerCase())
+}
+
+export function isRecognizedPortfolioAgeBand(value: unknown) {
+  return isYoungPortfolioAgeBand(value) || isAdultPortfolioAgeBand(value)
+}
+
 export function safeJsonObject(value: unknown): Record<string, unknown> | null {
   if (!value) return null
   try {

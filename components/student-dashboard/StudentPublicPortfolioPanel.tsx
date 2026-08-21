@@ -71,7 +71,7 @@ export function StudentPublicPortfolioPanel({ initialPortfolio }: { initialPortf
 
   if (!portfolio.hasVerifiedProject) {
     return (
-      <section className="surface-raised overflow-hidden bg-card">
+      <section id="public-portfolio" className="surface-raised scroll-mt-24 overflow-hidden bg-card">
         <div className="flex items-start gap-4 p-6 sm:p-8">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><UserRoundSearch className="h-6 w-6" /></div>
           <div>
@@ -85,7 +85,7 @@ export function StudentPublicPortfolioPanel({ initialPortfolio }: { initialPortf
   }
 
   return (
-    <section className="surface-raised overflow-hidden bg-card">
+    <section id="public-portfolio" className="surface-raised scroll-mt-24 overflow-hidden bg-card">
       <div className="border-b border-border bg-brand-ink p-6 text-white sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">

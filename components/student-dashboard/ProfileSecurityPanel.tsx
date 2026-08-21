@@ -21,6 +21,7 @@ type Profile = {
   whatsappOptedIn: boolean
   certificateNameConfirmedAt: Date | string | null
   certificateNameUpdatedAt: Date | string | null
+  certificateNameLocked: boolean
   demographicCountry: string
   demographicRegion: string
   ageBand: string
@@ -319,11 +320,13 @@ export function ProfileSecurityPanel({
                 <label className="block">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</span>
                   <input
-                    className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground"
                     value={profile.fullName}
                     onChange={(event) => setProfile((current) => ({ ...current, fullName: event.target.value }))}
+                    disabled={profile.certificateNameLocked}
                     required
                   />
+                  <span className="mt-1 block text-xs text-muted-foreground">{profile.certificateNameLocked ? "Locked because a certificate has already been issued. Contact Learning Support for a correction." : "You may correct this name until a certificate is issued. Changing it resets certificate-name confirmation."}</span>
                 </label>
                 {!isManagedGroupLearner ? <label className="block">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email Address</span>
@@ -422,7 +425,7 @@ export function ProfileSecurityPanel({
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Certificate Identity</p>
                   <p className="mt-1 text-sm font-medium text-foreground">
-                    {profile.certificateNameConfirmedAt ? `Confirmed ${formatDate(profile.certificateNameConfirmedAt)}` : "Not confirmed"}
+                    {profile.certificateNameLocked ? "Locked after certificate issuance" : profile.certificateNameConfirmedAt ? `Confirmed ${formatDate(profile.certificateNameConfirmedAt)} · editable until certificate issuance` : "Not confirmed"}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

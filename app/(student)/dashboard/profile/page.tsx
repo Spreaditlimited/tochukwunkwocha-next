@@ -34,6 +34,7 @@ export default async function StudentProfilePage() {
           whatsappOptedIn: profile.whatsappOptedIn,
           certificateNameConfirmedAt: profile.certificateNameConfirmedAt,
           certificateNameUpdatedAt: profile.certificateNameUpdatedAt,
+          certificateNameLocked: profile.certificateNameLocked,
           demographicCountry: profile.demographicCountry,
           demographicRegion: profile.demographicRegion,
           ageBand: profile.ageBand,

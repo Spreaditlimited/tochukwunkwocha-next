@@ -12,7 +12,6 @@ import {
   resetStudentDevices,
   reviewAdditionalProjectLink,
   reviewAssignment,
-  setPublicProjectLearnerType,
   reviewTranscriptAccess,
   saveCourseFeatures
 } from "@/lib/admin-learning-support"
@@ -85,24 +84,6 @@ export async function reviewAssignmentAction(formData: FormData) {
         : "The assignment review could not be completed. Please check the form and try again."
     })
   }
-}
-
-export async function setPublicProjectLearnerTypeAction(formData: FormData) {
-  await requireAdmin("/internal/learning")
-  const result = await setPublicProjectLearnerType({
-    accountId: String(formData.get("accountId") || ""),
-    learnerType: String(formData.get("learnerType") || "standard")
-  })
-  await setInternalToast({
-    type: "success",
-    title: "Project label saved",
-    message: result.learnerType === "young"
-      ? "This student's public projects will show the Young Learner badge."
-      : "This student's public projects will use the standard learner presentation."
-  })
-  revalidateTag("public-student-projects")
-  revalidatePath("/projects")
-  revalidatePath(PATH)
 }
 
 export async function reviewAdditionalProjectLinkAction(formData: FormData) {

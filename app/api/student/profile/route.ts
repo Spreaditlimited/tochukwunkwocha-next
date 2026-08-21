@@ -48,6 +48,7 @@ export async function POST(request: Request) {
         whatsappOptedOutAt: profile.whatsappOptedOutAt,
         certificateNameConfirmedAt: profile.certificateNameConfirmedAt,
         certificateNameUpdatedAt: profile.certificateNameUpdatedAt,
+        certificateNameLocked: refreshed.certificateNameLocked,
         certificateNameNeedsConfirmation: !profile.certificateNameConfirmedAt,
         demographicCountry: refreshed.demographicCountry,
         demographicRegion: refreshed.demographicRegion,

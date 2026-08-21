@@ -8,6 +8,7 @@ import { cache } from "react"
 import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 import { getStudentProfilePicture } from "@/lib/student-profile-picture"
+import { isRecognizedPortfolioAgeBand } from "@/lib/student-portfolio-shared"
 
 const COOKIE_NAME = "tws_student_session"
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
@@ -619,18 +620,33 @@ export async function getStudentProfile(accountId: bigint) {
     gender: string | null
     learnerCategory: string | null
     demographicUpdatedAt: Date | null
+    certificateNameLocked: number | bigint | boolean
   }>>(Prisma.sql`
     SELECT demographic_country AS demographicCountry,
       demographic_region AS demographicRegion,
       age_band AS ageBand,
       gender,
       learner_category AS learnerCategory,
-      demographic_updated_at AS demographicUpdatedAt
+      demographic_updated_at AS demographicUpdatedAt,
+      (
+        EXISTS (
+          SELECT 1 FROM student_certificates certificate
+          WHERE certificate.account_id = student_accounts.id
+            AND (certificate.status = 'issued' OR certificate.issued_at IS NOT NULL)
+        ) OR EXISTS (
+          SELECT 1
+          FROM school_certificates certificate
+          JOIN school_students student ON student.id = certificate.student_id
+          WHERE student.account_id = student_accounts.id
+            AND (certificate.status = 'issued' OR certificate.issued_at IS NOT NULL)
+        )
+      ) AS certificateNameLocked
     FROM student_accounts
     WHERE id = ${accountId}
     LIMIT 1
   `)
   const demographics = demographicRows[0]
+  const certificateNameLocked = Number(demographics?.certificateNameLocked || 0) === 1
   return {
     accountUuid: account.accountUuid,
     fullName: account.fullName,
@@ -641,6 +657,7 @@ export async function getStudentProfile(accountId: bigint) {
     whatsappOptedOutAt: account.whatsappOptedOutAt,
     certificateNameConfirmedAt: account.certificateNameConfirmedAt,
     certificateNameUpdatedAt: account.certificateNameUpdatedAt,
+    certificateNameLocked,
     certificateNameNeedsConfirmation: !account.certificateNameConfirmedAt,
     profilePictureUrl: profilePicture.url,
     demographicCountry: clean(demographics?.demographicCountry, 120),
@@ -650,6 +667,25 @@ export async function getStudentProfile(accountId: bigint) {
     learnerCategory: clean(demographics?.learnerCategory, 80),
     demographicUpdatedAt: demographics?.demographicUpdatedAt || null
   }
+}
+
+export async function hasIssuedStudentCertificate(accountId: bigint) {
+  const rows = await prisma.$queryRaw<Array<{ locked: number | bigint | boolean }>>(Prisma.sql`
+    SELECT (
+      EXISTS (
+        SELECT 1 FROM student_certificates certificate
+        WHERE certificate.account_id = ${accountId}
+          AND (certificate.status = 'issued' OR certificate.issued_at IS NOT NULL)
+      ) OR EXISTS (
+        SELECT 1
+        FROM school_certificates certificate
+        JOIN school_students student ON student.id = certificate.student_id
+        WHERE student.account_id = ${accountId}
+          AND (certificate.status = 'issued' OR certificate.issued_at IS NOT NULL)
+      )
+    ) AS locked
+  `)
+  return Number(rows[0]?.locked || 0) === 1
 }
 
 export async function isManagedGroupLearnerAccount(accountId: bigint) {
@@ -685,45 +721,51 @@ export async function updateStudentProfile(accountId: bigint, input: {
   await ensureStudentDemographicColumns()
   const fullName = clean(input.fullName, 180)
   const phoneE164 = clean(input.phoneE164, 20)
+  const ageBand = clean(input.ageBand, 40).toLowerCase()
   const gender = clean(input.gender, 40).toLowerCase()
   const whatsappOptedIn = input.whatsappOptedIn === true
   if (!fullName) throw new Error("Full name is required")
+  if (!isRecognizedPortfolioAgeBand(ageBand)) throw new Error("Select a valid age band")
   if (gender !== "male" && gender !== "female") throw new Error("Gender must be Male or Female")
   const existing = await prisma.studentAccount.findUnique({ where: { id: accountId } })
   if (!existing) throw new Error("Account not found")
   const nameChanged = clean(existing.fullName, 180) !== fullName
-  if (nameChanged && existing.certificateNameConfirmedAt) {
-    throw new Error("Certificate name has been confirmed and locked. Name changes are no longer allowed.")
+  if (nameChanged && await hasIssuedStudentCertificate(accountId)) {
+    throw new Error("This name is locked because a certificate has already been issued. Contact Learning Support if a correction is required.")
   }
   const now = new Date()
-  const account = await prisma.studentAccount.update({
-    where: { id: accountId },
-    data: {
-      fullName,
-      phoneE164: phoneE164 || null,
-      whatsappOptedIn,
-      whatsappOptedInAt: whatsappOptedIn ? existing.whatsappOptedInAt || now : existing.whatsappOptedInAt,
-      whatsappOptedOutAt: whatsappOptedIn ? null : now,
-      certificateNameConfirmedAt: nameChanged ? null : existing.certificateNameConfirmedAt,
-      certificateNameUpdatedAt: nameChanged ? now : existing.certificateNameUpdatedAt,
-      updatedAt: now
+  const account = await prisma.$transaction(async (tx) => {
+    const updated = await tx.studentAccount.update({
+      where: { id: accountId },
+      data: {
+        fullName,
+        phoneE164: phoneE164 || null,
+        whatsappOptedIn,
+        whatsappOptedInAt: whatsappOptedIn ? existing.whatsappOptedInAt || now : existing.whatsappOptedInAt,
+        whatsappOptedOutAt: whatsappOptedIn ? null : now,
+        certificateNameConfirmedAt: nameChanged ? null : existing.certificateNameConfirmedAt,
+        certificateNameUpdatedAt: nameChanged ? now : existing.certificateNameUpdatedAt,
+        updatedAt: now
+      }
+    })
+    if (nameChanged) {
+      await tx.$executeRaw(Prisma.sql`UPDATE family_children SET full_name = ${fullName}, updated_at = ${now} WHERE account_id = ${accountId}`)
+      await tx.$executeRaw(Prisma.sql`UPDATE school_students SET full_name = ${fullName}, updated_at = ${now} WHERE account_id = ${accountId}`)
+      await tx.$executeRaw(Prisma.sql`UPDATE tochukwu_learning_assignments SET student_name = ${fullName}, updated_at = ${now} WHERE account_id = ${accountId}`)
+      await tx.$executeRaw(Prisma.sql`UPDATE student_public_profiles SET display_name = ${fullName}, updated_at = ${now} WHERE account_id = ${accountId}`)
     }
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE student_accounts
+      SET demographic_country = ${clean(input.demographicCountry, 120) || null},
+          demographic_region = ${clean(input.demographicRegion, 120) || null},
+          age_band = ${ageBand},
+          gender = ${gender},
+          learner_category = ${clean(input.learnerCategory, 80) || null},
+          demographic_updated_at = ${now}
+      WHERE id = ${accountId}
+    `)
+    return updated
   })
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE school_students
-    SET full_name = ${fullName}, updated_at = ${now}
-    WHERE account_id = ${accountId}
-  `).catch(() => null)
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE student_accounts
-    SET demographic_country = ${clean(input.demographicCountry, 120) || null},
-        demographic_region = ${clean(input.demographicRegion, 120) || null},
-        age_band = ${clean(input.ageBand, 40) || null},
-        gender = ${gender},
-        learner_category = ${clean(input.learnerCategory, 80) || null},
-        demographic_updated_at = ${now}
-    WHERE id = ${accountId}
-  `)
   return account
 }
 

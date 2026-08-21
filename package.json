@@ -56,7 +56,9 @@
     "smoke:public-project-name": "node scripts/smoke-public-student-project-name.mjs",
     "smoke:global-course-prices": "node scripts/smoke-global-course-prices.mjs",
     "smoke:course-social-images": "node scripts/smoke-course-social-images.mjs",
-    "smoke:student-portfolios": "node scripts/smoke-student-portfolios.mjs"
+    "smoke:student-portfolios": "node scripts/smoke-student-portfolios.mjs",
+    "smoke:student-profile-name-lock": "node scripts/smoke-student-profile-name-lock.mjs",
+    "email:student-profile-introduction": "npx --yes tsx --env-file=.env scripts/send-student-profile-introduction-emails.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma"
 import {
   cleanPortfolioText,
   isAdultPortfolioAgeBand,
+  isRecognizedPortfolioAgeBand,
+  isYoungPortfolioAgeBand,
   parsePortfolioList,
   portfolioJsonList,
   STUDENT_OPPORTUNITY_TYPES,
@@ -51,7 +53,6 @@ async function accountPortfolioContext(accountId: bigint) {
     fullName: string
     profilePictureUrl: string | null
     ageBand: string | null
-    publicProjectLearnerType: string | null
     managedLearner: number | bigint | boolean
     hasVerifiedProject: number | bigint | boolean
     demographicCountry: string | null
@@ -60,7 +61,6 @@ async function accountPortfolioContext(accountId: bigint) {
   }>>(Prisma.sql`
     SELECT sa.account_uuid AS accountUuid, sa.full_name AS fullName,
       sa.profile_picture_url AS profilePictureUrl, sa.age_band AS ageBand,
-      sa.public_project_learner_type AS publicProjectLearnerType,
       sa.demographic_country AS demographicCountry,
       (SELECT a.course_slug FROM tochukwu_learning_assignments a
         WHERE a.account_id = sa.id AND a.status = 'approved' AND a.submission_kind = 'link'
@@ -91,7 +91,7 @@ async function accountPortfolioContext(accountId: bigint) {
   if (!rows[0]) throw new Error("Student account not found.")
   const account = rows[0]
   const ageBand = cleanPortfolioText(account.ageBand, 40).toLowerCase()
-  const managedOrYoung = bool(account.managedLearner) || cleanPortfolioText(account.publicProjectLearnerType, 24) === "young" || ["under-13", "13-17"].includes(ageBand)
+  const managedOrYoung = bool(account.managedLearner) || isYoungPortfolioAgeBand(ageBand)
   return {
     ...account,
     managedOrYoung,
@@ -161,6 +161,9 @@ export async function saveStudentPublicPortfolio(accountId: bigint, input: Recor
     prisma.studentPublicProfile.findUnique({ where: { accountId } })
   ])
   if (!bool(account.hasVerifiedProject)) throw new Error("Your first project must be approved before you can publish a portfolio profile.")
+  if (!isRecognizedPortfolioAgeBand(account.ageBand)) {
+    throw new Error("Complete the Age Band field in your main profile before submitting a public portfolio.")
+  }
 
   const professionalHeadline = cleanPortfolioText(input.professionalHeadline, 220)
   const biography = cleanPortfolioText(input.biography, 1800)
@@ -244,9 +247,10 @@ export async function listAdminStudentPortfolios() {
       p.published_snapshot_json AS publishedSnapshotJson, p.published_at AS publishedAt,
       p.updated_at AS updatedAt, sa.email, sa.profile_picture_url AS profilePictureUrl,
       sa.age_band AS ageBand,
-      CASE WHEN EXISTS (SELECT 1 FROM family_children fc WHERE fc.account_id = sa.id AND fc.status = 'active')
+      CASE WHEN LOWER(TRIM(COALESCE(sa.age_band, ''))) IN ('under-13', '13-17')
+        OR EXISTS (SELECT 1 FROM family_children fc WHERE fc.account_id = sa.id AND fc.status = 'active')
         OR EXISTS (SELECT 1 FROM school_students ss WHERE ss.account_id = sa.id AND ss.status = 'active')
-        OR sa.public_project_learner_type = 'young' THEN 1 ELSE 0 END AS managedOrYoung
+        THEN 1 ELSE 0 END AS managedOrYoung
     FROM student_public_profiles p
     JOIN student_accounts sa ON sa.id = p.account_id
     ORDER BY CASE p.review_status WHEN 'pending' THEN 0 WHEN 'rejected' THEN 1 ELSE 2 END,
@@ -393,9 +397,10 @@ export async function getHireableStudentProfile(publicSlugInput: string) {
       p.open_to_work AS openToWork, p.is_public AS isPublic,
       p.public_profile_consent AS publicProfileConsent,
       p.published_snapshot_json AS publishedSnapshotJson,
-      CASE WHEN EXISTS (SELECT 1 FROM family_children fc WHERE fc.account_id = sa.id AND fc.status = 'active')
+      CASE WHEN LOWER(TRIM(COALESCE(sa.age_band, ''))) IN ('under-13', '13-17')
+        OR EXISTS (SELECT 1 FROM family_children fc WHERE fc.account_id = sa.id AND fc.status = 'active')
         OR EXISTS (SELECT 1 FROM school_students ss WHERE ss.account_id = sa.id AND ss.status = 'active')
-        OR sa.public_project_learner_type = 'young' THEN 1 ELSE 0 END AS managedOrYoung
+        THEN 1 ELSE 0 END AS managedOrYoung
     FROM student_public_profiles p
     JOIN student_accounts sa ON sa.id = p.account_id
     WHERE LOWER(p.public_slug) = ${publicSlug}

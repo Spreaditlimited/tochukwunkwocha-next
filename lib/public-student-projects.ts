@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { listPublicSelfDeclaredProjectLinks, type StudentProjectLink } from "@/lib/student-project-links"
 import {
   isAdultPortfolioAgeBand,
+  isYoungPortfolioAgeBand,
   parsePortfolioList,
   safeJsonObject,
   studentPortfolioSlug
@@ -90,8 +91,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
     courseSlug: string | null
     studentName: string | null
     certificateNo: string | null
-    isGroupLearner: number | bigint | boolean
-    publicProjectLearnerType: string | null
+    isManagedLearner: number | bigint | boolean
     profilePictureUrl: string | null
     ageBand: string | null
     publishedAt: Date | null
@@ -100,15 +100,21 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
       a.submission_link AS projectUrl, a.course_slug AS courseSlug,
       COALESCE(NULLIF(sa.full_name, ''), NULLIF(c.recipient_name, ''), NULLIF(a.student_name, '')) AS studentName,
       c.certificate_no AS certificateNo,
-      EXISTS (
+      (
+        EXISTS (
         SELECT 1
         FROM family_children child
         JOIN family_accounts family ON family.id = child.family_id
         WHERE child.account_id = a.account_id
           AND child.status = 'active'
           AND family.status = 'active'
-      ) AS isGroupLearner,
-      sa.public_project_learner_type AS publicProjectLearnerType,
+        ) OR EXISTS (
+          SELECT 1
+          FROM school_students school_student
+          WHERE school_student.account_id = a.account_id
+            AND school_student.status = 'active'
+        )
+      ) AS isManagedLearner,
       sa.profile_picture_url AS profilePictureUrl, sa.age_band AS ageBand,
       COALESCE(a.reviewed_at, a.updated_at, a.created_at) AS publishedAt
     FROM tochukwu_learning_assignments a
@@ -180,7 +186,7 @@ async function listPublicStudentProjectsUncached(limit = 60): Promise<PublicStud
       const additionalLinks = selfDeclaredLinksByAccount.get(row.accountId.toString()) || []
       const profile = publicProfileMap.get(row.accountId.toString())
       const snapshot = safeJsonObject(profile?.publishedSnapshotJson)
-      const sourceType = Number(row.isGroupLearner || 0) === 1 || clean(row.publicProjectLearnerType, 24) === "young" ? "group" as const : "individual" as const
+      const sourceType = Number(row.isManagedLearner || 0) === 1 || isYoungPortfolioAgeBand(row.ageBand) ? "group" as const : "individual" as const
       const snapshotValue = (key: string, max: number) => clean(snapshot?.[key], max)
       const snapshotFlag = (key: string) => snapshot?.[key] === true || Number(snapshot?.[key] || 0) === 1
       const snapshotSkills = parsePortfolioList(snapshot?.skills, undefined, 12)

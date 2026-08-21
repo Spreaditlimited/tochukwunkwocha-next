@@ -50,7 +50,7 @@ assert.match(publicProjectsPage, /Young Learner/)
 assert.doesNotMatch(publicProjectsPage, /Group Learner/)
 assert.doesNotMatch(publicProjectsPage, /Direct Learner/)
 assert.match(publicProjectsData, /FROM family_children child/)
-assert.match(publicProjectsData, /sourceType: Number\(row\.isGroupLearner/)
+assert.match(publicProjectsData, /const sourceType = Number\(row\.isManagedLearner/)
 assert.match(publicProjectsData, /c\.certificate_no AS certificateNo/)
 
 console.log("Additional project-link admin review smoke test passed.")
