@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 
+import { BackToTopButton } from "@/components/BackToTopButton"
 import { CookieConsent } from "@/components/CookieConsent"
 import { Footer } from "@/components/Footer"
 import { JsonLd } from "@/components/JsonLd"
@@ -20,6 +21,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
         message="Hello! I'd like to ask about Tochukwu Tech and AI Academy."
         position="bottom-left"
       />
+      <BackToTopButton />
       <CookieConsent />
     </>
   )
