@@ -8,6 +8,10 @@ import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
+  const requestIsLocal = ["localhost", "127.0.0.1", "::1"].includes(url.hostname)
+  const returnBaseUrl = process.env.NODE_ENV !== "production" && requestIsLocal
+    ? url.origin
+    : siteBaseUrl()
   const sessionId = url.searchParams.get("session_id") || ""
 
   try {
@@ -38,10 +42,10 @@ export async function GET(request: Request) {
       course_slug: String(order?.course_slug || session.courseSlug || "prompt-to-profit"),
       order: session.orderUuid
     })
-    const successPath = String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard"
-    return NextResponse.redirect(`${siteBaseUrl()}${successPath}?${params.toString()}`)
+    const successPath = String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
+    return NextResponse.redirect(`${returnBaseUrl}${successPath}?${params.toString()}`)
   } catch (error) {
     const paymentState = isCourseEnrollmentConflict(error) ? "duplicate_review" : "failed"
-    return NextResponse.redirect(`${siteBaseUrl()}/checkout/prompt-to-profit?payment=${paymentState}&reason=${encodeURIComponent(error instanceof Error ? error.message : "Payment verification failed")}`)
+    return NextResponse.redirect(`${returnBaseUrl}/checkout/prompt-to-profit?payment=${paymentState}&reason=${encodeURIComponent(error instanceof Error ? error.message : "Payment verification failed")}`)
   }
 }

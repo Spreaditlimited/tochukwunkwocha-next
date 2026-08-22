@@ -33,7 +33,14 @@ export async function POST(request: Request) {
   let createdProvider = ""
   let providerInitialized = false
   try {
-    const origin = siteBaseUrl()
+    const requestUrl = new URL(request.url)
+    const requestIsLocal = ["localhost", "127.0.0.1", "::1"].includes(requestUrl.hostname)
+    // Development payments must return to the browser that started them. Do
+    // not let an exported production SITE_BASE_URL strand a local test session
+    // on the live hostname after Paystack redirects back.
+    const origin = process.env.NODE_ENV !== "production" && requestIsLocal
+      ? requestUrl.origin
+      : siteBaseUrl()
     const body = await request.json()
     const firstName = String(body.firstName || "").trim().slice(0, 160)
     const email = normalizeEmail(body.email)

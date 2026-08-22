@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { sendCourseOrderMetaPurchase } from "@/lib/meta-events"
-import { createAffiliateCommissionForOrder, markCourseOrderPaid, siteBaseUrl, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
+import { createAffiliateCommissionForOrder, markCourseOrderPaid, PaystackVerificationRequestError, siteBaseUrl, verifyPaystackTransaction } from "@/lib/payments/course-checkout"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
 import { recordPaystackAuditEvent, validateCourseOrderPaystackPayment } from "@/lib/payments/paystack-audit"
 import { setStudentSessionCookie } from "@/lib/student-auth"
@@ -9,12 +9,18 @@ import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
+  const requestIsLocal = ["localhost", "127.0.0.1", "::1"].includes(url.hostname)
+  const returnBaseUrl = process.env.NODE_ENV !== "production" && requestIsLocal
+    ? url.origin
+    : siteBaseUrl()
   const reference = url.searchParams.get("reference") || url.searchParams.get("trxref") || ""
   let orderUuid = ""
+  let paymentVerified = false
 
   try {
     if (!reference) throw new Error("Missing Paystack reference.")
     const verified = await verifyPaystackTransaction(reference)
+    paymentVerified = true
     orderUuid = String(verified.metadata?.order_uuid || verified.metadata?.orderUuid || "")
     const courseSlug = String(verified.metadata?.course_slug || verified.metadata?.courseSlug || "")
     if (!orderUuid) throw new Error("Payment metadata is missing order UUID.")
@@ -88,19 +94,30 @@ export async function GET(request: Request) {
       course_slug: String(order?.course_slug || courseSlug || "prompt-to-profit"),
       order: orderUuid
     })
-    const successPath = String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard"
-    return NextResponse.redirect(`${siteBaseUrl()}${successPath}?${params.toString()}`)
+    const successPath = String(order?.buyer_type || "").toLowerCase() === "family" ? "/dashboard/family" : "/dashboard/courses"
+    return NextResponse.redirect(`${returnBaseUrl}${successPath}?${params.toString()}`)
   } catch (error) {
+    const verificationRequestFailed = error instanceof PaystackVerificationRequestError
+    const auditMessage = verificationRequestFailed
+      ? error.providerMessage || error.message
+      : error instanceof Error ? error.message : String(error)
     await recordPaystackAuditEvent({
       orderUuid: orderUuid || null,
       providerReference: reference || null,
       source: "return",
       eventType: "transaction.return",
       outcome: "failed",
-      errorCode: "return_verification_failed",
-      errorMessage: error instanceof Error ? error.message : String(error)
+      errorCode: verificationRequestFailed ? error.code || "return_verification_failed" : "return_verification_failed",
+      errorMessage: auditMessage
     })
-    const paymentState = isCourseEnrollmentConflict(error) ? "duplicate_review" : "failed"
-    return NextResponse.redirect(`${siteBaseUrl()}/checkout/prompt-to-profit?payment=${paymentState}&reason=${encodeURIComponent(error instanceof Error ? error.message : "Payment verification failed")}`)
+    const duplicate = isCourseEnrollmentConflict(error)
+    const needsReview = !duplicate && (verificationRequestFailed || paymentVerified)
+    const paymentState = duplicate ? "duplicate_review" : needsReview ? "verification_pending" : "failed"
+    const reason = needsReview
+      ? `We are still confirming your payment and activating your course access. Please do not make another payment. Save your payment reference: ${reference}. We'll complete your enrolment as soon as confirmation is received. If you need help, contact support and share this reference.`
+      : error instanceof Error ? error.message : "Payment verification failed"
+    const params = new URLSearchParams({ payment: paymentState, reason })
+    if (reference) params.set("reference", reference)
+    return NextResponse.redirect(`${returnBaseUrl}/checkout/prompt-to-profit?${params.toString()}`)
   }
 }

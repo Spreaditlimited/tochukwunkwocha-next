@@ -155,11 +155,14 @@ export function stripeCurrencyForCountry(country: unknown) {
 
 export function formatMinorAmount(minor: number, currency: string) {
   const locale = currency === "NGN" ? "en-NG" : currency === "GBP" ? "en-GB" : currency === "EUR" ? "en-IE" : "en-US"
+  const normalizedMinor = Math.round(Number(minor || 0))
+  const showKobo = currency === "NGN" && Math.abs(normalizedMinor) % 100 !== 0
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
-    maximumFractionDigits: currency === "NGN" ? 0 : 2
-  }).format(minor / 100)
+    minimumFractionDigits: showKobo ? 2 : undefined,
+    maximumFractionDigits: currency === "NGN" ? (showKobo ? 2 : 0) : 2
+  }).format(normalizedMinor / 100)
 }
 
 function normalizeBatchKey(value: unknown) {
@@ -2237,7 +2240,7 @@ export function isPaystackTransactionNotFound(error: unknown): error is Paystack
 }
 
 export async function inspectPaystackTransaction(reference: string) {
-  const customerMessage = "We could not verify your card payment. Please contact support if you were charged."
+  const customerMessage = "Your payment could not be confirmed automatically. Please do not pay again. Keep your payment reference and contact support so we can complete your order."
   const adminSettings = await getAdminSettingValues(["PAYSTACK_SECRET_KEY"])
   const secrets = Array.from(new Set([
     String(process.env.PAYSTACK_SECRET_KEY || "").trim(),

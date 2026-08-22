@@ -46,6 +46,8 @@ for (const source of [paystackReturn, paystackWebhook, stripeReturn, stripeWebho
 }
 assert.match(paystackWebhook, /createSession: false/)
 assert.match(stripeWebhook, /createSession: false/)
+assert.match(paystackReturn, /\? "\/dashboard\/family" : "\/dashboard\/courses"/)
+assert.match(stripeReturn, /\? "\/dashboard\/family" : "\/dashboard\/courses"/)
 assert.ok(
   provisioning.indexOf("processPaymentNotificationOutbox({ eventUuid })") < provisioning.indexOf("await createStudentSessionForAccount(account)"),
   "Activation delivery must not depend on automatic session creation"

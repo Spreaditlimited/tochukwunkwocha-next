@@ -2,8 +2,11 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8")
-const [checkout, webhook, installment, school, services, alerts, cron, reconciliation, followups, fees] = await Promise.all([
+const [checkout, checkoutOrder, checkoutForm, paystackReturn, webhook, installment, school, services, alerts, cron, reconciliation, followups, fees] = await Promise.all([
   read("lib/payments/course-checkout.ts"),
+  read("app/api/checkout/order/route.ts"),
+  read("components/checkout/CourseCheckoutForm.tsx"),
+  read("app/api/payments/paystack/return/route.ts"),
   read("app/api/webhooks/paystack/route.ts"),
   read("app/api/payments/installments/paystack/return/route.ts"),
   read("lib/payments/school-advanced.ts"),
@@ -17,7 +20,21 @@ const [checkout, webhook, installment, school, services, alerts, cron, reconcili
 
 assert.match(checkout, /validatePaymentEmail\(input\.email\)/)
 assert.match(checkout, /currency !== "NGN"/)
+assert.match(checkout, /showKobo = currency === "NGN" && Math\.abs\(normalizedMinor\) % 100 !== 0/)
+assert.match(checkout, /maximumFractionDigits: currency === "NGN" \? \(showKobo \? 2 : 0\) : 2/)
 assert.match(checkout, /source: "initialization"/)
+assert.match(checkout, /Please do not pay again/)
+assert.match(checkoutOrder, /process\.env\.NODE_ENV !== "production" && requestIsLocal/)
+assert.match(checkoutOrder, /\? requestUrl\.origin\s*: siteBaseUrl\(\)/)
+assert.match(paystackReturn, /paymentVerified = true/)
+assert.match(paystackReturn, /verification_pending/)
+assert.match(paystackReturn, /We are still confirming your payment and activating your course access/)
+assert.doesNotMatch(paystackReturn, /payment return was received/i)
+assert.match(paystackReturn, /process\.env\.NODE_ENV !== "production" && requestIsLocal/)
+assert.match(paystackReturn, /`\$\{returnBaseUrl\}\$\{successPath\}/)
+assert.match(checkoutForm, /paymentState === "verification_pending"/)
+assert.match(checkoutForm, /We are still confirming your payment and activating your course access/)
+assert.doesNotMatch(checkoutForm, /payment return was received/i)
 assert.match(checkout, /class PaystackInitializationError/)
 assert.match(checkout, /\^\[A-Za-z0-9\._=-\]\+\$/)
 assert.doesNotMatch(checkout, /status = 'initializing'/)

@@ -148,11 +148,14 @@ function isNigeriaCountry(value: string) {
 
 function formatMinor(minor: number, currency: string) {
   const locale = currency === "NGN" ? "en-NG" : currency === "GBP" ? "en-GB" : currency === "EUR" ? "en-IE" : "en-US"
+  const normalizedMinor = Math.round(Number(minor || 0))
+  const showKobo = currency === "NGN" && Math.abs(normalizedMinor) % 100 !== 0
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
-    maximumFractionDigits: currency === "NGN" ? 0 : 2
-  }).format(minor / 100)
+    minimumFractionDigits: showKobo ? 2 : undefined,
+    maximumFractionDigits: currency === "NGN" ? (showKobo ? 2 : 0) : 2
+  }).format(normalizedMinor / 100)
 }
 
 function formatBatchStart(value: string | null) {
@@ -421,6 +424,9 @@ export function CourseCheckoutForm({
     if (paymentState === "duplicate_review") {
       setErrorMessage(reason || "Your payment was confirmed, but new access was withheld because this email already owns the course. Please contact support so the duplicate payment can be reviewed.")
       setErrorAction({ label: "Open My Courses", href: "/dashboard/courses" })
+    } else if (paymentState === "verification_pending") {
+      setStatusMessage(reason || "We are still confirming your payment and activating your course access. Please do not make another payment. Save your payment reference. If you need help, contact support and share this reference.")
+      setErrorAction(null)
     } else if (paymentState === "failed" && reason) {
       setErrorMessage(reason)
       setErrorAction(null)
