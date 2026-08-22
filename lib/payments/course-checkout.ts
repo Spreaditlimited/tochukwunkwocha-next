@@ -781,8 +781,7 @@ export async function createCourseOrder(input: {
 export async function updateCourseOrderProvider(orderUuid: string, providerReference: string, providerOrderId?: string | null) {
   await prisma.$executeRaw`
     UPDATE course_orders
-    SET provider_reference = ${providerReference}, provider_order_id = ${providerOrderId || null},
-        status = CASE WHEN status = 'initializing' THEN 'pending' ELSE status END, updated_at = ${new Date()}
+    SET provider_reference = ${providerReference}, provider_order_id = ${providerOrderId || null}, updated_at = ${new Date()}
     WHERE order_uuid = ${orderUuid}
   `
 }
@@ -790,15 +789,16 @@ export async function updateCourseOrderProvider(orderUuid: string, providerRefer
 export async function beginCourseOrderProviderInitialization(orderUuid: string, providerReference: string) {
   await prisma.$executeRaw`
     UPDATE course_orders
-    SET provider_reference = ${providerReference}, status = 'initializing', updated_at = ${new Date()}
+    SET provider_reference = ${providerReference}, updated_at = ${new Date()}
     WHERE order_uuid = ${orderUuid} AND COALESCE(status, 'pending') NOT IN ('paid', 'duplicate_payment_review')
   `
 }
 
-export async function failCourseOrderProviderInitialization(orderUuid: string, _error?: unknown) {
+export async function failCourseOrderProviderInitialization(orderUuid: string, error?: unknown) {
+  const terminalFailure = error instanceof PaystackInitializationError && !error.retryable
   await prisma.$executeRaw`
     UPDATE course_orders
-    SET status = 'initialization_failed', updated_at = ${new Date()}
+    SET status = ${terminalFailure ? "failed" : "pending"}, updated_at = ${new Date()}
     WHERE order_uuid = ${orderUuid} AND COALESCE(status, 'pending') NOT IN ('paid', 'duplicate_payment_review')
   `
 }
@@ -2026,7 +2026,7 @@ export async function initializePaystack(input: {
     ? emailValidation.error
     : !(amountMinor > 0)
       ? "The payment amount is invalid. Please refresh and try again."
-      : !/^[A-Za-z0-9.=-]+$/.test(reference)
+      : !/^[A-Za-z0-9._=-]+$/.test(reference)
         ? "The payment reference is invalid. Please refresh and try again."
         : currency !== "NGN"
           ? "Paystack checkout currently requires NGN."

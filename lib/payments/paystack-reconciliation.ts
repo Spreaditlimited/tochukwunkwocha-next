@@ -71,8 +71,8 @@ export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: 
     FROM course_orders co
     WHERE LOWER(COALESCE(co.provider, '')) = 'paystack'
       AND (
-        co.status IN ('failed', 'initialization_failed')
-        OR (co.status IN ('pending', 'initializing') AND COALESCE(TRIM(co.provider_reference), '') = '')
+        co.status = 'failed'
+        OR (co.status = 'pending' AND COALESCE(TRIM(co.provider_reference), '') = '')
       )
       AND co.updated_at < DATE_SUB(NOW(), INTERVAL ${minimumAgeHours} HOUR)
       AND NOT EXISTS (
@@ -123,8 +123,8 @@ export async function cleanupTerminalPaystackOrders(input?: { minimumAgeHours?: 
         DELETE FROM course_orders
         WHERE order_uuid = ${row.orderUuid}
           AND (
-            status IN ('failed', 'initialization_failed')
-            OR (status IN ('pending', 'initializing') AND COALESCE(TRIM(provider_reference), '') = '')
+            status = 'failed'
+            OR (status = 'pending' AND COALESCE(TRIM(provider_reference), '') = '')
           )
           AND updated_at < DATE_SUB(NOW(), INTERVAL ${minimumAgeHours} HOUR)
         LIMIT 1
@@ -222,7 +222,7 @@ export async function reconcileCoursePaystackOrders(input?: {
           )
         )
       )
-      AND COALESCE(co.status, '') NOT IN ('initialization_failed', 'duplicate_payment_review', 'abandoned', 'failed', 'reversed', 'expired', 'cancelled')
+      AND COALESCE(co.status, '') NOT IN ('duplicate_payment_review', 'abandoned', 'failed', 'reversed', 'expired', 'cancelled')
     ORDER BY co.created_at DESC
     LIMIT ${limit}
   `
