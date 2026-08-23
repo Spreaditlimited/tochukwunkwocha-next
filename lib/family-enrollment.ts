@@ -751,7 +751,8 @@ export async function consumeFamilySeatsForChildren(input: {
     for (const child of assignedChildren) {
       const account = await findOrCreateStudentAccount({
         fullName: child.fullName,
-        email: syntheticChildEmail()
+        email: syntheticChildEmail(),
+        allowInternalFamilyLearnerEmail: true
       })
       const sourceUuid = `seat_${crypto.randomUUID().replace(/-/g, "")}`
       const childUuid = `fch_${crypto.randomUUID().replace(/-/g, "")}`
@@ -901,7 +902,8 @@ export async function provisionFamilyOrder(input: {
       ? null
       : await findOrCreateStudentAccount({
           fullName: clean(child.full_name, 180) || "Student",
-          email: normalizeEmail(child.email) || syntheticChildEmail()
+          email: normalizeEmail(child.email) || syntheticChildEmail(),
+          allowInternalFamilyLearnerEmail: true
         })
     const accountId = child.account_id || account?.id || null
     if (!accountId) continue

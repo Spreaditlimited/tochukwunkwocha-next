@@ -12,6 +12,7 @@ const COMMON_DOMAIN_TYPOS: Record<string, string> = {
 }
 
 const IMPOSSIBLE_TLD_TYPOS = new Set(["cim", "cmo", "comm", "con", "gomal", "om", "vom", "xom"])
+const INTERNAL_FAMILY_LEARNER_EMAIL = /^family-child-[a-f0-9]{32}@student-code\.local$/i
 
 export type PaymentEmailValidation = {
   email: string
@@ -55,4 +56,18 @@ export function validatePaymentEmail(value: unknown): PaymentEmailValidation {
 
 export function normalizePaymentEmail(value: unknown) {
   return validatePaymentEmail(value).email
+}
+
+export function normalizeStudentAccountEmail(
+  value: unknown,
+  options?: { allowInternalFamilyLearner?: boolean }
+) {
+  const publicEmail = normalizePaymentEmail(value)
+  if (publicEmail) return publicEmail
+
+  const email = String(value || "").trim().toLowerCase()
+  if (options?.allowInternalFamilyLearner && INTERNAL_FAMILY_LEARNER_EMAIL.test(email)) {
+    return email
+  }
+  return ""
 }

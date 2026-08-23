@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma"
 import { getConfiguredStripeFee, grossUpPaystackAmount, grossUpStripeAmount as calculateStripeGrossAmount } from "@/lib/payments/processing-fees"
 import { getCourse } from "@/lib/public-offers"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
-import { normalizePaymentEmail, validatePaymentEmail } from "@/lib/payment-email"
+import { normalizePaymentEmail, normalizeStudentAccountEmail, validatePaymentEmail } from "@/lib/payment-email"
 import { recordPaystackAuditEvent } from "@/lib/payments/paystack-audit"
 import { batchHasNotStarted } from "@/lib/utils"
 
@@ -1473,8 +1473,15 @@ function randomPasswordHash() {
   return { salt, hash }
 }
 
-export async function findOrCreateStudentAccount(input: { fullName: string; email: string; phone?: string }) {
-  const email = normalizeEmail(input.email)
+export async function findOrCreateStudentAccount(input: {
+  fullName: string
+  email: string
+  phone?: string
+  allowInternalFamilyLearnerEmail?: boolean
+}) {
+  const email = normalizeStudentAccountEmail(input.email, {
+    allowInternalFamilyLearner: input.allowInternalFamilyLearnerEmail
+  })
   if (!email) throw new Error("Valid email is required.")
   const existing = await prisma.studentAccount.findUnique({ where: { email } })
   if (existing) return existing

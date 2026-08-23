@@ -14,6 +14,11 @@ assert.match(
 )
 assert.match(familyEnrollment, /capacityCreditsByBatch/)
 assert.match(familyEnrollment, /balancesForConsumption/)
+assert.equal(
+  (familyEnrollment.match(/allowInternalFamilyLearnerEmail: true/g) || []).length,
+  2,
+  "Existing-seat assignment and paid group activation must explicitly allow generated learner identities."
+)
 assert.match(dashboardData, /'Course-level seat pool' AS batchLabel/)
 assert.match(dashboardData, /GROUP BY course_slug/)
 assert.match(panel, /const courseSeatPool = seats\.filter/)
@@ -24,7 +29,7 @@ assert.match(panel, /!hasAvailableSeat \? <div className="rounded-xl border bord
 assert.match(panel, /disabled=\{hasAvailableSeat && learners\.length >= availableSeats\}/)
 assert.match(route, /availableFamilySeatsForCourse/)
 assert.match(route, /Assign your available learner seats before purchasing another seat/)
-assert.match(followups, /'cancelled', 'canceled', 'abandoned', 'failed', 'reversed', 'expired'/)
+assert.match(followups, /["']cancelled["'], ["']canceled["'], ["']abandoned["'], ["']failed["'], ["']reversed["'], ["']expired["']/)
 assert.match(followups, /order_not_payable/)
 
 console.log("Group enrollment course-level seat-pool smoke checks passed.")
