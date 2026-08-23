@@ -28,6 +28,7 @@ import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
+import { cohortEnrollmentLabel } from "@/lib/course-cohort-label"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
@@ -65,6 +66,7 @@ export async function PromptToProfitCoursePage({
         ? "Enrollment open"
         : "No open batches"
     : "Course settings not found"
+  const enrollmentBadge = cohortEnrollmentLabel(openBatches)
 
   const buildProjects = [
     "Business websites",
@@ -400,7 +402,7 @@ export async function PromptToProfitCoursePage({
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                   </span>
-                  August Summer Cohorts Now Enrolling
+                  {enrollmentBadge}
                 </span>
               </div>
 
