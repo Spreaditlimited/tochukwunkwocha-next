@@ -73,7 +73,7 @@ export function SiteHeader() {
 
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-3 md:flex">
-              <ThemeToggle />
+              <ThemeToggle className="border-transparent bg-transparent shadow-none hover:bg-muted" />
               <div className="group relative">
                 <button
                   className={cn(
