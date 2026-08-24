@@ -566,7 +566,7 @@ export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }:
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Your place is reserved while you complete your payments.</p>
                 <p>This gives you the flexibility to plan your learning around your finances without missing the opportunity to join.</p>
               </div>
-              <Link href="/dashboard/installments?course=prompt-to-production#start-installment-plan" className="btn-primary mt-7 px-6 py-3">
+              <Link href={course.checkoutHref} className="btn-primary mt-7 px-6 py-3">
                 Start an Installment Plan
               </Link>
             </div>
@@ -643,7 +643,7 @@ export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }:
             </Link>
             <Link
               className="btn-inverse-secondary px-8 py-4 text-base"
-              href="/dashboard/installments?course=prompt-to-production#start-installment-plan"
+              href={course.checkoutHref}
             >
               <CreditCard className="mr-2 h-4 w-4" /> Pay In Installments
             </Link>
