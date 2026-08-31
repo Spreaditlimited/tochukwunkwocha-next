@@ -289,6 +289,10 @@ export async function PromptToProfitCoursePage({
       a: "Any basic laptop or desktop computer with internet access and a modern web browser is sufficient. You do not need an expensive computer."
     },
     {
+      q: "Can I learn and build on my phone?",
+      a: "Yes. The course includes dedicated, step-by-step lessons that show you how to build websites and practical software using your phone."
+    },
+    {
       q: "Will I receive a certificate?",
       a: "Yes. After completing your project and submitting the project link, you will receive a verified certificate that links directly to the work you built."
     },
