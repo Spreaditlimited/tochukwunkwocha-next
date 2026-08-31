@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { randomUUID } from "crypto"
 
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
+import { getAdminSettingValue } from "@/lib/admin-settings"
 import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
 import { listCheckoutBatches } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
@@ -51,9 +52,11 @@ function schoolMinSeats() {
   return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 50
 }
 
-function schoolsPricePerStudentMinor() {
-  const raw = Number(process.env.SCHOOLS_PRICE_PER_STUDENT_NGN_MINOR || 850000)
-  return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 850000
+async function schoolsPricePerStudentMinor() {
+  const adminValue = Number(await getAdminSettingValue("SCHOOLS_PRICE_PER_STUDENT_NGN_MINOR"))
+  const environmentValue = Number(process.env.SCHOOLS_PRICE_PER_STUDENT_NGN_MINOR || 1000000)
+  const raw = Number.isFinite(adminValue) && adminValue > 0 ? adminValue : environmentValue
+  return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 1000000
 }
 
 function maskEmailAddress(value: string) {
@@ -1147,6 +1150,7 @@ export async function getStudentCertificatePublic(certificateNo: string): Promis
 }
 
 export async function getStudentAffiliateSummary(accountId: bigint): Promise<StudentAffiliateSummary> {
+  const schoolPricePerStudentMinor = await schoolsPricePerStudentMinor()
   const defaultPolicy = {
     defaultHoldDays: defaultAffiliateHoldDays(),
     minPayoutMinor: affiliateMinPayoutMinor("NGN"),
@@ -1156,7 +1160,7 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
     schoolProgram: {
       courseSlug: "prompt-to-profit-schools",
       minSeats: schoolMinSeats(),
-      pricePerStudentMinor: schoolsPricePerStudentMinor()
+      pricePerStudentMinor: schoolPricePerStudentMinor
     }
   }
 

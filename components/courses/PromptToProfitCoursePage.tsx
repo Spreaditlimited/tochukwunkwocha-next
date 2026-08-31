@@ -409,7 +409,7 @@ export async function PromptToProfitCoursePage({
               <h1 className="font-heading text-5xl font-black tracking-tight sm:text-6xl lg:text-[4rem] lg:leading-[1.1]">
                 Build Practical Websites and Digital Tools <span className="bg-gradient-to-r from-sky-400 to-primary bg-clip-text text-transparent">with AI.</span>
               </h1>
-              <p className="mt-6 text-xl font-medium text-slate-300">Designed for Complete Beginners.</p>
+              <p className="mt-6 text-xl font-medium text-slate-300">Designed for Complete Beginners. Build on your phone or computer.</p>
               <div className="mt-4 space-y-4 text-lg leading-relaxed text-slate-400">
                 <p>
                   Artificial Intelligence has changed how software is built. In five days, you will learn how to think through a digital problem, guide AI step by step, and build practical solutions with confidence.
@@ -498,7 +498,9 @@ export async function PromptToProfitCoursePage({
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <MonitorPlay className="h-4 w-4 text-primary" />
-                      32 Recorded Lessons
+                      {courseSettings
+                        ? `${courseSettings.activeLessonCount} Recorded ${courseSettings.activeLessonCount === 1 ? "Lesson" : "Lessons"}`
+                        : "Recorded Lessons"}
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                       <Video className="h-4 w-4 text-primary" />
