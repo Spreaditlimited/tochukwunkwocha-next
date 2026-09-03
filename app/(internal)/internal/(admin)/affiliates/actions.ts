@@ -21,6 +21,14 @@ function safeMessage(error: unknown) {
   return message.slice(0, 240)
 }
 
+function otpFailureMessage(error: unknown) {
+  const message = safeMessage(error)
+  if (/otp could not be verified/i.test(message)) {
+    return "Paystack could not verify that OTP. Request a new OTP and enter only the newest code sent for this specific transfer."
+  }
+  return message
+}
+
 export async function saveAffiliateCourseRuleAction(formData: FormData) {
   const session = await requireAdmin("/internal/affiliates")
   await saveAffiliateCourseRule(formData, session.email || "admin")
@@ -67,7 +75,7 @@ export async function finalizeAffiliatePayoutOtpAction(formData: FormData) {
   try {
     result = await finalizeAffiliatePayoutOtp(formData, session.email || "admin")
   } catch (error) {
-    await setInternalToast({ type: "error", title: "OTP was not accepted", message: safeMessage(error) })
+    await setInternalToast({ type: "error", title: "OTP was not accepted", message: otpFailureMessage(error) })
     redirect(PATH)
   }
   await setInternalToast({ title: "Paystack OTP submitted", message: `Transfer status: ${result.status}. Final settlement will also be reconciled automatically.` })

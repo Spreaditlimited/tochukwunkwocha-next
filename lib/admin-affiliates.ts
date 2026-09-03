@@ -145,7 +145,7 @@ async function paystackFinalizeTransfer(transferCode: string, otp: string) {
 async function paystackResendTransferOtp(transferCode: string) {
   const json = await paystackRequest("/transfer/resend_otp", {
     method: "POST",
-    body: JSON.stringify({ transfer_code: transferCode, reason: "resend_otp" })
+    body: JSON.stringify({ transfer_code: transferCode, reason: "transfer" })
   }, "affiliate payout OTP resend", transferCode)
   return normalizePaystackTransfer(json)
 }
@@ -931,8 +931,10 @@ export async function resendAffiliatePayoutOtp(formData: FormData, actor: string
   const rows = await prisma.$queryRaw<Array<{ transferCode: string | null }>>`SELECT provider_transfer_code AS transferCode FROM tochukwu_affiliate_payout_items WHERE provider_reference = ${reference} AND status = 'otp' LIMIT 1`
   const transferCode = clean(rows[0]?.transferCode, 120)
   if (!transferCode) throw new Error("This payout is not waiting for an OTP.")
-  await paystackResendTransferOtp(transferCode)
-  await recordPayoutAudit({ eventType: "payout_otp_resent", actorType: "admin", actorId: actor, targetType: "payout_transfer", targetId: reference })
+  const response = await paystackResendTransferOtp(transferCode)
+  const message = response.message || "Paystack accepted the request for a new transfer OTP."
+  await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_items SET provider_message = ${message}, updated_at = ${new Date()} WHERE provider_reference = ${reference} AND status = 'otp'`
+  await recordPayoutAudit({ eventType: "payout_otp_resent", actorType: "admin", actorId: actor, targetType: "payout_transfer", targetId: reference, metadata: { providerMessage: message } })
   return { ok: true }
 }
 

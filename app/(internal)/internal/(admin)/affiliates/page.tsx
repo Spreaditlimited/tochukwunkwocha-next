@@ -328,13 +328,16 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
                   <td className="px-6 py-4"><span className={`rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-widest ${transfer.providerDomain === "live" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>{transfer.providerDomain || "unknown"}</span></td>
                   <td className="px-6 py-4">
                     {transfer.status === "otp" && transfer.providerReference ? (
-                      <div className="flex flex-wrap gap-2">
-                        <form action={finalizeAffiliatePayoutOtpAction} className="flex gap-2">
-                          <input type="hidden" name="reference" value={transfer.providerReference} />
-                          <input name="otp" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{4,10}" placeholder="Paystack OTP" className="w-32 rounded-md border border-input bg-background px-3 py-2 text-xs" />
-                          <button className="rounded-md bg-primary px-3 py-2 text-xs font-black text-primary-foreground" type="submit">Confirm</button>
-                        </form>
-                        <form action={resendAffiliatePayoutOtpAction}><input type="hidden" name="reference" value={transfer.providerReference} /><button className="rounded-md border border-border px-3 py-2 text-xs font-bold" type="submit">Resend OTP</button></form>
+                      <div>
+                        <p className="mb-2 max-w-sm whitespace-normal text-[11px] text-muted-foreground">Each transfer has its own OTP. After resending, enter only the newest code received for this transfer.</p>
+                        <div className="flex flex-wrap gap-2">
+                          <form action={finalizeAffiliatePayoutOtpAction} className="flex gap-2">
+                            <input type="hidden" name="reference" value={transfer.providerReference} />
+                            <input name="otp" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{4,10}" placeholder="Paystack OTP" className="w-32 rounded-md border border-input bg-background px-3 py-2 text-xs" />
+                            <button className="rounded-md bg-primary px-3 py-2 text-xs font-black text-primary-foreground" type="submit">Confirm</button>
+                          </form>
+                          <form action={resendAffiliatePayoutOtpAction}><input type="hidden" name="reference" value={transfer.providerReference} /><button className="rounded-md border border-border px-3 py-2 text-xs font-bold" type="submit">Resend OTP</button></form>
+                        </div>
                       </div>
                     ) : null}
                     {["failed", "reversed"].includes(transfer.status) && transfer.providerReference ? <form action={retryAffiliatePayoutTransferAction}><input type="hidden" name="reference" value={transfer.providerReference} /><button className="rounded-md border border-border px-3 py-2 text-xs font-bold" type="submit">Verify &amp; retry</button></form> : null}
