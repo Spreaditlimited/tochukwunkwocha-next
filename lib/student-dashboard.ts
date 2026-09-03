@@ -368,6 +368,7 @@ export interface StudentAffiliateSummary {
     currency: string
     totalItems: number
     totalAmountMinor: number
+    paidAmountMinor: number
     status: string
     createdAt: Date | null
     completedAt: Date | null
@@ -539,7 +540,7 @@ function isPaidStatus(status: string) {
 }
 
 function isPendingStatus(status: string) {
-  return ["pending", "pending_verification"].includes(String(status || "").toLowerCase())
+  return ["pending", "pending_verification", "processing", "scheduled", "otp_required"].includes(String(status || "").toLowerCase())
 }
 
 function addOneYear(value: Date | null) {
@@ -1346,6 +1347,7 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
       COALESCE(b.currency, 'NGN') AS currency,
       CAST(COALESCE(b.total_items, 0) AS SIGNED) AS totalItems,
       CAST(COALESCE(b.total_amount_minor, 0) AS SIGNED) AS totalAmountMinor,
+      CAST(COALESCE(SUM(CASE WHEN i.status = 'paid' THEN i.amount_minor ELSE 0 END), 0) AS SIGNED) AS paidAmountMinor,
       COALESCE(b.status, '') AS status,
       b.created_at AS createdAt,
       b.completed_at AS completedAt
@@ -1441,7 +1443,8 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
     payouts: payouts.map((row) => ({
       ...row,
       totalItems: Number(row.totalItems || 0),
-      totalAmountMinor: Number(row.totalAmountMinor || 0)
+      totalAmountMinor: Number(row.totalAmountMinor || 0),
+      paidAmountMinor: Number(row.paidAmountMinor || 0)
     }))
   }
 }

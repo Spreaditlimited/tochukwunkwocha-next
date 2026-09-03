@@ -13,6 +13,7 @@ import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-studen
 import { confirmPaystackSchoolAdvanced } from "@/lib/payments/school-advanced"
 import { fulfillPaidShopOrder, SHOP_PAYMENT_SCOPE } from "@/lib/shop"
 import { isCourseEnrollmentConflict } from "@/lib/enrollment-guard"
+import { reconcileAffiliatePayoutWebhook } from "@/lib/admin-affiliates"
 
 export const dynamic = "force-dynamic"
 
@@ -31,12 +32,15 @@ type PaystackWebhookPayload = {
     status?: unknown
     amount?: unknown
     currency?: unknown
+    transfer_code?: unknown
+    domain?: unknown
+    message?: unknown
   }
 }
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
-  const secret = process.env.PAYSTACK_SECRET_KEY
+  const secret = process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET
   const signature = request.headers.get("x-paystack-signature") || ""
   if (!secret) {
     await reportPaymentProviderIssue({ provider: "paystack", operation: "webhook processing", summary: "PAYSTACK_SECRET_KEY is missing.", errorCode: "missing_secret_key" })
@@ -63,11 +67,26 @@ export async function POST(request: Request) {
     providerEventId: data.id ? String(data.id) : null,
     source: "webhook",
     eventType: event || "unknown",
-    outcome: event === "charge.success" ? "received" : "ignored",
+    outcome: event === "charge.success" || event.startsWith("transfer.") ? "received" : "ignored",
     providerStatus: data.status ? String(data.status) : null,
     receivedAmountMinor: Number.isFinite(Number(data.amount)) ? Number(data.amount) : null,
     receivedCurrency: data.currency ? String(data.currency) : null
   })
+  if (["transfer.success", "transfer.failed", "transfer.reversed"].includes(event)) {
+    if (!reference) return NextResponse.json({ ok: true, ignored: true, reason: "missing_transfer_reference" })
+    const result = await reconcileAffiliatePayoutWebhook({
+      event,
+      reference,
+      transferId: data.id ? String(data.id) : "",
+      transferCode: data.transfer_code ? String(data.transfer_code) : "",
+      status: data.status ? String(data.status) : "",
+      domain: data.domain ? String(data.domain) : "",
+      amountMinor: Number.isFinite(Number(data.amount)) ? Math.round(Number(data.amount)) : null,
+      currency: data.currency ? String(data.currency) : "",
+      message: data.message ? String(data.message) : ""
+    })
+    return NextResponse.json({ ok: true, scope: "affiliate_payout", result })
+  }
   if (event !== "charge.success") return NextResponse.json({ ok: true, ignored: true })
 
   const paymentScope = String(metadata.payment_scope || "").toLowerCase()

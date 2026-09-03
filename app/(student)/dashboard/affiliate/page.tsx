@@ -403,7 +403,7 @@ export default async function StudentAffiliatePage() {
           <StudentDashboardCard className="p-0 overflow-hidden">
             <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
               <p className="eyebrow text-primary">Payout History</p>
-              <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Processed Payout Batches</h2>
+              <h2 className="mt-1 font-heading text-xl font-bold text-foreground">Payout Batches</h2>
             </div>
             
             <div className="overflow-x-auto">
@@ -425,7 +425,8 @@ export default async function StudentAffiliatePage() {
                           {formatDate(payout.periodStart)} <span className="mx-2 text-border">→</span> {formatDate(payout.periodEnd)}
                         </td>
                         <td className="px-6 py-4 font-heading font-black text-foreground">
-                          {formatMinorCurrency(payout.currency, payout.totalAmountMinor)}
+                          {formatMinorCurrency(payout.currency, payout.paidAmountMinor)}
+                          {payout.paidAmountMinor !== payout.totalAmountMinor ? <span className="mt-1 block text-[10px] font-medium text-muted-foreground">of {formatMinorCurrency(payout.currency, payout.totalAmountMinor)} requested</span> : null}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${statusTone(payout.status)}`}>

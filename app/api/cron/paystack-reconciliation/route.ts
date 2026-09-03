@@ -4,6 +4,7 @@ import { reconcileCoursePaystackOrders } from "@/lib/payments/paystack-reconcili
 import { reconcilePaidGroupOrders } from "@/lib/payments/group-order-reconciliation"
 import { acquireAutomationLease, releaseAutomationLease } from "@/lib/automation-leases"
 import { reconcileFinancialTransactions } from "@/lib/admin-financials"
+import { processDueScheduledAffiliatePayoutBatches, reconcileAffiliatePayouts } from "@/lib/admin-affiliates"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -32,8 +33,10 @@ export async function GET(request: NextRequest) {
       limit: 120
     })
     const groupOrders = await reconcilePaidGroupOrders({ limit: 120, minimumAgeMinutes: 5 })
+    const scheduledAffiliatePayouts = await processDueScheduledAffiliatePayoutBatches(10)
+    const affiliatePayouts = await reconcileAffiliatePayouts({ limit: 75 })
     await reconcileFinancialTransactions()
-    return NextResponse.json({ ok: true, result: paystack, groupOrders, financialsReconciled: true })
+    return NextResponse.json({ ok: true, result: paystack, groupOrders, scheduledAffiliatePayouts, affiliatePayouts, financialsReconciled: true })
   } catch (error) {
     return NextResponse.json(
       {

@@ -1,0 +1,45 @@
+import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+
+const root = process.cwd()
+const read = (file) => fs.readFileSync(path.join(root, file), "utf8")
+
+const payouts = read("lib/admin-affiliates.ts")
+const actions = read("app/(internal)/internal/(admin)/affiliates/actions.ts")
+const page = read("app/(internal)/internal/(admin)/affiliates/page.tsx")
+const webhook = read("app/api/webhooks/paystack/route.ts")
+const cron = read("app/api/cron/paystack-reconciliation/route.ts")
+
+assert.match(payouts, /data\.status \|\| data\.transfer_status \|\| "pending"/)
+assert.match(payouts, /if \(status === "success"\) return "paid"/)
+assert.match(payouts, /finalize_transfer/)
+assert.match(payouts, /resend_otp/)
+assert.match(payouts, /transfer\/verify/)
+assert.match(payouts, /\/balance/)
+assert.match(payouts, /Insufficient Paystack/)
+assert.match(payouts, /test_key_in_production/)
+assert.match(payouts, /GROUP BY i\.transfer_group_uuid/)
+assert.match(payouts, /provider_reference = \$\{reference\}/)
+assert.match(payouts, /c\.status = 'paid'/)
+assert.match(payouts, /c\.status = 'approved', c\.paid_at = NULL/)
+assert.match(payouts, /uniq_tochukwu_aff_payout_batch_commission/)
+assert.match(payouts, /processDueScheduledAffiliatePayoutBatches/)
+assert.match(payouts, /payout_transfer_retry_requested/)
+assert.match(payouts, /payout_mismatch/)
+
+assert.match(actions, /finalizeAffiliatePayoutOtpAction/)
+assert.match(actions, /reconcileAffiliatePayoutsAction/)
+assert.match(actions, /retryAffiliatePayoutTransferAction/)
+assert.match(page, /name="otp"/)
+assert.match(page, /Refresh Paystack Status/)
+assert.match(page, /Verify &amp; retry/)
+
+assert.match(webhook, /transfer\.success/)
+assert.match(webhook, /transfer\.failed/)
+assert.match(webhook, /transfer\.reversed/)
+assert.match(webhook, /reconcileAffiliatePayoutWebhook/)
+assert.match(cron, /reconcileAffiliatePayouts/)
+assert.match(cron, /processDueScheduledAffiliatePayoutBatches/)
+
+console.log("Affiliate payout end-to-end smoke checks passed.")

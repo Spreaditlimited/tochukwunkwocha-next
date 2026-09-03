@@ -23,6 +23,7 @@
     "smoke:business-financials": "node scripts/smoke-business-financials.mjs",
     "smoke:admin-group-enrollment": "node scripts/smoke-admin-group-enrollment.mjs",
     "smoke:affiliate-commissions": "node scripts/smoke-affiliate-commissions.mjs",
+    "smoke:affiliate-payouts": "node scripts/smoke-affiliate-payouts.mjs",
     "smoke:installment-reconciliation": "node scripts/smoke-installment-reconciliation.mjs",
     "smoke:admin-installments-search": "node scripts/smoke-admin-installments-search.mjs",
     "smoke:installment-reminders": "node scripts/smoke-installment-reminders.mjs",

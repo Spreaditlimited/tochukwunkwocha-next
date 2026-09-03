@@ -13,7 +13,14 @@ import { PremiumPicker } from "@/components/PremiumPicker"
 import { DashboardStatCard, DashboardStatsVisibility } from "@/components/dashboard/DashboardStatsVisibility"
 import { listAffiliateAdminData } from "@/lib/admin-affiliates"
 import { formatDate } from "@/lib/utils"
-import { runAffiliatePayoutBatchAction, saveAffiliateCourseRuleAction } from "./actions"
+import {
+  finalizeAffiliatePayoutOtpAction,
+  reconcileAffiliatePayoutsAction,
+  resendAffiliatePayoutOtpAction,
+  retryAffiliatePayoutTransferAction,
+  runAffiliatePayoutBatchAction,
+  saveAffiliateCourseRuleAction
+} from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -220,7 +227,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
             <div>
               <h2 className="font-heading text-xl font-black text-foreground">Run Payout Batch</h2>
               <p className="mt-1 text-sm font-medium text-muted-foreground">
-                Process matured commissions for payout orchestration.
+                Reserve matured commissions, check Paystack balance, and create one transfer per affiliate.
               </p>
             </div>
           </div>
@@ -241,7 +248,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
               </label>
               <label className="block md:col-span-2">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Scheduled Execution Date</span>
-                <input name="scheduledFor" placeholder="YYYY-MM-DD (Defaults to immediate)" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+                <input name="scheduledFor" type="date" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
               </label>
               <label className="block">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Target Country Code</span>
@@ -253,7 +260,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
               </label>
               <label className="block md:col-span-2">
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Payout Provider Configuration</span>
-                <input name="payoutProvider" defaultValue="paystack" className="w-full rounded-md border border-input bg-background/50 px-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary" />
+                <input name="payoutProvider" defaultValue="paystack" readOnly className="w-full rounded-md border border-input bg-muted/30 px-4 py-2.5 text-sm font-medium text-muted-foreground" />
               </label>
               <div className="pt-2 md:col-span-2">
                 <button className="btn-primary w-full justify-center shadow-sm" type="submit">
@@ -265,6 +272,80 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
         </section>
 
       </div>
+
+      {/* Payout Operations */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-border bg-muted/20 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+          <div>
+            <h2 className="font-heading text-xl font-black text-foreground">Payout Operations</h2>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">Live provider states, OTP completion, retries, and reconciliation.</p>
+          </div>
+          <form action={reconcileAffiliatePayoutsAction}>
+            <button type="submit" className="rounded-lg border border-border bg-background px-4 py-2 text-xs font-black uppercase tracking-widest text-foreground transition hover:border-primary/40 hover:text-primary">
+              Refresh Paystack Status
+            </button>
+          </form>
+        </div>
+
+        <div className="border-b border-border p-6 sm:p-8">
+          <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Recent batches</h3>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {data.payoutBatches.length ? data.payoutBatches.map((batch) => (
+              <article key={batch.id} className="rounded-xl border border-border bg-background p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-heading font-black text-foreground">Batch #{batch.id}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(batch.createdAt)} · {batch.currency}</p>
+                  </div>
+                  <span className={`rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-widest ${batch.status === "completed" ? "bg-emerald-500/10 text-emerald-600" : batch.status === "otp_required" ? "bg-amber-500/10 text-amber-600" : batch.status === "failed" || batch.status === "completed_with_errors" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
+                    {batch.status.replaceAll("_", " ")}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-bold text-foreground">Paid {money(batch.paidAmountMinor, batch.currency)} of {money(batch.totalAmountMinor, batch.currency)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{batch.successfulItems} paid · {batch.otpItems} OTP · {batch.pendingItems} pending · {batch.failedItems} failed</p>
+                {batch.scheduledFor && batch.status === "scheduled" ? <p className="mt-2 text-xs font-semibold text-primary">Scheduled for {formatDate(batch.scheduledFor)}</p> : null}
+                {batch.runNotes ? <p className="mt-2 text-xs text-destructive">{batch.runNotes}</p> : null}
+              </article>
+            )) : <p className="text-sm text-muted-foreground">No payout batches yet.</p>}
+          </div>
+        </div>
+
+        <div className="max-h-[620px] overflow-auto bg-background">
+          <table className="w-full min-w-[76rem] text-left text-sm whitespace-nowrap">
+            <thead className="sticky top-0 z-10 border-b border-border bg-card/95 text-[10px] font-bold uppercase tracking-widest text-muted-foreground backdrop-blur-md">
+              <tr>
+                <th className="px-6 py-4">Transfer</th><th className="px-6 py-4">Affiliate</th><th className="px-6 py-4">Amount</th>
+                <th className="px-6 py-4">Provider state</th><th className="px-6 py-4">Environment</th><th className="px-6 py-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {data.payoutTransfers.length ? data.payoutTransfers.map((transfer) => (
+                <tr key={`${transfer.batchId}-${transfer.transferGroupUuid || transfer.providerReference}`} className="align-top">
+                  <td className="px-6 py-4"><p className="font-bold text-foreground">Batch #{transfer.batchId}</p><p className="mt-1 max-w-64 truncate font-mono text-[10px] text-muted-foreground" title={transfer.providerReference || ""}>{transfer.providerReference || "Not initiated"}</p></td>
+                  <td className="px-6 py-4"><p className="font-bold text-foreground">{transfer.affiliateName || "Affiliate"}</p><p className="mt-1 text-xs text-muted-foreground">{transfer.affiliateCode || "-"} · {transfer.commissionCount} commission(s)</p></td>
+                  <td className="px-6 py-4 font-heading font-black text-foreground">{money(transfer.amountMinor, transfer.currency)}</td>
+                  <td className="px-6 py-4"><span className="rounded-md bg-muted px-2 py-1 text-[10px] font-black uppercase tracking-widest text-foreground">{transfer.providerStatus || transfer.status}</span>{transfer.errorMessage || transfer.providerMessage ? <p className="mt-2 max-w-xs whitespace-normal text-xs text-muted-foreground">{transfer.errorMessage || transfer.providerMessage}</p> : null}</td>
+                  <td className="px-6 py-4"><span className={`rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-widest ${transfer.providerDomain === "live" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>{transfer.providerDomain || "unknown"}</span></td>
+                  <td className="px-6 py-4">
+                    {transfer.status === "otp" && transfer.providerReference ? (
+                      <div className="flex flex-wrap gap-2">
+                        <form action={finalizeAffiliatePayoutOtpAction} className="flex gap-2">
+                          <input type="hidden" name="reference" value={transfer.providerReference} />
+                          <input name="otp" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{4,10}" placeholder="Paystack OTP" className="w-32 rounded-md border border-input bg-background px-3 py-2 text-xs" />
+                          <button className="rounded-md bg-primary px-3 py-2 text-xs font-black text-primary-foreground" type="submit">Confirm</button>
+                        </form>
+                        <form action={resendAffiliatePayoutOtpAction}><input type="hidden" name="reference" value={transfer.providerReference} /><button className="rounded-md border border-border px-3 py-2 text-xs font-bold" type="submit">Resend OTP</button></form>
+                      </div>
+                    ) : null}
+                    {["failed", "reversed"].includes(transfer.status) && transfer.providerReference ? <form action={retryAffiliatePayoutTransferAction}><input type="hidden" name="reference" value={transfer.providerReference} /><button className="rounded-md border border-border px-3 py-2 text-xs font-bold" type="submit">Verify &amp; retry</button></form> : null}
+                    {["pending", "initiating", "review", "paid"].includes(transfer.status) && transfer.providerReference ? <form action={reconcileAffiliatePayoutsAction}><input type="hidden" name="reference" value={transfer.providerReference} /><button className="rounded-md border border-border px-3 py-2 text-xs font-bold" type="submit">Verify now</button></form> : null}
+                  </td>
+                </tr>
+              )) : <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No transfer records yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Affiliate Commission Summary */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

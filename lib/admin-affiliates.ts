@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { addColumnIfMissing } from "@/lib/schema-guards"
 
 let affiliateCommissionSeatSchemaPromise: Promise<void> | null = null
+let affiliatePayoutSchemaPromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -52,42 +53,101 @@ function minPayoutMinor(currency: string) {
 }
 
 function paystackSecretKey() {
-  return clean(process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET || process.env.PAYSTACK_SECRET_TEST_KEY, 1000)
+  const production = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production"
+  return clean(process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET || (production ? "" : process.env.PAYSTACK_SECRET_TEST_KEY), 1000)
 }
 
-async function paystackCreateTransfer(input: { amountMinor: number; recipient: string; reason: string; reference: string }) {
+type PaystackTransfer = {
+  transferId: string
+  transferCode: string
+  reference: string
+  status: string
+  domain: string
+  message: string
+  amountMinor: number | null
+  currency: string
+}
+
+type PaystackResponse = {
+  status?: boolean
+  message?: unknown
+  code?: unknown
+  data?: unknown
+}
+
+async function paystackRequest(path: string, init: RequestInit, operation: string, reference?: string): Promise<PaystackResponse> {
   const secret = paystackSecretKey()
   if (!secret) {
-    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout transfer", summary: "PAYSTACK_SECRET_KEY is missing.", reference: input.reference, errorCode: "missing_secret_key" })
+    await reportPaymentProviderIssue({ provider: "paystack", operation, summary: "PAYSTACK_SECRET_KEY is missing.", reference, errorCode: "missing_secret_key" })
     throw new Error("Paystack payout transfer is temporarily unavailable.")
+  }
+  if ((process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && secret.includes("_test_")) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation, summary: "A Paystack test key cannot be used for a production affiliate payout.", reference, errorCode: "test_key_in_production" })
+    throw new Error("Paystack live payout credentials are not configured.")
   }
   let response: Response
   try {
-    response = await fetch("https://api.paystack.co/transfer", {
-      method: "POST",
+    response = await fetch(`https://api.paystack.co${path}`, {
+      ...init,
       headers: { authorization: `Bearer ${secret}`, accept: "application/json", "content-type": "application/json" },
-      body: JSON.stringify({
-        source: "balance",
-        amount: input.amountMinor,
-        recipient: input.recipient,
-        reason: input.reason,
-        reference: input.reference
-      })
     })
   } catch (error) {
-    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout transfer", summary: "The transfer request to Paystack failed.", reference: input.reference, errorType: "network_error", errorMessage: error instanceof Error ? error.message : String(error) })
+    await reportPaymentProviderIssue({ provider: "paystack", operation, summary: "The request to Paystack failed.", reference, errorType: "network_error", errorMessage: error instanceof Error ? error.message : String(error) })
     throw new Error("Paystack payout transfer is temporarily unavailable.")
   }
   const json = await response.json().catch(() => null)
   if (!response.ok || json?.status === false) {
-    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout transfer", summary: "Paystack rejected the payout transfer.", reference: input.reference, status: response.status, requestId: response.headers.get("x-request-id") || response.headers.get("request-id"), errorCode: json?.code || null, errorMessage: json?.message || `Paystack transfer failed (${response.status})` })
-    throw new Error("Paystack payout transfer is temporarily unavailable.")
+    if (!(operation === "affiliate payout verification" && response.status === 404)) {
+      await reportPaymentProviderIssue({ provider: "paystack", operation, summary: "Paystack rejected the payout request.", reference, status: response.status, requestId: response.headers.get("x-request-id") || response.headers.get("request-id"), errorCode: json?.code || null, errorMessage: json?.message || `Paystack request failed (${response.status})` })
+    }
+    const error = new Error(clean(json?.message, 255) || "Paystack payout transfer is temporarily unavailable.")
+    ;(error as Error & { providerStatus?: number }).providerStatus = response.status
+    throw error
   }
+  return json
+}
+
+function normalizePaystackTransfer(json: PaystackResponse, fallbackReference = ""): PaystackTransfer {
+  const data = json?.data && typeof json.data === "object" && !Array.isArray(json.data) ? json.data as Record<string, unknown> : {}
   return {
-    transferId: clean(json?.data?.id, 190),
-    transferCode: clean(json?.data?.transfer_code, 120),
-    reference: clean(json?.data?.reference || input.reference, 190)
+    transferId: clean(data.id, 190),
+    transferCode: clean(data.transfer_code, 120),
+    reference: clean(data.reference || fallbackReference, 190),
+    status: clean(data.status || data.transfer_status || "pending", 40).toLowerCase(),
+    domain: clean(data.domain, 20).toLowerCase(),
+    message: clean(json?.message || data.message, 255),
+    amountMinor: Number.isFinite(Number(data.amount)) ? Math.round(Number(data.amount)) : null,
+    currency: clean(data.currency, 10).toUpperCase()
   }
+}
+
+async function paystackCreateTransfer(input: { amountMinor: number; recipient: string; reason: string; reference: string }) {
+  const json = await paystackRequest("/transfer", {
+    method: "POST",
+    body: JSON.stringify({ source: "balance", amount: input.amountMinor, recipient: input.recipient, reason: input.reason, reference: input.reference })
+  }, "affiliate payout transfer", input.reference)
+  return normalizePaystackTransfer(json, input.reference)
+}
+
+async function paystackVerifyTransfer(reference: string) {
+  const json = await paystackRequest(`/transfer/verify/${encodeURIComponent(reference)}`, { method: "GET" }, "affiliate payout verification", reference)
+  return normalizePaystackTransfer(json, reference)
+}
+
+async function paystackFinalizeTransfer(transferCode: string, otp: string) {
+  const json = await paystackRequest("/transfer/finalize_transfer", {
+    method: "POST",
+    body: JSON.stringify({ transfer_code: transferCode, otp })
+  }, "affiliate payout OTP finalization", transferCode)
+  return normalizePaystackTransfer(json)
+}
+
+async function paystackResendTransferOtp(transferCode: string) {
+  const json = await paystackRequest("/transfer/resend_otp", {
+    method: "POST",
+    body: JSON.stringify({ transfer_code: transferCode, reason: "resend_otp" })
+  }, "affiliate payout OTP resend", transferCode)
+  return normalizePaystackTransfer(json)
 }
 
 export async function ensureAffiliateAdminTables() {
@@ -266,6 +326,41 @@ export async function ensureAffiliateAdminTables() {
       UNIQUE KEY uniq_tochukwu_aff_payout_item_commission (commission_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  if (!affiliatePayoutSchemaPromise) {
+    affiliatePayoutSchemaPromise = (async () => {
+      await addColumnIfMissing("tochukwu_affiliate_payout_batches", "paid_amount_minor", "BIGINT NOT NULL DEFAULT 0 AFTER total_amount_minor")
+      await addColumnIfMissing("tochukwu_affiliate_payout_batches", "pending_items", "INT NOT NULL DEFAULT 0 AFTER successful_items")
+      await addColumnIfMissing("tochukwu_affiliate_payout_batches", "otp_items", "INT NOT NULL DEFAULT 0 AFTER pending_items")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "transfer_group_uuid", "VARCHAR(64) NULL AFTER item_uuid")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "provider_status", "VARCHAR(40) NULL AFTER provider_reference")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "provider_domain", "VARCHAR(20) NULL AFTER provider_status")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "provider_message", "VARCHAR(255) NULL AFTER provider_domain")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "initiated_at", "DATETIME NULL AFTER processed_at")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "settled_at", "DATETIME NULL AFTER initiated_at")
+      await addColumnIfMissing("tochukwu_affiliate_payout_items", "last_verified_at", "DATETIME NULL AFTER settled_at")
+      const indexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
+        SELECT DISTINCT INDEX_NAME AS indexName
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tochukwu_affiliate_payout_items'
+          AND INDEX_NAME IN ('uniq_tochukwu_aff_payout_item_commission', 'uniq_tochukwu_aff_payout_batch_commission', 'idx_tochukwu_aff_payout_reference')
+      `
+      const names = new Set(indexes.map((row) => row.indexName))
+      if (names.has("uniq_tochukwu_aff_payout_item_commission")) {
+        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_payout_items DROP INDEX uniq_tochukwu_aff_payout_item_commission")
+      }
+      if (!names.has("uniq_tochukwu_aff_payout_batch_commission")) {
+        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_payout_items ADD UNIQUE INDEX uniq_tochukwu_aff_payout_batch_commission (payout_batch_id, commission_id)")
+      }
+      if (!names.has("idx_tochukwu_aff_payout_reference")) {
+        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_payout_items ADD INDEX idx_tochukwu_aff_payout_reference (provider_reference)")
+      }
+    })().catch((error) => {
+      affiliatePayoutSchemaPromise = null
+      throw error
+    })
+  }
+  await affiliatePayoutSchemaPromise
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS tochukwu_affiliate_audit (
       id BIGINT NOT NULL AUTO_INCREMENT,
@@ -316,7 +411,8 @@ export async function listEligibleAffiliateOptions(): Promise<AffiliateAdminOpti
 }
 
 export async function listAffiliateAdminData(sort = "latest_desc") {
-  const [rules, courses, audit, affiliates] = await Promise.all([
+  await ensureAffiliateAdminTables()
+  const [rules, courses, audit, affiliates, payoutBatches, payoutTransfers] = await Promise.all([
     prisma.$queryRaw<Array<{
       id: bigint
       courseSlug: string
@@ -412,6 +508,41 @@ export async function listAffiliateAdminData(sort = "latest_desc") {
       LEFT JOIN tochukwu_affiliate_commissions c ON c.affiliate_profile_id = p.id
       GROUP BY p.id, p.account_id, p.affiliate_code, p.status, p.eligibility_status, p.payout_currency, a.full_name, a.email, COALESCE(c.currency, p.payout_currency, 'NGN')
       HAVING totalCount > 0
+    `,
+    prisma.$queryRaw<Array<{
+      id: bigint; batchUuid: string; periodStart: Date; periodEnd: Date; scheduledFor: Date | null; status: string; currency: string
+      totalItems: number | bigint; totalAmountMinor: number | bigint; paidAmountMinor: number | bigint
+      successfulItems: number | bigint; pendingItems: number | bigint; otpItems: number | bigint; failedItems: number | bigint
+      initiatedBy: string | null; runNotes: string | null; createdAt: Date; completedAt: Date | null
+    }>>`
+      SELECT id, batch_uuid AS batchUuid, period_start AS periodStart, period_end AS periodEnd,
+        scheduled_for AS scheduledFor, status, currency, total_items AS totalItems,
+        total_amount_minor AS totalAmountMinor, paid_amount_minor AS paidAmountMinor,
+        successful_items AS successfulItems, pending_items AS pendingItems, otp_items AS otpItems,
+        failed_items AS failedItems, initiated_by AS initiatedBy, run_notes AS runNotes, created_at AS createdAt, completed_at AS completedAt
+      FROM tochukwu_affiliate_payout_batches
+      ORDER BY id DESC
+      LIMIT 30
+    `,
+    prisma.$queryRaw<Array<{
+      batchId: bigint; transferGroupUuid: string | null; providerReference: string | null; providerTransferCode: string | null
+      providerTransferId: string | null; providerStatus: string | null; providerDomain: string | null; providerMessage: string | null
+      errorMessage: string | null; status: string; currency: string; amountMinor: number | bigint; commissionCount: number | bigint
+      affiliateName: string | null; affiliateCode: string | null; updatedAt: Date
+    }>>`
+      SELECT i.payout_batch_id AS batchId, i.transfer_group_uuid AS transferGroupUuid,
+        i.provider_reference AS providerReference, MAX(i.provider_transfer_code) AS providerTransferCode,
+        MAX(i.provider_transfer_id) AS providerTransferId, MAX(i.provider_status) AS providerStatus,
+        MAX(i.provider_domain) AS providerDomain, MAX(i.provider_message) AS providerMessage, MAX(i.error_message) AS errorMessage,
+        MAX(i.status) AS status, MAX(i.currency) AS currency, SUM(i.amount_minor) AS amountMinor,
+        COUNT(*) AS commissionCount, MAX(a.full_name) AS affiliateName, MAX(p.affiliate_code) AS affiliateCode,
+        MAX(i.updated_at) AS updatedAt
+      FROM tochukwu_affiliate_payout_items i
+      JOIN tochukwu_affiliate_profiles p ON p.id = i.affiliate_profile_id
+      LEFT JOIN student_accounts a ON a.id = p.account_id
+      GROUP BY i.payout_batch_id, i.transfer_group_uuid, i.provider_reference
+      ORDER BY i.payout_batch_id DESC, MAX(i.id) DESC
+      LIMIT 100
     `
   ])
   const normalizedAffiliates = affiliates.map((row) => ({
@@ -459,6 +590,23 @@ export async function listAffiliateAdminData(sort = "latest_desc") {
       ...row,
       id: Number(row.id),
       metadata: parseMetadata(row.metadataJson)
+    })),
+    payoutBatches: payoutBatches.map((row) => ({
+      ...row,
+      id: Number(row.id),
+      totalItems: Number(row.totalItems || 0),
+      totalAmountMinor: Number(row.totalAmountMinor || 0),
+      paidAmountMinor: Number(row.paidAmountMinor || 0),
+      successfulItems: Number(row.successfulItems || 0),
+      pendingItems: Number(row.pendingItems || 0),
+      otpItems: Number(row.otpItems || 0),
+      failedItems: Number(row.failedItems || 0)
+    })),
+    payoutTransfers: payoutTransfers.map((row) => ({
+      ...row,
+      batchId: Number(row.batchId),
+      amountMinor: Number(row.amountMinor || 0),
+      commissionCount: Number(row.commissionCount || 0)
     })),
     commissionSummary: { totalsByCurrency: Array.from(totalsMap.values()).sort((a, b) => a.currency.localeCompare(b.currency)), affiliates: normalizedAffiliates }
   }
@@ -520,133 +668,360 @@ export async function saveAffiliateCourseRule(formData: FormData, updatedBy: str
   `
 }
 
+type PayoutCandidate = {
+  commissionId: bigint
+  affiliateProfileId: bigint
+  commissionAmountMinor: number | bigint
+  payoutAccountId: bigint | null
+  paystackRecipientCode: string | null
+  isVerified: number | bigint | null
+}
+
+function localTransferStatus(providerStatus: string) {
+  const status = clean(providerStatus, 40).toLowerCase()
+  if (status === "success") return "paid"
+  if (status === "otp") return "otp"
+  if (["failed", "abandoned"].includes(status)) return "failed"
+  if (status === "reversed") return "reversed"
+  return "pending"
+}
+
+async function recordPayoutAudit(input: { eventType: string; actorType?: string; actorId?: string | null; targetType: string; targetId: string; metadata?: Record<string, unknown> }) {
+  await prisma.$executeRaw`
+    INSERT INTO tochukwu_affiliate_audit
+      (event_uuid, event_type, actor_type, actor_id, target_type, target_id, metadata_json, created_at)
+    VALUES (${`afa_${randomUUID().replace(/-/g, "")}`}, ${input.eventType}, ${input.actorType || "system"}, ${input.actorId || null},
+      ${input.targetType}, ${input.targetId}, ${JSON.stringify(input.metadata || {})}, ${new Date()})
+  `
+}
+
+async function refreshPayoutBatch(batchId: number) {
+  const rows = await prisma.$queryRaw<Array<{
+    totalItems: bigint; totalAmountMinor: bigint; paidAmountMinor: bigint; successfulItems: bigint; pendingItems: bigint; otpItems: bigint; failedItems: bigint
+  }>>`
+    SELECT COUNT(*) AS totalItems, COALESCE(SUM(amount_minor), 0) AS totalAmountMinor,
+      COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_minor ELSE 0 END), 0) AS paidAmountMinor,
+      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS successfulItems,
+      SUM(CASE WHEN status IN ('scheduled','reserved','initiating','pending') THEN 1 ELSE 0 END) AS pendingItems,
+      SUM(CASE WHEN status = 'otp' THEN 1 ELSE 0 END) AS otpItems,
+      SUM(CASE WHEN status IN ('failed','reversed','review') THEN 1 ELSE 0 END) AS failedItems
+    FROM tochukwu_affiliate_payout_items WHERE payout_batch_id = ${batchId}
+  `
+  const counts = rows[0]
+  const totalItems = Number(counts?.totalItems || 0)
+  const successfulItems = Number(counts?.successfulItems || 0)
+  const pendingItems = Number(counts?.pendingItems || 0)
+  const otpItems = Number(counts?.otpItems || 0)
+  const failedItems = Number(counts?.failedItems || 0)
+  const status = otpItems > 0 ? "otp_required"
+    : pendingItems > 0 ? "processing"
+      : failedItems > 0 && successfulItems > 0 ? "completed_with_errors"
+        : failedItems > 0 ? "failed"
+          : totalItems > 0 ? "completed" : "empty"
+  const complete = pendingItems === 0 && otpItems === 0
+  await prisma.$executeRaw`
+    UPDATE tochukwu_affiliate_payout_batches SET total_items = ${totalItems}, total_amount_minor = ${Number(counts?.totalAmountMinor || 0)},
+      paid_amount_minor = ${Number(counts?.paidAmountMinor || 0)}, successful_items = ${successfulItems}, pending_items = ${pendingItems},
+      otp_items = ${otpItems}, failed_items = ${failedItems}, status = ${status}, completed_at = ${complete ? new Date() : null}, updated_at = ${new Date()}
+    WHERE id = ${batchId}
+  `
+  return { totalItems, totalAmountMinor: Number(counts?.totalAmountMinor || 0), paidAmountMinor: Number(counts?.paidAmountMinor || 0), successfulItems, pendingItems, otpItems, failedItems, status }
+}
+
+async function applyTransferState(reference: string, transfer: PaystackTransfer, source: string) {
+  await ensureAffiliateAdminTables()
+  const rows = await prisma.$queryRaw<Array<{ batchId: bigint; amountMinor: bigint; currency: string; currentStatus: string; lastVerifiedAt: Date | null }>>`
+    SELECT MIN(payout_batch_id) AS batchId, SUM(amount_minor) AS amountMinor, MAX(currency) AS currency,
+      MAX(status) AS currentStatus, MAX(last_verified_at) AS lastVerifiedAt
+    FROM tochukwu_affiliate_payout_items WHERE provider_reference = ${reference}
+  `
+  const row = rows[0]
+  const batchId = Number(row?.batchId || 0)
+  if (!batchId) return { found: false, status: "unknown" }
+  const expectedAmount = Number(row.amountMinor || 0)
+  const expectedCurrency = clean(row.currency, 10).toUpperCase()
+  const productionDomainMismatch = (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && transfer.domain === "test"
+  const mismatch = productionDomainMismatch || (transfer.amountMinor !== null && transfer.amountMinor !== expectedAmount)
+    || (Boolean(transfer.currency) && transfer.currency !== expectedCurrency)
+  const status = mismatch ? "review" : localTransferStatus(transfer.status)
+  if (row.currentStatus === "paid" && row.lastVerifiedAt && !["paid", "reversed"].includes(status)) {
+    return { found: true, status: "paid", batchId, batch: await refreshPayoutBatch(batchId) }
+  }
+  const now = new Date()
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      UPDATE tochukwu_affiliate_payout_items SET status = ${status}, provider_transfer_id = COALESCE(${transfer.transferId || null}, provider_transfer_id),
+        provider_transfer_code = COALESCE(${transfer.transferCode || null}, provider_transfer_code), provider_status = ${transfer.status || null},
+        provider_domain = COALESCE(${transfer.domain || null}, provider_domain), provider_message = ${transfer.message || null},
+        error_message = ${productionDomainMismatch ? "Paystack returned a test-mode transfer in production." : mismatch ? "Provider amount or currency does not match this payout." : null},
+        processed_at = ${now}, settled_at = ${status === "paid" ? now : null}, last_verified_at = ${now}, updated_at = ${now}
+      WHERE provider_reference = ${reference}
+    `
+    if (status === "paid") {
+      await tx.$executeRaw`
+        UPDATE tochukwu_affiliate_commissions c
+        JOIN tochukwu_affiliate_payout_items i ON i.commission_id = c.id
+        SET c.status = 'paid', c.paid_at = ${now}, c.payout_batch_id = i.payout_batch_id, c.payout_item_id = i.id, c.updated_at = ${now}
+        WHERE i.provider_reference = ${reference}
+      `
+    } else {
+      await tx.$executeRaw`
+        UPDATE tochukwu_affiliate_commissions c
+        JOIN tochukwu_affiliate_payout_items i ON i.commission_id = c.id
+        SET c.status = 'approved', c.paid_at = NULL, c.payout_batch_id = i.payout_batch_id, c.payout_item_id = i.id, c.updated_at = ${now}
+        WHERE i.provider_reference = ${reference} AND c.status <> 'reversed'
+      `
+    }
+  })
+  if (mismatch) {
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout reconciliation", summary: productionDomainMismatch ? "Paystack returned a test-mode transfer in production." : "Provider amount or currency did not match the reserved affiliate payout.", reference, errorCode: productionDomainMismatch ? "production_domain_mismatch" : "payout_mismatch" })
+  }
+  await recordPayoutAudit({ eventType: `payout_transfer_${status}`, targetType: "payout_transfer", targetId: reference, metadata: { source, providerStatus: transfer.status, providerDomain: transfer.domain, expectedAmount, expectedCurrency, receivedAmount: transfer.amountMinor, receivedCurrency: transfer.currency } })
+  const batch = await refreshPayoutBatch(batchId)
+  return { found: true, status, batchId, batch }
+}
+
+async function paystackAvailableBalance(currency: string) {
+  const json = await paystackRequest("/balance", { method: "GET" }, "affiliate payout balance preflight")
+  const balances = Array.isArray(json?.data) ? json.data as Array<Record<string, unknown>> : []
+  const match = balances.find((item) => clean(item.currency, 10).toUpperCase() === currency)
+  return Number.isFinite(Number(match?.balance)) ? Math.round(Number(match?.balance)) : 0
+}
+
+async function executePayoutBatch(batchId: number, actor = "system") {
+  const batchRows = await prisma.$queryRaw<Array<{ currency: string; payoutProvider: string }>>`
+    SELECT currency, payout_provider AS payoutProvider FROM tochukwu_affiliate_payout_batches WHERE id = ${batchId} LIMIT 1
+  `
+  const batch = batchRows[0]
+  if (!batch) throw new Error("Payout batch was not found.")
+  if (batch.payoutProvider !== "paystack") throw new Error("Only Paystack automatic payouts are supported.")
+  await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_batches SET status = 'processing', run_notes = NULL, completed_at = NULL, updated_at = ${new Date()} WHERE id = ${batchId}`
+  const groups = await prisma.$queryRaw<Array<{
+    transferGroupUuid: string; providerReference: string; affiliateProfileId: bigint; recipientCode: string; amountMinor: bigint
+  }>>`
+    SELECT i.transfer_group_uuid AS transferGroupUuid, MAX(i.provider_reference) AS providerReference,
+      MIN(i.affiliate_profile_id) AS affiliateProfileId, MAX(pa.paystack_recipient_code) AS recipientCode,
+      SUM(i.amount_minor) AS amountMinor
+    FROM tochukwu_affiliate_payout_items i
+    JOIN tochukwu_affiliate_payout_accounts pa ON pa.id = i.payout_account_id
+    WHERE i.payout_batch_id = ${batchId} AND i.status IN ('scheduled','reserved')
+    GROUP BY i.transfer_group_uuid
+  `
+  const required = groups.reduce((sum, group) => sum + Number(group.amountMinor || 0), 0)
+  const available = await paystackAvailableBalance(clean(batch.currency, 10).toUpperCase())
+  if (available < required) {
+    await recordPayoutAudit({ eventType: "payout_batch_balance_failed", actorType: actor === "system" ? "system" : "admin", actorId: actor, targetType: "payout_batch", targetId: String(batchId), metadata: { required, available, currency: batch.currency } })
+    await reportPaymentProviderIssue({ provider: "paystack", operation: "affiliate payout balance preflight", summary: `Insufficient ${batch.currency} balance for affiliate payout batch ${batchId}.`, reference: String(batchId), errorCode: "insufficient_balance" })
+    const message = `Insufficient Paystack ${batch.currency} balance. Required ${(required / 100).toFixed(2)}, available ${(available / 100).toFixed(2)}.`
+    await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_items SET status = 'failed', error_message = ${message}, updated_at = ${new Date()} WHERE payout_batch_id = ${batchId} AND status IN ('scheduled','reserved')`
+    await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_batches SET run_notes = ${message}, updated_at = ${new Date()} WHERE id = ${batchId}`
+    await refreshPayoutBatch(batchId)
+    throw new Error(message)
+  }
+  for (const group of groups) {
+    const reference = clean(group.providerReference, 190)
+    await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_items SET status = 'initiating', initiated_at = ${new Date()}, updated_at = ${new Date()} WHERE payout_batch_id = ${batchId} AND transfer_group_uuid = ${group.transferGroupUuid} AND status IN ('scheduled','reserved')`
+    try {
+      const transfer = await paystackCreateTransfer({ amountMinor: Number(group.amountMinor), recipient: clean(group.recipientCode, 120), reason: `Affiliate payout batch ${batchId}`, reference })
+      await applyTransferState(reference, transfer, "initiation")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Payout initiation could not be confirmed."
+      await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_items SET status = 'pending', error_message = ${message}, updated_at = ${new Date()} WHERE payout_batch_id = ${batchId} AND transfer_group_uuid = ${group.transferGroupUuid}`
+      await recordPayoutAudit({ eventType: "payout_transfer_unconfirmed", actorType: actor === "system" ? "system" : "admin", actorId: actor, targetType: "payout_transfer", targetId: reference, metadata: { message } })
+    }
+  }
+  return refreshPayoutBatch(batchId)
+}
+
 export async function runAffiliatePayoutBatch(formData: FormData, initiatedBy: string) {
   await ensureAffiliateAdminTables()
-  await prisma.$executeRaw`UPDATE tochukwu_affiliate_commissions SET status = 'approved', updated_at = ${new Date()} WHERE status = 'pending' AND payable_at IS NOT NULL AND payable_at <= ${new Date()} AND risk_score < 90`
+  const now = new Date()
+  await prisma.$executeRaw`UPDATE tochukwu_affiliate_commissions SET status = 'approved', updated_at = ${now} WHERE status = 'pending' AND payable_at IS NOT NULL AND payable_at <= ${now} AND risk_score < 90`
   const mode = clean(formData.get("periodMode"), 40).toLowerCase()
   const inferred = previousMonthPeriod()
   const periodStart = parseDateInput(formData.get("periodStart")) || (mode === "month_end" ? inferred.periodStart : null)
   const periodEnd = parseDateInput(formData.get("periodEnd")) || (mode === "month_end" ? inferred.periodEnd : null)
-  if (!periodStart || !periodEnd) throw new Error("periodStart and periodEnd are required.")
+  if (!periodStart || !periodEnd || periodStart > periodEnd) throw new Error("A valid payout period is required.")
   const countryCode = clean(formData.get("countryCode") || "NG", 2).toUpperCase() || "NG"
   const currency = clean(formData.get("currency") || "NGN", 10).toUpperCase()
   const payoutProvider = clean(formData.get("payoutProvider") || "paystack", 40).toLowerCase()
-  const scheduledFor = clean(formData.get("scheduledFor"), 10) || null
-  const candidates = await prisma.$queryRaw<Array<{
-    commissionId: bigint
-    affiliateProfileId: bigint
-    currency: string
-    commissionAmountMinor: number | bigint
-    orderUuid: string
-    payoutAccountId: bigint | null
-    paystackRecipientCode: string | null
-    isVerified: number | bigint | null
-  }>>`
-    SELECT c.id AS commissionId, c.affiliate_profile_id AS affiliateProfileId, c.currency,
-      c.commission_amount_minor AS commissionAmountMinor, c.order_uuid AS orderUuid,
-      pa.id AS payoutAccountId, pa.paystack_recipient_code AS paystackRecipientCode, pa.is_verified AS isVerified
+  if (payoutProvider !== "paystack") throw new Error("Only Paystack automatic payouts are supported.")
+  const scheduledInput = clean(formData.get("scheduledFor"), 30)
+  const scheduledDate = parseDateInput(scheduledInput)
+  if (scheduledInput && !scheduledDate) throw new Error("The scheduled execution date is invalid.")
+  const isScheduled = Boolean(scheduledDate && scheduledDate.getTime() > now.getTime())
+  const candidates = await prisma.$queryRaw<PayoutCandidate[]>`
+    SELECT c.id AS commissionId, c.affiliate_profile_id AS affiliateProfileId,
+      c.commission_amount_minor AS commissionAmountMinor, pa.id AS payoutAccountId,
+      pa.paystack_recipient_code AS paystackRecipientCode, pa.is_verified AS isVerified
     FROM tochukwu_affiliate_commissions c
     JOIN tochukwu_affiliate_profiles p ON p.id = c.affiliate_profile_id
-    LEFT JOIN tochukwu_affiliate_payout_accounts pa
-      ON pa.affiliate_profile_id = c.affiliate_profile_id
-     AND pa.currency = c.currency
-     AND pa.country_code = p.country_code
-     AND pa.status = 'active'
-    WHERE c.status = 'approved'
-      AND c.currency = ${currency}
-      AND p.country_code = ${countryCode}
-      AND c.paid_at IS NULL
-      AND c.created_at >= ${periodStart}
-      AND c.created_at <= ${periodEnd}
+    LEFT JOIN tochukwu_affiliate_payout_accounts pa ON pa.affiliate_profile_id = c.affiliate_profile_id
+      AND pa.currency = c.currency AND pa.country_code = p.country_code AND pa.status = 'active'
+    WHERE c.status = 'approved' AND c.currency = ${currency} AND p.country_code = ${countryCode} AND c.paid_at IS NULL
+      AND c.created_at >= ${periodStart} AND c.created_at <= ${periodEnd}
+      AND NOT EXISTS (
+        SELECT 1 FROM tochukwu_affiliate_payout_items existing
+        WHERE existing.commission_id = c.id AND existing.status IN ('scheduled','reserved','initiating','pending','otp','paid','review')
+      )
     ORDER BY c.id ASC
   `
   const sums = new Map<number, number>()
-  for (const row of candidates) {
-    const profileId = Number(row.affiliateProfileId || 0)
-    sums.set(profileId, (sums.get(profileId) || 0) + Number(row.commissionAmountMinor || 0))
-  }
-  const minMinor = minPayoutMinor(currency)
-  const filtered = candidates.filter((row) => {
-    const profileId = Number(row.affiliateProfileId || 0)
-    if ((sums.get(profileId) || 0) < minMinor) return false
-    if (payoutProvider === "paystack") return Boolean(clean(row.paystackRecipientCode, 120)) && Number(row.isVerified || 0) === 1
-    return true
-  })
-  if (!filtered.length) {
-    return { ok: true, empty: true, periodStart, periodEnd, countryCode, currency, payoutProvider, candidateCount: candidates.length, paidCount: 0, failedCount: 0, totalAmountMinor: 0 }
-  }
-  const now = new Date()
+  for (const row of candidates) sums.set(Number(row.affiliateProfileId), (sums.get(Number(row.affiliateProfileId)) || 0) + Number(row.commissionAmountMinor || 0))
+  const filtered = candidates.filter((row) => (sums.get(Number(row.affiliateProfileId)) || 0) >= minPayoutMinor(currency)
+    && Boolean(clean(row.paystackRecipientCode, 120)) && Number(row.isVerified || 0) === 1)
+  if (!filtered.length) return { ok: true, empty: true, scheduled: false, periodStart, periodEnd, countryCode, currency, payoutProvider, candidateCount: candidates.length, transferCount: 0, paidCount: 0, pendingCount: 0, otpCount: 0, failedCount: 0, totalAmountMinor: 0, paidAmountMinor: 0 }
+
   const batchUuid = `apb_${randomUUID().replace(/-/g, "")}`
   await prisma.$executeRaw`
     INSERT INTO tochukwu_affiliate_payout_batches
       (batch_uuid, country_code, currency, payout_provider, period_start, period_end, scheduled_for, status, total_items, total_amount_minor, initiated_by, created_at, updated_at)
-    VALUES (${batchUuid}, ${countryCode}, ${currency}, ${payoutProvider}, ${periodStart}, ${periodEnd}, ${scheduledFor}, 'processing', 0, 0, ${initiatedBy}, ${now}, ${now})
+    VALUES (${batchUuid}, ${countryCode}, ${currency}, ${payoutProvider}, ${periodStart}, ${periodEnd}, ${scheduledDate}, ${isScheduled ? "scheduled" : "processing"},
+      ${filtered.length}, ${filtered.reduce((sum, row) => sum + Number(row.commissionAmountMinor || 0), 0)}, ${initiatedBy}, ${now}, ${now})
   `
   const batchRows = await prisma.$queryRaw<Array<{ id: bigint }>>`SELECT id FROM tochukwu_affiliate_payout_batches WHERE batch_uuid = ${batchUuid} LIMIT 1`
   const payoutBatchId = Number(batchRows[0]?.id || 0)
-  let totalAmountMinor = 0
-  let paidCount = 0
-  let failedCount = 0
+  const groups = new Map<number, { uuid: string; reference: string; rows: PayoutCandidate[] }>()
   for (const row of filtered) {
-    const amountMinor = Number(row.commissionAmountMinor || 0)
-    const itemUuid = `api_${randomUUID().replace(/-/g, "")}`
-    await prisma.$executeRaw`
-      INSERT INTO tochukwu_affiliate_payout_items
-        (item_uuid, payout_batch_id, commission_id, affiliate_profile_id, payout_account_id, amount_minor, currency, status, created_at, updated_at)
-      VALUES (${itemUuid}, ${payoutBatchId}, ${row.commissionId}, ${row.affiliateProfileId}, ${row.payoutAccountId}, ${amountMinor}, ${currency}, 'processing', ${new Date()}, ${new Date()})
-    `
-    const itemRows = await prisma.$queryRaw<Array<{ id: bigint }>>`SELECT id FROM tochukwu_affiliate_payout_items WHERE item_uuid = ${itemUuid} LIMIT 1`
-    const itemId = Number(itemRows[0]?.id || 0)
-    let status = "failed"
-    let transferId = ""
-    let transferCode = ""
-    let reference = ""
-    let errorMessage = ""
-    try {
-      if (payoutProvider !== "paystack") throw new Error("Unsupported payout provider for automatic transfer")
-      const transfer = await paystackCreateTransfer({
-        amountMinor,
-        recipient: clean(row.paystackRecipientCode, 120),
-        reason: `Affiliate payout for ${clean(row.orderUuid, 64)}`,
-        reference: `aff_${clean(row.orderUuid, 64)}_${Date.now()}`
-      })
-      status = "paid"
-      transferId = transfer.transferId
-      transferCode = transfer.transferCode
-      reference = transfer.reference
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message : "Payout failed"
+    const profileId = Number(row.affiliateProfileId)
+    if (!groups.has(profileId)) {
+      const uuid = `atg_${randomUUID().replace(/-/g, "")}`
+      groups.set(profileId, { uuid, reference: `aff_${batchUuid}_${profileId}`.slice(0, 190), rows: [] })
     }
-    await prisma.$executeRaw`
-      UPDATE tochukwu_affiliate_payout_items
-      SET status = ${status}, provider_transfer_id = ${transferId || null}, provider_transfer_code = ${transferCode || null},
-        provider_reference = ${reference || null}, error_message = ${errorMessage || null}, processed_at = ${new Date()}, updated_at = ${new Date()}
-      WHERE id = ${itemId}
-    `
-    if (status === "paid") {
-      await prisma.$executeRaw`
-        UPDATE tochukwu_affiliate_commissions
-        SET status = 'paid', paid_at = ${new Date()}, payout_batch_id = ${payoutBatchId}, payout_item_id = ${itemId}, updated_at = ${new Date()}
-        WHERE id = ${row.commissionId}
-      `
-      totalAmountMinor += amountMinor
-      paidCount += 1
-    } else {
-      await prisma.$executeRaw`
-        UPDATE tochukwu_affiliate_commissions
-        SET status = 'approved', payout_batch_id = ${payoutBatchId}, payout_item_id = ${itemId}, updated_at = ${new Date()}
-        WHERE id = ${row.commissionId}
-      `
-      failedCount += 1
+    groups.get(profileId)!.rows.push(row)
+  }
+  await prisma.$transaction(async (tx) => {
+    for (const group of groups.values()) {
+      for (const row of group.rows) {
+        const itemUuid = `api_${randomUUID().replace(/-/g, "")}`
+        await tx.$executeRaw`
+          INSERT INTO tochukwu_affiliate_payout_items
+            (item_uuid, transfer_group_uuid, payout_batch_id, commission_id, affiliate_profile_id, payout_account_id, amount_minor, currency, status, provider_reference, created_at, updated_at)
+          VALUES (${itemUuid}, ${group.uuid}, ${payoutBatchId}, ${row.commissionId}, ${row.affiliateProfileId}, ${row.payoutAccountId},
+            ${Number(row.commissionAmountMinor || 0)}, ${currency}, ${isScheduled ? "scheduled" : "reserved"}, ${group.reference}, ${now}, ${now})
+        `
+        const itemRows = await tx.$queryRaw<Array<{ id: bigint }>>`SELECT id FROM tochukwu_affiliate_payout_items WHERE item_uuid = ${itemUuid} LIMIT 1`
+        await tx.$executeRaw`UPDATE tochukwu_affiliate_commissions SET payout_batch_id = ${payoutBatchId}, payout_item_id = ${Number(itemRows[0]?.id || 0)}, updated_at = ${now} WHERE id = ${row.commissionId}`
+      }
+    }
+  })
+  await recordPayoutAudit({ eventType: isScheduled ? "payout_batch_scheduled" : "payout_batch_reserved", actorType: "admin", actorId: initiatedBy, targetType: "payout_batch", targetId: String(payoutBatchId), metadata: { batchUuid, commissionCount: filtered.length, transferCount: groups.size, totalAmountMinor: filtered.reduce((sum, row) => sum + Number(row.commissionAmountMinor || 0), 0), currency, scheduledFor: scheduledDate?.toISOString() || null } })
+  if (isScheduled) return { ok: true, empty: false, scheduled: true, payoutBatchId, periodStart, periodEnd, countryCode, currency, payoutProvider, candidateCount: candidates.length, transferCount: groups.size, paidCount: 0, pendingCount: filtered.length, otpCount: 0, failedCount: 0, totalAmountMinor: filtered.reduce((sum, row) => sum + Number(row.commissionAmountMinor || 0), 0), paidAmountMinor: 0 }
+  const result = await executePayoutBatch(payoutBatchId, initiatedBy)
+  return { ok: true, empty: false, scheduled: false, payoutBatchId, periodStart, periodEnd, countryCode, currency, payoutProvider, candidateCount: candidates.length, transferCount: groups.size, paidCount: result.successfulItems, pendingCount: result.pendingItems, otpCount: result.otpItems, failedCount: result.failedItems, totalAmountMinor: result.totalAmountMinor, paidAmountMinor: result.paidAmountMinor }
+}
+
+export async function finalizeAffiliatePayoutOtp(formData: FormData, actor: string) {
+  await ensureAffiliateAdminTables()
+  const reference = clean(formData.get("reference"), 190)
+  const otp = clean(formData.get("otp"), 12)
+  if (!reference || !/^\d{4,10}$/.test(otp)) throw new Error("Enter the valid Paystack OTP.")
+  const rows = await prisma.$queryRaw<Array<{ transferCode: string | null }>>`SELECT provider_transfer_code AS transferCode FROM tochukwu_affiliate_payout_items WHERE provider_reference = ${reference} AND status = 'otp' LIMIT 1`
+  const transferCode = clean(rows[0]?.transferCode, 120)
+  if (!transferCode) throw new Error("This payout is not waiting for an OTP.")
+  const transfer = await paystackFinalizeTransfer(transferCode, otp)
+  const result = await applyTransferState(reference, { ...transfer, reference: transfer.reference || reference }, "otp_finalization")
+  await recordPayoutAudit({ eventType: "payout_otp_submitted", actorType: "admin", actorId: actor, targetType: "payout_transfer", targetId: reference, metadata: { resultingStatus: result.status } })
+  return result
+}
+
+export async function resendAffiliatePayoutOtp(formData: FormData, actor: string) {
+  await ensureAffiliateAdminTables()
+  const reference = clean(formData.get("reference"), 190)
+  const rows = await prisma.$queryRaw<Array<{ transferCode: string | null }>>`SELECT provider_transfer_code AS transferCode FROM tochukwu_affiliate_payout_items WHERE provider_reference = ${reference} AND status = 'otp' LIMIT 1`
+  const transferCode = clean(rows[0]?.transferCode, 120)
+  if (!transferCode) throw new Error("This payout is not waiting for an OTP.")
+  await paystackResendTransferOtp(transferCode)
+  await recordPayoutAudit({ eventType: "payout_otp_resent", actorType: "admin", actorId: actor, targetType: "payout_transfer", targetId: reference })
+  return { ok: true }
+}
+
+export async function retryAffiliatePayoutTransfer(formData: FormData, actor: string) {
+  await ensureAffiliateAdminTables()
+  const previousReference = clean(formData.get("reference"), 190)
+  const rows = await prisma.$queryRaw<Array<{ batchId: bigint; transferGroupUuid: string; status: string }>>`
+    SELECT payout_batch_id AS batchId, transfer_group_uuid AS transferGroupUuid, status
+    FROM tochukwu_affiliate_payout_items WHERE provider_reference = ${previousReference} LIMIT 1
+  `
+  const row = rows[0]
+  if (!row || !["failed", "reversed"].includes(clean(row.status, 40))) throw new Error("Only a failed or reversed payout can be retried.")
+  let safeToUseNewReference = false
+  try {
+    const existing = await paystackVerifyTransfer(previousReference)
+    const existingStatus = localTransferStatus(existing.status)
+    const applied = await applyTransferState(previousReference, existing, "pre_retry_verification")
+    if (!["failed", "reversed"].includes(existingStatus)) return applied
+    safeToUseNewReference = true
+  } catch (error) {
+    if ((error as Error & { providerStatus?: number }).providerStatus !== 404) throw error
+  }
+  const reference = safeToUseNewReference ? `aff_retry_${randomUUID().replace(/-/g, "")}` : previousReference
+  await prisma.$executeRaw`
+    UPDATE tochukwu_affiliate_payout_items SET status = 'reserved', provider_reference = ${reference},
+      provider_transfer_id = NULL, provider_transfer_code = NULL, provider_status = NULL, provider_message = NULL,
+      error_message = NULL, initiated_at = NULL, settled_at = NULL, last_verified_at = NULL, updated_at = ${new Date()}
+    WHERE payout_batch_id = ${row.batchId} AND transfer_group_uuid = ${row.transferGroupUuid}
+  `
+  await recordPayoutAudit({ eventType: "payout_transfer_retry_requested", actorType: "admin", actorId: actor, targetType: "payout_transfer", targetId: reference, metadata: { previousReference } })
+  return executePayoutBatch(Number(row.batchId), actor)
+}
+
+export async function reconcileAffiliatePayouts(input?: { reference?: string; limit?: number; actor?: string }) {
+  await ensureAffiliateAdminTables()
+  const reference = clean(input?.reference, 190)
+  const limit = Math.max(1, Math.min(100, toInt(input?.limit, 50)))
+  const rows = await prisma.$queryRaw<Array<{ providerReference: string; updatedAt: Date; batchId: bigint }>>`
+    SELECT provider_reference AS providerReference, MIN(updated_at) AS updatedAt, MIN(payout_batch_id) AS batchId FROM tochukwu_affiliate_payout_items
+    WHERE provider_reference IS NOT NULL AND provider_reference <> '' AND (${reference} = '' OR provider_reference = ${reference})
+      AND (status IN ('initiating','pending','otp','review') OR (status = 'paid' AND last_verified_at IS NULL))
+    GROUP BY provider_reference ORDER BY MIN(updated_at) ASC LIMIT ${limit}
+  `
+  const result = { checked: 0, paid: 0, pending: 0, otp: 0, failed: 0, review: 0, notFound: 0 }
+  for (const row of rows) {
+    try {
+      const transfer = await paystackVerifyTransfer(row.providerReference)
+      const applied = await applyTransferState(row.providerReference, transfer, input?.actor || "reconciliation")
+      result.checked += 1
+      if (applied.status === "paid") result.paid += 1
+      else if (applied.status === "pending") result.pending += 1
+      else if (applied.status === "otp") result.otp += 1
+      else if (applied.status === "failed" || applied.status === "reversed") result.failed += 1
+      else if (applied.status === "review") result.review += 1
+    } catch (error) {
+      result.notFound += 1
+      const providerStatus = (error as Error & { providerStatus?: number }).providerStatus
+      if (providerStatus === 404 && Date.now() - new Date(row.updatedAt).getTime() >= 30 * 60 * 1000) {
+        await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_items SET status = 'failed', provider_status = 'not_found', error_message = 'Paystack could not find this transfer after 30 minutes.', last_verified_at = ${new Date()}, updated_at = ${new Date()} WHERE provider_reference = ${row.providerReference} AND status IN ('initiating','pending')`
+        await refreshPayoutBatch(Number(row.batchId))
+        await recordPayoutAudit({ eventType: "payout_transfer_failed", targetType: "payout_transfer", targetId: row.providerReference, metadata: { source: "reconciliation", reason: "provider_not_found_after_30_minutes" } })
+        result.failed += 1
+      }
     }
   }
-  await prisma.$executeRaw`
-    UPDATE tochukwu_affiliate_payout_batches
-    SET total_items = ${paidCount + failedCount}, total_amount_minor = ${totalAmountMinor},
-      successful_items = ${paidCount}, failed_items = ${failedCount},
-      status = ${failedCount > 0 ? "completed_with_errors" : "completed"},
-      completed_at = ${new Date()}, updated_at = ${new Date()}
-    WHERE id = ${payoutBatchId}
+  return result
+}
+
+export async function reconcileAffiliatePayoutWebhook(input: { event: string; reference: string; transferId?: string; transferCode?: string; status?: string; domain?: string; amountMinor?: number | null; currency?: string; message?: string }) {
+  const eventStatus = input.event.replace(/^transfer\./, "")
+  return applyTransferState(input.reference, {
+    transferId: clean(input.transferId, 190), transferCode: clean(input.transferCode, 120), reference: clean(input.reference, 190),
+    status: clean(input.status || eventStatus, 40).toLowerCase(), domain: clean(input.domain, 20).toLowerCase(), message: clean(input.message, 255),
+    amountMinor: Number.isFinite(Number(input.amountMinor)) ? Number(input.amountMinor) : null, currency: clean(input.currency, 10).toUpperCase()
+  }, "webhook")
+}
+
+export async function processDueScheduledAffiliatePayoutBatches(limit = 10) {
+  await ensureAffiliateAdminTables()
+  const rows = await prisma.$queryRaw<Array<{ id: bigint }>>`
+    SELECT id FROM tochukwu_affiliate_payout_batches WHERE status = 'scheduled' AND scheduled_for <= UTC_DATE() ORDER BY scheduled_for ASC, id ASC LIMIT ${Math.max(1, Math.min(25, toInt(limit, 10)))}
   `
-  return { ok: true, empty: false, payoutBatchId, periodStart, periodEnd, countryCode, currency, payoutProvider, candidateCount: candidates.length, paidCount, failedCount, totalAmountMinor }
+  let processed = 0
+  let failed = 0
+  for (const row of rows) {
+    try { await executePayoutBatch(Number(row.id)); processed += 1 } catch (error) {
+      failed += 1
+      await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_batches SET run_notes = ${clean(error instanceof Error ? error.message : error, 255)}, updated_at = ${new Date()} WHERE id = ${row.id}`
+    }
+  }
+  return { due: rows.length, processed, failed }
 }
