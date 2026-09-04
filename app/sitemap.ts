@@ -23,7 +23,9 @@ const staticRoutes = [
   "/shop",
   "/contact",
   "/privacy-policy",
-  "/terms-and-conditions"
+  "/terms-and-conditions",
+  "/affiliate",
+  "/affiliate/terms"
 ]
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

@@ -7,6 +7,7 @@ import { addColumnIfMissing } from "@/lib/schema-guards"
 
 let affiliateCommissionSeatSchemaPromise: Promise<void> | null = null
 let affiliatePayoutSchemaPromise: Promise<void> | null = null
+let affiliateOnboardingSchemaPromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -165,15 +166,48 @@ export async function ensureAffiliateAdminTables() {
       payout_provider VARCHAR(40) NOT NULL DEFAULT 'paystack',
       risk_level VARCHAR(20) NOT NULL DEFAULT 'normal',
       blocked_at DATETIME NULL,
+      onboarding_source VARCHAR(40) NOT NULL DEFAULT 'student_dashboard',
+      email_verified_at DATETIME NULL,
+      terms_accepted_at DATETIME NULL,
+      terms_version VARCHAR(40) NULL,
+      activated_at DATETIME NULL,
+      verification_token_hash VARCHAR(128) NULL,
+      verification_expires_at DATETIME NULL,
       created_at DATETIME NOT NULL,
       updated_at DATETIME NOT NULL,
       PRIMARY KEY (id),
       UNIQUE KEY uniq_tochukwu_affiliate_profile_uuid (profile_uuid),
       UNIQUE KEY uniq_tochukwu_affiliate_profile_account (account_id),
       UNIQUE KEY uniq_tochukwu_affiliate_code (affiliate_code),
+      UNIQUE KEY uniq_tochukwu_affiliate_verification_token (verification_token_hash),
       KEY idx_tochukwu_affiliate_profile_status (status, eligibility_status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
+  if (!affiliateOnboardingSchemaPromise) {
+    affiliateOnboardingSchemaPromise = (async () => {
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "onboarding_source", "VARCHAR(40) NOT NULL DEFAULT 'student_dashboard' AFTER blocked_at")
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "email_verified_at", "DATETIME NULL AFTER onboarding_source")
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "terms_accepted_at", "DATETIME NULL AFTER email_verified_at")
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "terms_version", "VARCHAR(40) NULL AFTER terms_accepted_at")
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "activated_at", "DATETIME NULL AFTER terms_version")
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "verification_token_hash", "VARCHAR(128) NULL AFTER activated_at")
+      await addColumnIfMissing("tochukwu_affiliate_profiles", "verification_expires_at", "DATETIME NULL AFTER verification_token_hash")
+      const indexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
+        SELECT DISTINCT INDEX_NAME AS indexName
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tochukwu_affiliate_profiles'
+          AND INDEX_NAME = 'uniq_tochukwu_affiliate_verification_token'
+      `
+      if (!indexes.length) {
+        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_profiles ADD UNIQUE INDEX uniq_tochukwu_affiliate_verification_token (verification_token_hash)")
+      }
+    })().catch((error) => {
+      affiliateOnboardingSchemaPromise = null
+      throw error
+    })
+  }
+  await affiliateOnboardingSchemaPromise
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS tochukwu_affiliate_course_rules (
       id BIGINT NOT NULL AUTO_INCREMENT,
@@ -478,6 +512,13 @@ export async function listAffiliateAdminData(sort = "latest_desc") {
       affiliateCode: string
       affiliateStatus: string
       eligibilityStatus: string
+      eligibilityReason: string | null
+      onboardingSource: string | null
+      emailVerifiedAt: Date | null
+      termsAcceptedAt: Date | null
+      termsVersion: string | null
+      activatedAt: Date | null
+      profileCreatedAt: Date | null
       payoutCurrency: string | null
       fullName: string | null
       email: string | null
@@ -493,7 +534,10 @@ export async function listAffiliateAdminData(sort = "latest_desc") {
       latestPaidAt: Date | null
     }>>`
       SELECT p.id AS profileId, p.account_id AS accountId, p.affiliate_code AS affiliateCode,
-        p.status AS affiliateStatus, p.eligibility_status AS eligibilityStatus,
+        p.status AS affiliateStatus, p.eligibility_status AS eligibilityStatus, p.eligibility_reason AS eligibilityReason,
+        p.onboarding_source AS onboardingSource, p.email_verified_at AS emailVerifiedAt,
+        p.terms_accepted_at AS termsAcceptedAt, p.terms_version AS termsVersion,
+        p.activated_at AS activatedAt, p.created_at AS profileCreatedAt,
         p.payout_currency AS payoutCurrency, a.full_name AS fullName, a.email,
         COALESCE(c.currency, p.payout_currency, 'NGN') AS currency,
         COUNT(c.id) AS totalCount,
@@ -506,8 +550,9 @@ export async function listAffiliateAdminData(sort = "latest_desc") {
       FROM tochukwu_affiliate_profiles p
       LEFT JOIN student_accounts a ON a.id = p.account_id
       LEFT JOIN tochukwu_affiliate_commissions c ON c.affiliate_profile_id = p.id
-      GROUP BY p.id, p.account_id, p.affiliate_code, p.status, p.eligibility_status, p.payout_currency, a.full_name, a.email, COALESCE(c.currency, p.payout_currency, 'NGN')
-      HAVING totalCount > 0
+      GROUP BY p.id, p.account_id, p.affiliate_code, p.status, p.eligibility_status, p.eligibility_reason,
+        p.onboarding_source, p.email_verified_at, p.terms_accepted_at, p.terms_version, p.activated_at,
+        p.created_at, p.payout_currency, a.full_name, a.email, COALESCE(c.currency, p.payout_currency, 'NGN')
     `,
     prisma.$queryRaw<Array<{
       id: bigint; batchUuid: string; periodStart: Date; periodEnd: Date; scheduledFor: Date | null; status: string; currency: string
@@ -796,6 +841,14 @@ async function executePayoutBatch(batchId: number, actor = "system") {
   if (!batch) throw new Error("Payout batch was not found.")
   if (batch.payoutProvider !== "paystack") throw new Error("Only Paystack automatic payouts are supported.")
   await prisma.$executeRaw`UPDATE tochukwu_affiliate_payout_batches SET status = 'processing', run_notes = NULL, completed_at = NULL, updated_at = ${new Date()} WHERE id = ${batchId}`
+  await prisma.$executeRaw`
+    UPDATE tochukwu_affiliate_payout_items i
+    JOIN tochukwu_affiliate_profiles p ON p.id = i.affiliate_profile_id
+    SET i.status = 'failed', i.error_message = 'Affiliate profile is not active and eligible.', i.updated_at = ${new Date()}
+    WHERE i.payout_batch_id = ${batchId}
+      AND i.status IN ('scheduled','reserved')
+      AND (p.status <> 'active' OR p.eligibility_status <> 'eligible')
+  `
   const groups = await prisma.$queryRaw<Array<{
     transferGroupUuid: string; providerReference: string; affiliateProfileId: bigint; recipientCode: string; amountMinor: bigint
   }>>`
@@ -804,7 +857,9 @@ async function executePayoutBatch(batchId: number, actor = "system") {
       SUM(i.amount_minor) AS amountMinor
     FROM tochukwu_affiliate_payout_items i
     JOIN tochukwu_affiliate_payout_accounts pa ON pa.id = i.payout_account_id
+    JOIN tochukwu_affiliate_profiles p ON p.id = i.affiliate_profile_id
     WHERE i.payout_batch_id = ${batchId} AND i.status IN ('scheduled','reserved')
+      AND p.status = 'active' AND p.eligibility_status = 'eligible'
     GROUP BY i.transfer_group_uuid
   `
   const required = groups.reduce((sum, group) => sum + Number(group.amountMinor || 0), 0)
@@ -859,6 +914,7 @@ export async function runAffiliatePayoutBatch(formData: FormData, initiatedBy: s
     LEFT JOIN tochukwu_affiliate_payout_accounts pa ON pa.affiliate_profile_id = c.affiliate_profile_id
       AND pa.currency = c.currency AND pa.country_code = p.country_code AND pa.status = 'active'
     WHERE c.status = 'approved' AND c.currency = ${currency} AND p.country_code = ${countryCode} AND c.paid_at IS NULL
+      AND p.status = 'active' AND p.eligibility_status = 'eligible'
       AND c.created_at >= ${periodStart} AND c.created_at <= ${periodEnd}
       AND NOT EXISTS (
         SELECT 1 FROM tochukwu_affiliate_payout_items existing

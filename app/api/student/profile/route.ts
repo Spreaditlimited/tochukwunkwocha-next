@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { getStudentProfile, getStudentSession, isManagedGroupLearnerAccount, updateStudentProfile } from "@/lib/student-auth"
 import { studentApiErrorResponse } from "@/lib/student-api-error"
+import { isPublicAffiliateOnlyAccount } from "@/lib/affiliate-onboarding"
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -22,7 +23,10 @@ export async function POST(request: Request) {
   if (!body) return NextResponse.json({ ok: false, error: "The request could not be processed. Please try again." }, { status: 400 })
 
   try {
-    const isManagedGroupLearner = await isManagedGroupLearnerAccount(session.account.id)
+    const [isManagedGroupLearner, isAffiliateOnly] = await Promise.all([
+      isManagedGroupLearnerAccount(session.account.id),
+      isPublicAffiliateOnlyAccount(session.account.id)
+    ])
     const currentProfile = isManagedGroupLearner ? await getStudentProfile(session.account.id) : null
     const profile = await updateStudentProfile(session.account.id, {
       fullName: clean(body.fullName, 180),
@@ -33,7 +37,7 @@ export async function POST(request: Request) {
       ageBand: clean(body.ageBand, 40),
       gender: clean(body.gender, 40),
       learnerCategory: clean(body.learnerCategory, 80)
-    })
+    }, { requireLearnerDemographics: !isAffiliateOnly })
     const refreshed = await getStudentProfile(session.account.id)
     return NextResponse.json({
       ok: true,

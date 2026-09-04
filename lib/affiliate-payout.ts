@@ -158,14 +158,15 @@ export async function ensureAffiliatePayoutTables() {
 }
 
 async function getAffiliateProfile(accountId: bigint) {
-  const rows = await prisma.$queryRaw<Array<{ id: bigint; eligibilityStatus: string | null; countryCode: string | null; payoutCurrency: string | null; payoutProvider: string | null }>>(Prisma.sql`
-    SELECT id, eligibility_status AS eligibilityStatus, country_code AS countryCode, payout_currency AS payoutCurrency, payout_provider AS payoutProvider
+  const rows = await prisma.$queryRaw<Array<{ id: bigint; status: string | null; eligibilityStatus: string | null; countryCode: string | null; payoutCurrency: string | null; payoutProvider: string | null }>>(Prisma.sql`
+    SELECT id, status, eligibility_status AS eligibilityStatus, country_code AS countryCode, payout_currency AS payoutCurrency, payout_provider AS payoutProvider
     FROM tochukwu_affiliate_profiles
     WHERE account_id = ${accountId}
     LIMIT 1
   `)
   const profile = rows[0]
   if (!profile) throw new Error("Affiliate profile not found.")
+  if (clean(profile.status, 30) !== "active") throw new Error("Affiliate profile is not active.")
   if (clean(profile.eligibilityStatus, 40) !== "eligible") throw new Error("Affiliate profile is not eligible.")
   return profile
 }

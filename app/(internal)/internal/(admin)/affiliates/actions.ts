@@ -13,6 +13,7 @@ import {
   saveAffiliateCourseRule
 } from "@/lib/admin-affiliates"
 import { setInternalToast } from "@/lib/internal-toast"
+import { updateAffiliateProfileAccess } from "@/lib/affiliate-onboarding"
 
 const PATH = "/internal/affiliates"
 
@@ -33,6 +34,19 @@ export async function saveAffiliateCourseRuleAction(formData: FormData) {
   const session = await requireAdmin("/internal/affiliates")
   await saveAffiliateCourseRule(formData, session.email || "admin")
   await setInternalToast({ title: "Affiliate rule saved", message: "Course commission settings have been updated." })
+  revalidatePath(PATH)
+  redirect(PATH)
+}
+
+export async function updateAffiliateProfileAccessAction(formData: FormData) {
+  const session = await requireAdmin(PATH)
+  try {
+    await updateAffiliateProfileAccess(formData, session.email || "admin")
+  } catch (error) {
+    await setInternalToast({ type: "error", title: "Affiliate access was not updated", message: safeMessage(error) })
+    redirect(PATH)
+  }
+  await setInternalToast({ title: "Affiliate access updated", message: "Status and eligibility changes are now in force." })
   revalidatePath(PATH)
   redirect(PATH)
 }

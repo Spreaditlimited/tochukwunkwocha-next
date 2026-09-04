@@ -18,6 +18,7 @@ const DEVICE_ALERT_IP_SPREAD_THRESHOLD = 3
 const MAX_AUTH_ATTEMPTS = 5
 const MAX_LOGIN_ATTEMPTS_PER_IP = 25
 const MAX_RESET_REQUESTS_PER_IP = 10
+const MAX_AFFILIATE_REGISTRATIONS_PER_IP = 10
 const AUTH_LOCK_MINUTES = 15
 const SESSION_LAST_SEEN_WRITE_INTERVAL_MS = 10 * 60 * 1000
 
@@ -229,6 +230,16 @@ export async function allowStudentPasswordResetRequest(emailInput: string) {
   const attempt = await getStudentAuthAttempt(identity)
   const recentIpAttempts = await recentStudentAuthAttemptsForIp(identity)
   if ((attempt?.lockedUntil && attempt.lockedUntil.getTime() > Date.now()) || recentIpAttempts >= MAX_RESET_REQUESTS_PER_IP) return false
+  await recordStudentAuthFailure(identity, attempt)
+  return true
+}
+
+export async function allowPublicAffiliateRegistrationRequest(emailInput: string) {
+  await ensureStudentSecurityTables()
+  const identity = await studentAuthIdentity("affiliate_registration", emailInput)
+  const attempt = await getStudentAuthAttempt(identity)
+  const recentIpAttempts = await recentStudentAuthAttemptsForIp(identity)
+  if ((attempt?.lockedUntil && attempt.lockedUntil.getTime() > Date.now()) || recentIpAttempts >= MAX_AFFILIATE_REGISTRATIONS_PER_IP) return false
   await recordStudentAuthFailure(identity, attempt)
   return true
 }
@@ -717,7 +728,8 @@ export async function updateStudentProfile(accountId: bigint, input: {
   ageBand?: string
   gender?: string
   learnerCategory?: string
-}) {
+}, options?: { requireLearnerDemographics?: boolean }) {
+  const requireLearnerDemographics = options?.requireLearnerDemographics !== false
   await ensureStudentDemographicColumns()
   const fullName = clean(input.fullName, 180)
   const phoneE164 = clean(input.phoneE164, 20)
@@ -725,8 +737,8 @@ export async function updateStudentProfile(accountId: bigint, input: {
   const gender = clean(input.gender, 40).toLowerCase()
   const whatsappOptedIn = input.whatsappOptedIn === true
   if (!fullName) throw new Error("Full name is required")
-  if (!isRecognizedPortfolioAgeBand(ageBand)) throw new Error("Select a valid age band")
-  if (gender !== "male" && gender !== "female") throw new Error("Gender must be Male or Female")
+  if (requireLearnerDemographics && !isRecognizedPortfolioAgeBand(ageBand)) throw new Error("Select a valid age band")
+  if (requireLearnerDemographics && gender !== "male" && gender !== "female") throw new Error("Gender must be Male or Female")
   const existing = await prisma.studentAccount.findUnique({ where: { id: accountId } })
   if (!existing) throw new Error("Account not found")
   const nameChanged = clean(existing.fullName, 180) !== fullName
@@ -754,16 +766,18 @@ export async function updateStudentProfile(accountId: bigint, input: {
       await tx.$executeRaw(Prisma.sql`UPDATE tochukwu_learning_assignments SET student_name = ${fullName}, updated_at = ${now} WHERE account_id = ${accountId}`)
       await tx.$executeRaw(Prisma.sql`UPDATE student_public_profiles SET display_name = ${fullName}, updated_at = ${now} WHERE account_id = ${accountId}`)
     }
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE student_accounts
-      SET demographic_country = ${clean(input.demographicCountry, 120) || null},
-          demographic_region = ${clean(input.demographicRegion, 120) || null},
-          age_band = ${ageBand},
-          gender = ${gender},
-          learner_category = ${clean(input.learnerCategory, 80) || null},
-          demographic_updated_at = ${now}
-      WHERE id = ${accountId}
-    `)
+    if (requireLearnerDemographics) {
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE student_accounts
+        SET demographic_country = ${clean(input.demographicCountry, 120) || null},
+            demographic_region = ${clean(input.demographicRegion, 120) || null},
+            age_band = ${ageBand},
+            gender = ${gender},
+            learner_category = ${clean(input.learnerCategory, 80) || null},
+            demographic_updated_at = ${now}
+        WHERE id = ${accountId}
+      `)
+    }
     return updated
   })
   return account

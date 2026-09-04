@@ -3,16 +3,18 @@ import { StudentDashboardShell } from "@/components/student-dashboard/StudentDas
 import { StudentPublicPortfolioPanel } from "@/components/student-dashboard/StudentPublicPortfolioPanel"
 import { getStudentProfile, isManagedGroupLearnerAccount, listStudentSecurity, requireStudent } from "@/lib/student-auth"
 import { getStudentPublicPortfolioEditor } from "@/lib/student-public-profile"
+import { isPublicAffiliateOnlyAccount } from "@/lib/affiliate-onboarding"
 
 export const dynamic = "force-dynamic"
 
 export default async function StudentProfilePage() {
   const session = await requireStudent()
   const profile = await getStudentProfile(session.account.id)
-  const [security, isManagedGroupLearner, publicPortfolio] = await Promise.all([
+  const [security, isManagedGroupLearner, publicPortfolio, isAffiliateOnly] = await Promise.all([
     listStudentSecurity(session.account.id, session.token),
     isManagedGroupLearnerAccount(session.account.id),
-    getStudentPublicPortfolioEditor(session.account.id)
+    getStudentPublicPortfolioEditor(session.account.id),
+    isPublicAffiliateOnlyAccount(session.account.id)
   ])
 
   return (
@@ -22,10 +24,12 @@ export default async function StudentProfilePage() {
       title="Profile & Security"
       eyebrow="Account Settings"
       hideAccountEmail={isManagedGroupLearner}
+      workspaceMode={isAffiliateOnly ? "affiliate" : "student"}
     >
       <div className="grid gap-8">
       <ProfileSecurityPanel
         isManagedGroupLearner={isManagedGroupLearner}
+        affiliateOnly={isAffiliateOnly}
         profile={{
           fullName: profile.fullName,
           email: profile.email,
@@ -61,7 +65,7 @@ export default async function StudentProfilePage() {
           }))
         }}
       />
-      <StudentPublicPortfolioPanel initialPortfolio={publicPortfolio} />
+      {!isAffiliateOnly ? <StudentPublicPortfolioPanel initialPortfolio={publicPortfolio} /> : null}
       </div>
     </StudentDashboardShell>
   )

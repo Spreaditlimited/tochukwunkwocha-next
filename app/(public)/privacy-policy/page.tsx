@@ -22,7 +22,7 @@ export const metadata: Metadata = buildMetadata({
 const sections = [
   {
     title: "1. Information We Collect",
-    body: "We may collect identity and contact information, transaction information, manual transfer proof, technical information, and marketing or communication preferences."
+    body: "We may collect identity and contact information, transaction information, manual transfer proof, affiliate registration and referral information, payout verification details, technical information, and marketing or communication preferences."
   },
   {
     title: "2. How We Collect Information",
@@ -30,11 +30,11 @@ const sections = [
   },
   {
     title: "3. How We Use Information",
-    body: "We use information to manage course enrolment, process payments, verify manual transfers, send onboarding and transactional emails, maintain security, improve services, and comply with legal obligations."
+    body: "We use information to manage course enrolment, administer affiliate referrals and commissions, verify payout destinations, process payments, verify manual transfers, send onboarding and transactional emails, maintain security, prevent fraud, improve services, and comply with legal obligations."
   },
   {
     title: "4. Payment Processing",
-    body: "We use third-party payment processors including Paystack and PayPal. Card or payment account details are handled by those processors under their own privacy policies and compliance controls. We do not store full payment card details on our servers."
+    body: "We use third-party payment processors including Paystack and PayPal. Card, payment, and affiliate payout account details are handled by those processors under their own privacy policies and compliance controls. We do not store full payment card or bank account numbers on our servers."
   },
   {
     title: "5. Manual Bank Transfer Verification",

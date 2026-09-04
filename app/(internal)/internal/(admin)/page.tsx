@@ -65,7 +65,21 @@ async function getOperationsOverview() {
        +
        (SELECT COALESCE(SUM(CASE WHEN seat_count IS NULL OR seat_count < 1 THEN 1 ELSE seat_count END), 0)
         FROM course_manual_payments WHERE status = 'approved')) AS approvedEnrollments,
-      (SELECT COUNT(*) FROM student_accounts) AS students,
+      (SELECT COUNT(*)
+       FROM student_accounts sa
+       WHERE EXISTS (
+         SELECT 1 FROM course_orders co
+         WHERE LOWER(co.email) = LOWER(sa.email) AND co.status = 'paid'
+       ) OR EXISTS (
+         SELECT 1 FROM course_manual_payments cmp
+         WHERE LOWER(cmp.email) = LOWER(sa.email) AND cmp.status IN ('approved', 'paid')
+       ) OR EXISTS (
+         SELECT 1 FROM school_students ss
+         WHERE ss.account_id = sa.id AND COALESCE(ss.status, 'active') = 'active'
+       ) OR EXISTS (
+         SELECT 1 FROM family_children fc
+         WHERE fc.account_id = sa.id AND COALESCE(fc.status, 'active') = 'active'
+       )) AS students,
       (SELECT COUNT(*) FROM student_certificates WHERE status = 'issued') AS individualCertificatesIssued,
       (SELECT COUNT(*) FROM school_certificates WHERE status = 'issued') AS schoolCertificatesIssued,
       (SELECT COUNT(*)

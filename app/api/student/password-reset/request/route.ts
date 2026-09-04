@@ -18,21 +18,23 @@ export async function POST(request: Request) {
 
   const email = clean(body.email, 190).toLowerCase()
   if (!email) return NextResponse.json({ ok: false, error: "Email is required" }, { status: 400 })
+  const context = clean(body.context, 20).toLowerCase() === "affiliate" ? "affiliate" : "student"
 
   const allowed = await allowStudentPasswordResetRequest(email)
   const reset = allowed ? await createStudentPasswordResetToken(email) : null
   if (reset?.token) {
-    const links = publicActionLinkVariants(`/dashboard/reset-password?token=${encodeURIComponent(reset.token)}`)
+    const resetPath = context === "affiliate" ? "/affiliate/reset-password" : "/dashboard/reset-password"
+    const links = publicActionLinkVariants(`${resetPath}?token=${encodeURIComponent(reset.token)}`)
     const greeting = clean(reset.fullName, 120) || "there"
     const safeGreeting = escapeHtml(greeting)
     const safePrimaryLink = escapeHtml(links.primary)
     const safeAlternativeLink = escapeHtml(links.alternative)
     await sendEmail({
       to: email,
-      subject: "Reset Your Dashboard Password",
+      subject: context === "affiliate" ? "Reset Your Affiliate Password" : "Reset Your Dashboard Password",
       html: [
         `<p>Hello ${safeGreeting},</p>`,
-        "<p>Use either link below to reset your dashboard password:</p>",
+        `<p>Use either link below to reset your ${context === "affiliate" ? "affiliate account" : "dashboard"} password:</p>`,
         `<p><strong>Primary link:</strong><br/><a href="${safePrimaryLink}">${safePrimaryLink}</a></p>`,
         `<p><strong>Alternative link:</strong> <span style="color:#64748b;">Use this if the primary website does not open.</span><br/><a href="${safeAlternativeLink}">${safeAlternativeLink}</a></p>`,
         "<p>This link expires in 1 hour.</p>"
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
       text: [
         `Hello ${greeting},`,
         "",
-        "Use either link below to reset your dashboard password:",
+        `Use either link below to reset your ${context === "affiliate" ? "affiliate account" : "dashboard"} password:`,
         `Primary link: ${links.primary}`,
         `Alternative link (if the primary website does not open): ${links.alternative}`,
         "",

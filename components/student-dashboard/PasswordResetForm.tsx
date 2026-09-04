@@ -10,6 +10,8 @@ import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 
 type Props = {
   token?: string
+  accountContext?: "student" | "affiliate"
+  successPath?: "/dashboard" | "/dashboard/affiliate"
 }
 
 async function postJson<T>(url: string, body: Record<string, unknown>) {
@@ -23,8 +25,9 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   return payload as T
 }
 
-export function PasswordResetForm({ token = "" }: Props) {
+export function PasswordResetForm({ token = "", accountContext = "student", successPath = "/dashboard" }: Props) {
   const router = useRouter()
+  const isAffiliate = accountContext === "affiliate"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -42,11 +45,11 @@ export function PasswordResetForm({ token = "" }: Props) {
         if (password !== confirmPassword) throw new Error("Passwords do not match")
         await postJson("/api/student/password-reset/complete", { token, password })
         showStudentToast({ type: "success", title: "Password reset complete", message: "Your new password has been saved." })
-        router.replace("/dashboard")
+        router.replace(successPath)
         router.refresh()
         return
       }
-      const result = await postJson<{ message: string }>("/api/student/password-reset/request", { email })
+      const result = await postJson<{ message: string }>("/api/student/password-reset/request", { email, context: accountContext })
       setMessage(result.message)
       showStudentToast({ type: "success", title: "Reset link requested", message: result.message })
     } catch (requestError) {
@@ -69,7 +72,7 @@ export function PasswordResetForm({ token = "" }: Props) {
         <p className="mt-2 text-sm text-muted-foreground">
           {token 
             ? "Enter your new password below to regain access." 
-            : "Enter the email associated with your account to receive a reset link."}
+            : `Enter the email associated with your ${isAffiliate ? "affiliate" : "student"} account to receive a reset link.`}
         </p>
       </div>
 

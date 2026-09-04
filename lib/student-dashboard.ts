@@ -295,6 +295,8 @@ export interface StudentAffiliateSummary {
     profileUuid: string
     affiliateCode: string
     status: string
+    onboardingSource: string
+    emailVerifiedAt: Date | null
     eligibilityStatus: string
     eligibilityReason: string | null
     countryCode: string
@@ -1178,53 +1180,22 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
   const eligibilityStatus = schoolRows.length ? "ineligible_school_student" : "eligible"
   const eligibilityReason = schoolRows.length ? "School-linked students cannot be affiliates." : null
 
-  let profiles = await prisma.$queryRaw<
-    {
-      id: bigint
-      profileUuid: string | null
-      affiliateCode: string | null
-      status: string | null
-      eligibilityStatus: string | null
-      eligibilityReason: string | null
-      countryCode: string | null
-      payoutCurrency: string | null
-      payoutProvider: string | null
-    }[]
-  >(Prisma.sql`
-    SELECT
-      id,
-      profile_uuid AS profileUuid,
-      affiliate_code AS affiliateCode,
-      status,
-      eligibility_status AS eligibilityStatus,
-      eligibility_reason AS eligibilityReason,
-      country_code AS countryCode,
-      payout_currency AS payoutCurrency,
-      payout_provider AS payoutProvider
-    FROM tochukwu_affiliate_profiles
-    WHERE account_id = ${accountId}
-    LIMIT 1
-  `)
-
-  if (!profiles[0]) {
-    const now = formatSqlDate()
-    let code = ""
-    for (let i = 0; i < 10; i += 1) {
-      code = randomAffiliateCode(8)
-      try {
-        await prisma.$executeRaw(Prisma.sql`
-          INSERT INTO tochukwu_affiliate_profiles
-            (profile_uuid, account_id, affiliate_code, status, eligibility_status, eligibility_reason, country_code, payout_currency, payout_provider, created_at, updated_at)
-          VALUES
-            (${`aff_${randomUUID().replace(/-/g, "")}`}, ${accountId}, ${code}, 'active', ${eligibilityStatus}, ${eligibilityReason}, 'NG', 'NGN', 'paystack', ${now}, ${now})
-        `)
-        break
-      } catch {
-        code = ""
-      }
-    }
-    if (code) {
-      profiles = await prisma.$queryRaw(Prisma.sql`
+  type AffiliateProfileRow = {
+    id: bigint
+    profileUuid: string | null
+    affiliateCode: string | null
+    status: string | null
+    eligibilityStatus: string | null
+    eligibilityReason: string | null
+    countryCode: string | null
+    payoutCurrency: string | null
+    payoutProvider: string | null
+    onboardingSource: string | null
+    emailVerifiedAt: Date | null
+  }
+  const loadAffiliateProfiles = async () => {
+    try {
+      return await prisma.$queryRaw<AffiliateProfileRow[]>(Prisma.sql`
         SELECT
           id,
           profile_uuid AS profileUuid,
@@ -1234,11 +1205,59 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
           eligibility_reason AS eligibilityReason,
           country_code AS countryCode,
           payout_currency AS payoutCurrency,
-          payout_provider AS payoutProvider
+          payout_provider AS payoutProvider,
+          onboarding_source AS onboardingSource,
+          email_verified_at AS emailVerifiedAt
         FROM tochukwu_affiliate_profiles
         WHERE account_id = ${accountId}
         LIMIT 1
       `)
+    } catch (error) {
+      const details = error instanceof Prisma.PrismaClientKnownRequestError ? JSON.stringify(error.meta || {}) : ""
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010" && /onboarding_source|email_verified_at/i.test(details)) {
+        return prisma.$queryRaw<AffiliateProfileRow[]>(Prisma.sql`
+          SELECT
+            id,
+            profile_uuid AS profileUuid,
+            affiliate_code AS affiliateCode,
+            status,
+            eligibility_status AS eligibilityStatus,
+            eligibility_reason AS eligibilityReason,
+            country_code AS countryCode,
+            payout_currency AS payoutCurrency,
+            payout_provider AS payoutProvider,
+            'student_dashboard' AS onboardingSource,
+            NULL AS emailVerifiedAt
+          FROM tochukwu_affiliate_profiles
+          WHERE account_id = ${accountId}
+          LIMIT 1
+        `)
+      }
+      throw error
+    }
+  }
+
+  let profiles = await loadAffiliateProfiles()
+
+  if (!profiles[0]) {
+    const now = formatSqlDate()
+    let code = ""
+    for (let i = 0; i < 10; i += 1) {
+      code = randomAffiliateCode(8)
+      try {
+        await prisma.$executeRaw(Prisma.sql`
+          INSERT INTO tochukwu_affiliate_profiles
+            (profile_uuid, account_id, affiliate_code, status, eligibility_status, eligibility_reason, country_code, payout_currency, payout_provider, onboarding_source, activated_at, created_at, updated_at)
+          VALUES
+            (${`aff_${randomUUID().replace(/-/g, "")}`}, ${accountId}, ${code}, 'active', ${eligibilityStatus}, ${eligibilityReason}, 'NG', 'NGN', 'paystack', 'student_dashboard', ${now}, ${now}, ${now})
+        `)
+        break
+      } catch {
+        code = ""
+      }
+    }
+    if (code) {
+      profiles = await loadAffiliateProfiles()
     }
   }
 
@@ -1263,7 +1282,10 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
     }
   }
 
-  if (profile.eligibilityStatus !== eligibilityStatus || String(profile.eligibilityReason || "") !== String(eligibilityReason || "")) {
+  const shouldReconcileEligibility = schoolRows.length
+    ? profile.eligibilityStatus !== "ineligible_school_student"
+    : profile.eligibilityStatus === "ineligible_school_student"
+  if (shouldReconcileEligibility) {
     await prisma.$executeRaw(Prisma.sql`
       UPDATE tochukwu_affiliate_profiles
       SET eligibility_status = ${eligibilityStatus}, eligibility_reason = ${eligibilityReason}, updated_at = ${formatSqlDate()}
@@ -1377,6 +1399,7 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
 
   const earnings = earningsRows[0]
   const affiliateCode = profile.affiliateCode || ""
+  const canRefer = profile.status === "active" && profile.eligibilityStatus === "eligible"
   const base = affiliateBaseUrl()
   const encodedCode = encodeURIComponent(affiliateCode)
   const directCourseLinks = eligibleCourses
@@ -1384,19 +1407,21 @@ export async function getStudentAffiliateSummary(accountId: bigint): Promise<Stu
       courseSlug: item.courseSlug,
       link: base ? `${base}/courses/${item.courseSlug}/?ref=${encodedCode}` : `/courses/${item.courseSlug}/?ref=${encodedCode}`
     }))
-    .filter((item) => item.courseSlug && affiliateCode)
+    .filter((item) => item.courseSlug && affiliateCode && canRefer)
 
   return {
     profile: {
       profileUuid: profile.profileUuid || "",
       affiliateCode,
       status: profile.status || "",
+      onboardingSource: profile.onboardingSource || "student_dashboard",
+      emailVerifiedAt: profile.emailVerifiedAt || null,
       eligibilityStatus: profile.eligibilityStatus || "",
       eligibilityReason: profile.eligibilityReason || null,
       countryCode: profile.countryCode || "NG",
       payoutCurrency,
       payoutProvider: profile.payoutProvider || "paystack",
-      affiliateLink: affiliateCode ? (base ? `${base}/courses/?ref=${encodedCode}` : `/courses?ref=${encodedCode}`) : "",
+      affiliateLink: affiliateCode && canRefer ? (base ? `${base}/courses/?ref=${encodedCode}` : `/courses?ref=${encodedCode}`) : "",
       payoutAccount: payoutAccounts[0] ? {
         ...payoutAccounts[0],
         isVerified: Boolean(payoutAccounts[0].isVerified)

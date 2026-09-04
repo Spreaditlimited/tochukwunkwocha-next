@@ -80,11 +80,13 @@ function formatDate(value: Date | string | null) {
 export function ProfileSecurityPanel({
   profile: initialProfile,
   security,
-  isManagedGroupLearner = false
+  isManagedGroupLearner = false,
+  affiliateOnly = false
 }: {
   profile: Profile
   security: SecurityPayload
   isManagedGroupLearner?: boolean
+  affiliateOnly?: boolean
 }) {
   const router = useRouter()
   const profilePictureInputRef = useRef<HTMLInputElement>(null)
@@ -326,7 +328,7 @@ export function ProfileSecurityPanel({
                     disabled={profile.certificateNameLocked}
                     required
                   />
-                  <span className="mt-1 block text-xs text-muted-foreground">{profile.certificateNameLocked ? "Locked because a certificate has already been issued. Contact Learning Support for a correction." : "You may correct this name until a certificate is issued. Changing it resets certificate-name confirmation."}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">{affiliateOnly ? "This name identifies your affiliate account and verified payout profile." : profile.certificateNameLocked ? "Locked because a certificate has already been issued. Contact Learning Support for a correction." : "You may correct this name until a certificate is issued. Changing it resets certificate-name confirmation."}</span>
                 </label>
                 {!isManagedGroupLearner ? <label className="block">
                   <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email Address</span>
@@ -347,7 +349,7 @@ export function ProfileSecurityPanel({
                 </label> : null}
               </div>
 
-              <div className="rounded-xl border border-border bg-muted/20 p-5">
+              {!affiliateOnly ? <div className="rounded-xl border border-border bg-muted/20 p-5">
                 <div className="mb-5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Learner Profile</p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -400,13 +402,13 @@ export function ProfileSecurityPanel({
                     />
                   </label>
                 </div>
-              </div>
+              </div> : null}
 
               {/* WhatsApp Toggle */}
               {!isManagedGroupLearner ? <label className="group relative flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-background p-5 transition-colors hover:border-primary/20 hover:shadow-sm">
                 <div>
                   <span className="block text-sm font-bold text-foreground">WhatsApp Notifications</span>
-                  <span className="mt-1 block text-xs font-medium text-muted-foreground">Receive class reminders and updates</span>
+                  <span className="mt-1 block text-xs font-medium text-muted-foreground">{affiliateOnly ? "Receive important partner account and payout updates" : "Receive class reminders and updates"}</span>
                 </div>
                 <div className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors">
                   <input
@@ -421,7 +423,7 @@ export function ProfileSecurityPanel({
               </label> : null}
 
               {/* Certificate Identity Info */}
-              <div className="flex flex-col gap-4 rounded-xl border border-border bg-muted/30 p-5 sm:flex-row sm:items-center sm:justify-between">
+              {!affiliateOnly ? <div className="flex flex-col gap-4 rounded-xl border border-border bg-muted/30 p-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Certificate Identity</p>
                   <p className="mt-1 text-sm font-medium text-foreground">
@@ -438,7 +440,7 @@ export function ProfileSecurityPanel({
                     </Link>
                   ) : null}
                 </div>
-              </div>
+              </div> : null}
 
               {/* Form Feedback */}
               {profileError ? <p className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">{profileError}</p> : null}

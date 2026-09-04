@@ -39,6 +39,7 @@ type StudentDashboardShellProps = {
   title: string
   eyebrow?: string
   hideAccountEmail?: boolean
+  workspaceMode?: "student" | "affiliate"
   children: ReactNode
 }
 
@@ -80,10 +81,14 @@ export function StudentDashboardShell({
   title,
   eyebrow = "Student Workspace",
   hideAccountEmail = false,
+  workspaceMode = "student",
   children
 }: StudentDashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileAccountMenuOpen, setMobileAccountMenuOpen] = useState(false)
+  const visibleNavItems = workspaceMode === "affiliate"
+    ? navItems.filter((item) => item.key === "affiliate" || item.key === "profile")
+    : navItems
   const mobileAccountMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -157,7 +162,7 @@ export function StudentDashboardShell({
           </div>
           
           <nav className="flex-1 space-y-1 px-3 py-5">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon
               const isActive = active === item.key
               return (
@@ -271,7 +276,7 @@ export function StudentDashboardShell({
 
             {/* Mobile Navigation Row */}
             <nav className="flex gap-2 overflow-x-auto border-t border-border/50 bg-muted/20 px-4 py-3 scrollbar-hide sm:px-6 lg:hidden">
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const Icon = item.icon
                 const isActive = active === item.key
                 return (

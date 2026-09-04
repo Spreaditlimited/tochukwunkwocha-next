@@ -19,7 +19,8 @@ import {
   resendAffiliatePayoutOtpAction,
   retryAffiliatePayoutTransferAction,
   runAffiliatePayoutBatchAction,
-  saveAffiliateCourseRuleAction
+  saveAffiliateCourseRuleAction,
+  updateAffiliateProfileAccessAction
 } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -40,6 +41,11 @@ function money(minor: number, currency: string) {
   } catch {
     return `${ccy} ${(Number(minor || 0) / 100).toLocaleString()}`
   }
+}
+
+function commissionValue(rule: { commissionType: string; commissionValue: number; commissionCurrency: string }) {
+  if (rule.commissionType === "fixed") return money(rule.commissionValue, rule.commissionCurrency)
+  return `${(rule.commissionValue / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`
 }
 
 function metadataText(value: Record<string, unknown>) {
@@ -204,8 +210,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
                       </td>
                       <td className="px-6 py-3.5 font-medium text-foreground">{rule.commissionType}</td>
                       <td className="px-6 py-3.5">
-                        <span className="font-heading font-black text-foreground">{rule.commissionValue}</span>
-                        <span className="ml-1 text-[10px] font-bold text-muted-foreground">{rule.commissionCurrency}</span>
+                        <span className="font-heading font-black text-foreground">{commissionValue(rule)}</span>
                       </td>
                       <td className="px-6 py-3.5 font-mono text-muted-foreground">{rule.holdDays}</td>
                     </tr>
@@ -359,9 +364,9 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
                 <ReceiptText className="h-4 w-4" />
               </div>
               <div>
-                <h2 className="font-heading text-xl font-black text-foreground">Commission Summary</h2>
+                <h2 className="font-heading text-xl font-black text-foreground">Partner Directory &amp; Commission Summary</h2>
                 <p className="mt-1 text-sm font-medium text-muted-foreground">
-                  Partner earnings aggregated by payout status.
+                  Every registered partner, including accounts that have not earned a commission yet.
                 </p>
               </div>
             </div>
@@ -389,11 +394,13 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
         </div>
 
         <div className="max-h-[600px] overflow-auto bg-background scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
-          <table className="w-full min-w-[74rem] text-left text-sm whitespace-nowrap">
+          <table className="w-full min-w-[110rem] text-left text-sm whitespace-nowrap">
             <thead className="sticky top-0 z-10 border-b border-border bg-card/90 text-[10px] font-bold uppercase tracking-widest text-muted-foreground backdrop-blur-md">
               <tr>
                 <th className="px-6 py-4">Affiliate Partner</th>
                 <th className="px-6 py-4">Affiliate Code</th>
+                <th className="px-6 py-4">Access</th>
+                <th className="px-6 py-4">Onboarding</th>
                 <th className="px-6 py-4">Total Earned</th>
                 <th className="px-6 py-4">Approved</th>
                 <th className="px-6 py-4">Paid</th>
@@ -401,6 +408,7 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
                 <th className="px-6 py-4">Blocked</th>
                 <th className="px-6 py-4">Txn Count</th>
                 <th className="px-6 py-4">Latest Activity</th>
+                <th className="px-6 py-4">Manage</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -413,6 +421,16 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
                   <td className="px-6 py-4 font-mono text-[11px] font-semibold text-foreground">
                     <span className="rounded bg-muted/50 px-2 py-1">{item.affiliateCode}</span>
                   </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${item.affiliateStatus === "active" ? "bg-emerald-500/10 text-emerald-600" : item.affiliateStatus === "pending_verification" ? "bg-amber-500/10 text-amber-600" : "bg-destructive/10 text-destructive"}`}>{item.affiliateStatus.replace(/_/g, " ")}</span>
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{item.eligibilityStatus.replace(/_/g, " ")}</p>
+                    {item.eligibilityReason ? <p className="mt-1 max-w-52 whitespace-normal text-xs text-muted-foreground">{item.eligibilityReason}</p> : null}
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="font-semibold text-foreground">{String(item.onboardingSource || "student_dashboard").replace(/_/g, " ")}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Joined {formatDate(item.profileCreatedAt)}</p>
+                    {item.onboardingSource === "public_registration" ? <p className="mt-1 text-xs text-muted-foreground">Email: {item.emailVerifiedAt ? "verified" : "pending"} · Terms: {item.termsVersion || "missing"}</p> : null}
+                  </td>
                   <td className="px-6 py-4 font-heading text-sm font-black text-foreground">{money(item.earnedMinor, item.currency)}</td>
                   <td className="px-6 py-4 text-emerald-600 dark:text-emerald-400 font-semibold">{money(item.approvedMinor, item.currency)}</td>
                   <td className="px-6 py-4 text-primary font-semibold">{money(item.paidMinor, item.currency)}</td>
@@ -420,16 +438,32 @@ export default async function InternalAffiliatesPage({ searchParams }: PageProps
                   <td className="px-6 py-4 text-destructive">{money(item.blockedMinor, item.currency)}</td>
                   <td className="px-6 py-4 font-mono text-muted-foreground">{item.totalCount}</td>
                   <td className="px-6 py-4 text-xs font-medium text-muted-foreground">{formatDate(item.latestCommissionAt)}</td>
+                  <td className="px-6 py-4">
+                    {item.affiliateStatus === "pending_verification" ? (
+                      <p className="max-w-48 whitespace-normal text-xs font-medium text-amber-600">Waiting for the partner to confirm their email.</p>
+                    ) : (
+                      <form action={updateAffiliateProfileAccessAction} className="grid min-w-64 gap-2">
+                        <input type="hidden" name="profileId" value={item.profileId} />
+                        <div className="grid grid-cols-2 gap-2">
+                          <select name="status" defaultValue={item.affiliateStatus === "suspended" ? "suspended" : "active"} className="rounded-md border border-input bg-background px-2 py-2 text-xs font-semibold"><option value="active">Active</option><option value="suspended">Suspended</option></select>
+                          <select name="eligibilityStatus" defaultValue={item.eligibilityStatus === "eligible" ? "eligible" : "ineligible_manual"} disabled={item.eligibilityStatus === "ineligible_school_student"} className="rounded-md border border-input bg-background px-2 py-2 text-xs font-semibold disabled:opacity-60"><option value="eligible">Eligible</option><option value="ineligible_manual">Ineligible</option></select>
+                        </div>
+                        {item.eligibilityStatus === "ineligible_school_student" ? <input type="hidden" name="eligibilityStatus" value="ineligible_manual" /> : null}
+                        <input name="reason" maxLength={190} defaultValue={item.eligibilityStatus === "ineligible_manual" ? item.eligibilityReason || "" : ""} placeholder="Reason when ineligible" className="rounded-md border border-input bg-background px-3 py-2 text-xs" />
+                        <button type="submit" className="rounded-md border border-border bg-card px-3 py-2 text-xs font-black uppercase tracking-wider transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary">Save access</button>
+                      </form>
+                    )}
+                  </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center">
+                  <td colSpan={12} className="px-6 py-16 text-center">
                     <div className="mx-auto flex flex-col items-center justify-center">
                       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                         <Coins className="h-6 w-6" />
                       </div>
                       <h3 className="font-heading text-lg font-bold text-foreground">No Partners Found</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">There is no commission data available to display.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">There are no affiliate profiles to display.</p>
                     </div>
                   </td>
                 </tr>

@@ -51,6 +51,7 @@ export default async function StudentAffiliatePage() {
   const session = await requireStudent()
   const affiliate = await getStudentAffiliateSummary(session.account.id)
   const profile = affiliate.profile
+  const canUseAffiliate = profile?.status === "active" && profile.eligibilityStatus === "eligible"
 
   return (
     <StudentDashboardShell 
@@ -58,18 +59,23 @@ export default async function StudentAffiliatePage() {
       active="affiliate" 
       title="Affiliate Partner" 
       eyebrow="Affiliate Center"
+      workspaceMode={profile?.onboardingSource === "public_registration" ? "affiliate" : "student"}
     >
       {profile ? (
         <div className="grid gap-8">
           
           {/* Eligibility Alert */}
-          {profile.eligibilityStatus !== "eligible" ? (
+          {profile.status !== "active" || profile.eligibilityStatus !== "eligible" ? (
             <div className="flex items-start gap-4 rounded-xl border border-destructive/20 bg-destructive/10 p-5 shadow-sm">
               <ShieldAlert className="mt-0.5 h-6 w-6 shrink-0 text-destructive" />
               <div>
-                <h3 className="font-heading text-lg font-bold text-destructive">Account Not Eligible</h3>
+                <h3 className="font-heading text-lg font-bold text-destructive">{profile.status === "pending_verification" ? "Activation Required" : "Account Not Eligible"}</h3>
                 <p className="mt-1 text-sm font-medium text-destructive/80">
-                  {profile.eligibilityReason || "This account is not currently eligible for affiliate access."}
+                  {profile.status === "pending_verification"
+                    ? "Confirm the activation email sent during registration before sharing your referral code."
+                    : profile.status !== "active"
+                      ? "This affiliate account is not currently active. Contact support if you believe this is an error."
+                      : profile.eligibilityReason || "This account is not currently eligible for affiliate access."}
                 </p>
               </div>
             </div>
@@ -143,20 +149,11 @@ export default async function StudentAffiliatePage() {
                 </div>
               </div>
               <div className="p-6 sm:p-8 flex-1 flex flex-col justify-center">
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Send traffic directly to the main courses page. All purchases made through this link will be tracked to your account.
-                </p>
-                
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="min-w-0 flex-1 truncate rounded-lg border border-border bg-background p-4 font-mono text-sm text-foreground shadow-inner">
-                    {profile.affiliateLink}
-                  </div>
-                  <CopyButton value={profile.affiliateLink} label="Copy Link" className="btn-primary py-4 px-6 shadow-sm" />
-                </div>
-                
-                <div className="mt-6 inline-flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground w-fit border border-border/50">
-                  Affiliate code: <span className="font-mono font-bold text-foreground">{profile.affiliateCode}</span>
-                </div>
+                {canUseAffiliate ? <>
+                  <p className="text-sm leading-relaxed text-muted-foreground">Send traffic directly to the main courses page. All purchases made through this link will be tracked to your account.</p>
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1 truncate rounded-lg border border-border bg-background p-4 font-mono text-sm text-foreground shadow-inner">{profile.affiliateLink}</div><CopyButton value={profile.affiliateLink} label="Copy Link" className="btn-primary py-4 px-6 shadow-sm" /></div>
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground w-fit border border-border/50">Affiliate code: <span className="font-mono font-bold text-foreground">{profile.affiliateCode}</span></div>
+                </> : <EmptyStudentState icon="alert" title="Referral links unavailable" description="Referral links become available when this affiliate account is active and eligible." />}
               </div>
             </StudentDashboardCard>
 
@@ -221,8 +218,8 @@ export default async function StudentAffiliatePage() {
                       Commissions are tracked from your affiliate code, held during the review period, then moved to approved when they pass risk checks.
                     </p>
                   </div>
-                  <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${statusTone(profile.eligibilityStatus)}`}>
-                    {statusLabel(profile.eligibilityStatus)}
+                  <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${statusTone(profile.status === "active" ? profile.eligibilityStatus : profile.status)}`}>
+                    {statusLabel(profile.status === "active" ? profile.eligibilityStatus : profile.status)}
                   </span>
                 </div>
 
@@ -292,7 +289,7 @@ export default async function StudentAffiliatePage() {
                     No payout account is saved yet.
                   </div>
                 )}
-                <AffiliatePayoutSetup initialAccount={profile.payoutAccount} />
+                {canUseAffiliate ? <AffiliatePayoutSetup initialAccount={profile.payoutAccount} /> : null}
               </div>
               
             </div>
