@@ -34,6 +34,8 @@ assert.match(onboarding, /SET status = 'active'/)
 assert.match(onboarding, /function missingOnboardingColumn/)
 assert.match(onboarding, /PUBLIC_AFFILIATE_TERMS_VERSION/)
 assert.match(onboarding, /createAccountIfMissing/)
+assert.match(onboarding, /LOWER\(sa\.email\) COLLATE utf8mb4_unicode_ci = LOWER\(co\.email\) COLLATE utf8mb4_unicode_ci/)
+assert.match(onboarding, /LOWER\(sa\.email\) COLLATE utf8mb4_unicode_ci = LOWER\(cmp\.email\) COLLATE utf8mb4_unicode_ci/)
 assert.doesNotMatch(onboarding, /course_orders[\s\S]*INSERT INTO course_orders/)
 assert.doesNotMatch(onboarding, /course_manual_payments[\s\S]*INSERT INTO course_manual_payments/)
 

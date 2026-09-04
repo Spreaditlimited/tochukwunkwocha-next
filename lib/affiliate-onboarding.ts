@@ -335,11 +335,13 @@ export async function isPublicAffiliateOnlyAccount(accountId: bigint) {
           WHERE p.account_id = ${accountId} AND p.onboarding_source = 'public_registration'
         ) AND NOT EXISTS (
           SELECT 1 FROM course_orders co
-          JOIN student_accounts sa ON LOWER(sa.email) = LOWER(co.email)
+          JOIN student_accounts sa
+            ON LOWER(sa.email) COLLATE utf8mb4_unicode_ci = LOWER(co.email) COLLATE utf8mb4_unicode_ci
           WHERE sa.id = ${accountId} AND co.status = 'paid'
         ) AND NOT EXISTS (
           SELECT 1 FROM course_manual_payments cmp
-          JOIN student_accounts sa ON LOWER(sa.email) = LOWER(cmp.email)
+          JOIN student_accounts sa
+            ON LOWER(sa.email) COLLATE utf8mb4_unicode_ci = LOWER(cmp.email) COLLATE utf8mb4_unicode_ci
           WHERE sa.id = ${accountId} AND cmp.status IN ('approved', 'paid')
         ) AND NOT EXISTS (
           SELECT 1 FROM school_students ss WHERE ss.account_id = ${accountId} AND ss.status = 'active'
