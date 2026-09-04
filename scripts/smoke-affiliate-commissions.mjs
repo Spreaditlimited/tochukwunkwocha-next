@@ -33,6 +33,13 @@ assert.match(checkout, /transferInstallmentAffiliateAttribution/)
 assert.match(checkout, /await createAffiliateCommissionForOrder\(orderUuid\)/)
 assert.match(checkout, /reconcileAffiliateCommissions/)
 assert.match(checkout, /commission_creation_failed/)
+for (const column of ["order_uuid", "course_slug", "affiliate_code", "email", "country", "currency"]) {
+  assert.equal(
+    (checkout.match(new RegExp(`(?:o|m)\\.${column} COLLATE utf8mb4_unicode_ci`, "g")) || []).length >= 2,
+    true,
+    `${column} must use one collation across pending-attribution UNION branches`
+  )
+}
 
 assert.doesNotMatch(manualReview, /async function createAffiliateCommissionForOrder/)
 assert.match(manualReview, /createAffiliateCommissionForOrder\(paymentUuid\)/)

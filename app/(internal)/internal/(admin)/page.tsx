@@ -29,6 +29,7 @@ type OperationsOverviewRow = {
   pendingEnrollments: number | bigint | null
   approvedEnrollments: number | bigint | null
   students: number | bigint | null
+  affiliates: number | bigint | null
   individualCertificatesIssued: number | bigint | null
   schoolCertificatesIssued: number | bigint | null
   onboardedSchools: number | bigint | null
@@ -69,10 +70,12 @@ async function getOperationsOverview() {
        FROM student_accounts sa
        WHERE EXISTS (
          SELECT 1 FROM course_orders co
-         WHERE LOWER(co.email) = LOWER(sa.email) AND co.status = 'paid'
+         WHERE LOWER(co.email) COLLATE utf8mb4_unicode_ci = LOWER(sa.email) COLLATE utf8mb4_unicode_ci
+           AND co.status = 'paid'
        ) OR EXISTS (
          SELECT 1 FROM course_manual_payments cmp
-         WHERE LOWER(cmp.email) = LOWER(sa.email) AND cmp.status IN ('approved', 'paid')
+         WHERE LOWER(cmp.email) COLLATE utf8mb4_unicode_ci = LOWER(sa.email) COLLATE utf8mb4_unicode_ci
+           AND cmp.status IN ('approved', 'paid')
        ) OR EXISTS (
          SELECT 1 FROM school_students ss
          WHERE ss.account_id = sa.id AND COALESCE(ss.status, 'active') = 'active'
@@ -80,6 +83,7 @@ async function getOperationsOverview() {
          SELECT 1 FROM family_children fc
          WHERE fc.account_id = sa.id AND COALESCE(fc.status, 'active') = 'active'
        )) AS students,
+      (SELECT COUNT(*) FROM tochukwu_affiliate_profiles) AS affiliates,
       (SELECT COUNT(*) FROM student_certificates WHERE status = 'issued') AS individualCertificatesIssued,
       (SELECT COUNT(*) FROM school_certificates WHERE status = 'issued') AS schoolCertificatesIssued,
       (SELECT COUNT(*)
@@ -117,6 +121,7 @@ async function getOperationsOverview() {
     pendingEnrollments: toInt(row?.pendingEnrollments),
     approvedEnrollments: toInt(row?.approvedEnrollments),
     students: toInt(row?.students),
+    affiliates: toInt(row?.affiliates),
     certificatesIssued: toInt(row?.individualCertificatesIssued) + toInt(row?.schoolCertificatesIssued),
     onboardedSchools: toInt(row?.onboardedSchools),
     schoolStudents: toInt(row?.schoolStudents),
@@ -142,6 +147,7 @@ export default async function DashboardPage() {
   const primaryCards = [
     { label: "Pending Enrollments", value: stats.pendingEnrollments, href: "/internal/manual-payments", icon: CreditCard, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", border: "hover:border-amber-500/40" },
     { label: "Student Accounts", value: stats.students, href: "/internal/learning-progress", icon: Users, color: "text-primary", bg: "bg-primary/10", border: "hover:border-primary/40" },
+    { label: "Affiliate Partners", value: stats.affiliates, href: "/internal/affiliates", icon: Users, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10", border: "hover:border-sky-500/40" },
     { label: "Certificates Issued", value: stats.certificatesIssued, href: "/internal/learning", icon: GraduationCap, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", border: "hover:border-emerald-500/40" },
     { label: "Onboarded Schools", value: stats.onboardedSchools, href: "/internal/schools", icon: School, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10", border: "hover:border-sky-500/40" },
     { label: "School Students", value: stats.schoolStudents, href: "/internal/schools", icon: Users, color: "text-primary", bg: "bg-primary/10", border: "hover:border-primary/40" },

@@ -1412,8 +1412,13 @@ export async function reconcilePendingAffiliateAttributions(limitInput = 100) {
            buyer_email AS buyerEmail, buyer_country AS buyerCountry, buyer_currency AS buyerCurrency,
            order_amount_minor AS orderAmountMinor
     FROM (
-      SELECT o.order_uuid AS source_uuid, o.course_slug, o.affiliate_code, o.email AS buyer_email,
-             o.country AS buyer_country, o.currency AS buyer_currency, o.final_amount_minor AS order_amount_minor,
+      SELECT o.order_uuid COLLATE utf8mb4_unicode_ci AS source_uuid,
+             o.course_slug COLLATE utf8mb4_unicode_ci AS course_slug,
+             o.affiliate_code COLLATE utf8mb4_unicode_ci AS affiliate_code,
+             o.email COLLATE utf8mb4_unicode_ci AS buyer_email,
+             o.country COLLATE utf8mb4_unicode_ci AS buyer_country,
+             o.currency COLLATE utf8mb4_unicode_ci AS buyer_currency,
+             o.final_amount_minor AS order_amount_minor,
              o.created_at
       FROM course_orders o
       WHERE o.affiliate_attribution_status = 'pending'
@@ -1423,8 +1428,13 @@ export async function reconcilePendingAffiliateAttributions(limitInput = 100) {
           WHERE a.order_uuid COLLATE utf8mb4_unicode_ci = o.order_uuid COLLATE utf8mb4_unicode_ci
         )
       UNION ALL
-      SELECT m.payment_uuid AS source_uuid, m.course_slug, m.affiliate_code, m.email AS buyer_email,
-             m.country AS buyer_country, m.currency AS buyer_currency, m.final_amount_minor AS order_amount_minor,
+      SELECT m.payment_uuid COLLATE utf8mb4_unicode_ci AS source_uuid,
+             m.course_slug COLLATE utf8mb4_unicode_ci AS course_slug,
+             m.affiliate_code COLLATE utf8mb4_unicode_ci AS affiliate_code,
+             m.email COLLATE utf8mb4_unicode_ci AS buyer_email,
+             m.country COLLATE utf8mb4_unicode_ci AS buyer_country,
+             m.currency COLLATE utf8mb4_unicode_ci AS buyer_currency,
+             m.final_amount_minor AS order_amount_minor,
              m.created_at
       FROM course_manual_payments m
       WHERE m.affiliate_attribution_status = 'pending'

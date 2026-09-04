@@ -50,6 +50,12 @@ expect(!functionSection(affiliate, "getStudentAffiliateSummary").includes("matur
 const adminOverview = await read("app/(internal)/internal/(admin)/page.tsx")
 expect(adminOverview.includes("const rows = await prisma.$queryRaw<OperationsOverviewRow[]>"), "Admin overview should use one aggregate query")
 expect(!functionSection(adminOverview, "DashboardPage").includes("Promise.all(["), "Admin overview must not fan out database counts")
+expect(
+  (adminOverview.match(/LOWER\((?:co|cmp)\.email\) COLLATE utf8mb4_unicode_ci = LOWER\(sa\.email\) COLLATE utf8mb4_unicode_ci/g) || []).length === 2,
+  "Admin overview email comparisons must use one explicit collation"
+)
+expect(adminOverview.includes("(SELECT COUNT(*) FROM tochukwu_affiliate_profiles) AS affiliates"), "Admin overview should count all affiliate profiles")
+expect(adminOverview.includes('label: "Affiliate Partners"') && adminOverview.includes('href: "/internal/affiliates"'), "Admin overview should link its affiliate card to affiliate management")
 
 const authProvider = await read("components/student-dashboard/StudentAuthContext.tsx")
 expect(authProvider.includes("loadedSessionOnce"), "Persistent student navigation should reuse the loaded session")
