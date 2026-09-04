@@ -22,6 +22,7 @@ function safeError(error: unknown, fallback: string) {
 export async function registerPublicAffiliateAction(formData: FormData) {
   const email = clean(formData.get("email"), 190).toLowerCase()
   let errorMessage = ""
+  let existingAccount = false
   if (clean(formData.get("companyWebsite"), 300)) {
     errorMessage = "The registration could not be processed. Please try again."
   } else {
@@ -33,19 +34,23 @@ export async function registerPublicAffiliateAction(formData: FormData) {
         const password = String(formData.get("password") || "")
         const passwordConfirmation = String(formData.get("passwordConfirmation") || "")
         if (password !== passwordConfirmation) throw new Error("The passwords do not match.")
-        await registerPublicAffiliate({
+        const result = await registerPublicAffiliate({
           fullName: clean(formData.get("fullName"), 180),
           email,
           phone: clean(formData.get("phone"), 40),
           password,
           acceptedTerms: formData.get("acceptedTerms") === "1"
         })
+        existingAccount = result.existingAccount
       } catch (error) {
         errorMessage = safeError(error, "Your affiliate registration could not be completed.")
       }
     }
   }
   if (errorMessage) redirect(`/affiliate/register?error=${encodeURIComponent(errorMessage)}`)
+  if (existingAccount) {
+    redirect("/affiliate/register?existing_student=1")
+  }
   redirect("/affiliate/register?submitted=1")
 }
 

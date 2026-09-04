@@ -89,6 +89,7 @@ export function StudentDashboardShell({
   const visibleNavItems = workspaceMode === "affiliate"
     ? navItems.filter((item) => item.key === "affiliate" || item.key === "profile")
     : navItems
+  const logoutReturnTo = workspaceMode === "affiliate" ? "/affiliate/login" : "/dashboard/login"
   const mobileAccountMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -249,6 +250,7 @@ export function StudentDashboardShell({
                         Profile
                       </Link>
                       <form action={studentLogoutAction}>
+                        <input type="hidden" name="returnTo" value={logoutReturnTo} />
                         <button
                           type="submit"
                           role="menuitem"
@@ -262,6 +264,7 @@ export function StudentDashboardShell({
                   ) : null}
                 </div>
                 <form action={studentLogoutAction} className="hidden lg:block">
+                  <input type="hidden" name="returnTo" value={logoutReturnTo} />
                   <button
                     className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
                     type="submit"

@@ -1,17 +1,14 @@
 import crypto, { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
-import { ensureAffiliateAdminTables } from "@/lib/admin-affiliates"
 import { recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
 import { publicActionLinkVariants } from "@/lib/public-site-url"
-import { addColumnIfMissing } from "@/lib/schema-guards"
 import { normalizeStudentEmail } from "@/lib/student-auth"
 
 export const PUBLIC_AFFILIATE_TERMS_VERSION = "2026-09-04"
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
-let onboardingSchemaPromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -54,34 +51,6 @@ function normalizeNigeriaPhone(value: unknown) {
         ? `+234${raw.slice(1)}`
         : `+234${raw}`
   return /^\+234\d{10}$/.test(normalized) ? normalized : ""
-}
-
-export async function ensurePublicAffiliateOnboardingSchema() {
-  if (onboardingSchemaPromise) return onboardingSchemaPromise
-  onboardingSchemaPromise = (async () => {
-    await ensureAffiliateAdminTables()
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "onboarding_source", "VARCHAR(40) NOT NULL DEFAULT 'student_dashboard' AFTER blocked_at")
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "email_verified_at", "DATETIME NULL AFTER onboarding_source")
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "terms_accepted_at", "DATETIME NULL AFTER email_verified_at")
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "terms_version", "VARCHAR(40) NULL AFTER terms_accepted_at")
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "activated_at", "DATETIME NULL AFTER terms_version")
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "verification_token_hash", "VARCHAR(128) NULL AFTER activated_at")
-    await addColumnIfMissing("tochukwu_affiliate_profiles", "verification_expires_at", "DATETIME NULL AFTER verification_token_hash")
-    const indexes = await prisma.$queryRaw<Array<{ indexName: string }>>(Prisma.sql`
-      SELECT DISTINCT INDEX_NAME AS indexName
-      FROM information_schema.STATISTICS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'tochukwu_affiliate_profiles'
-        AND INDEX_NAME = 'uniq_tochukwu_affiliate_verification_token'
-    `)
-    if (!indexes.length) {
-      await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_profiles ADD UNIQUE INDEX uniq_tochukwu_affiliate_verification_token (verification_token_hash)")
-    }
-  })().catch((error) => {
-    onboardingSchemaPromise = null
-    throw error
-  })
-  return onboardingSchemaPromise
 }
 
 async function schoolEligibility(accountId: bigint) {
@@ -135,7 +104,6 @@ export async function registerPublicAffiliate(input: {
   password: string
   acceptedTerms: boolean
 }) {
-  await ensurePublicAffiliateOnboardingSchema()
   const fullName = clean(input.fullName, 180)
   const email = normalizeStudentEmail(input.email)
   const phone = normalizeNigeriaPhone(input.phone)
@@ -147,8 +115,8 @@ export async function registerPublicAffiliate(input: {
   if (!input.acceptedTerms) throw new Error("Accept the Affiliate Partner Agreement to continue.")
 
   const { account, created } = await createAccountIfMissing({ fullName, email, phone, password })
-  if (!created && !account.phoneE164) {
-    await prisma.studentAccount.updateMany({ where: { id: account.id, phoneE164: null }, data: { phoneE164: phone, updatedAt: new Date() } })
+  if (!created) {
+    return { email, alreadyRegistered: true, existingAccount: true }
   }
 
   const existing = await prisma.$queryRaw<Array<{ id: bigint; status: string; onboardingSource: string | null }>>(Prisma.sql`
@@ -166,7 +134,7 @@ export async function registerPublicAffiliate(input: {
       targetId: String(existing[0].id),
       metadata: { onboardingSource: existing[0].onboardingSource, status: existing[0].status }
     })
-    return { email, alreadyRegistered: true }
+    return { email, alreadyRegistered: true, existingAccount: false }
   }
 
   const rawToken = crypto.randomBytes(48).toString("base64url")
@@ -243,7 +211,7 @@ export async function registerPublicAffiliate(input: {
     ].join("\n")
   })
   if (!delivery.ok) throw new Error("The verification email could not be sent. Please try again shortly.")
-  return { email, alreadyRegistered: false }
+  return { email, alreadyRegistered: false, existingAccount: false }
 }
 
 export async function getPublicAffiliateActivation(token: string) {
@@ -267,7 +235,6 @@ export async function getPublicAffiliateActivation(token: string) {
 }
 
 export async function activatePublicAffiliate(token: string) {
-  await ensurePublicAffiliateOnboardingSchema()
   const hash = tokenHash(clean(token, 500))
   if (!token) throw new Error("This activation link is invalid or has expired.")
   const rows = await prisma.$queryRaw<Array<{ profileId: bigint; accountId: bigint }>>(Prisma.sql`
@@ -357,7 +324,6 @@ export async function isPublicAffiliateOnlyAccount(accountId: bigint) {
 }
 
 export async function updateAffiliateProfileAccess(formData: FormData, actor: string) {
-  await ensurePublicAffiliateOnboardingSchema()
   const profileId = BigInt(clean(formData.get("profileId"), 30) || "0")
   const status = clean(formData.get("status"), 30).toLowerCase()
   const eligibilityStatus = clean(formData.get("eligibilityStatus"), 40).toLowerCase()

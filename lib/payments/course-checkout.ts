@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client"
 
 import { getAdminSettingValues } from "@/lib/admin-settings"
 import { buildAffiliateSeatCommissions } from "@/lib/affiliate-commission-calculator"
-import { affiliateRequestMetadata, ensureAffiliateAlignment, recordAffiliateAudit } from "@/lib/affiliate-alignment"
+import { affiliateRequestMetadata, recordAffiliateAudit } from "@/lib/affiliate-alignment"
 import { BASIC_ADVANCED_COUPON_CODE, emailHasBasicCourseAccess } from "@/lib/basic-advanced-offer"
 import {
   CourseEnrollmentConflictError,
@@ -1167,7 +1167,6 @@ export async function createAffiliateCommissionForOrder(orderUuid: string) {
   }
 
   try {
-    await ensureAffiliateAlignment()
     const rows = await prisma.$queryRaw<
       Array<{
         attributionId: bigint
@@ -1314,7 +1313,6 @@ export async function transferInstallmentAffiliateAttribution(input: {
   const planUuid = String(input.planUuid || "").trim().slice(0, 64)
   const orderUuid = String(input.orderUuid || "").trim().slice(0, 64)
   if (!planUuid || !orderUuid) return false
-  await ensureAffiliateAlignment()
   const timestamp = now()
   const transferred = await prisma.$executeRaw`
     INSERT INTO tochukwu_affiliate_attributions
@@ -1350,7 +1348,6 @@ export async function transferInstallmentAffiliateAttribution(input: {
 }
 
 export async function reconcileAffiliateCommissions(limitInput = 250) {
-  await ensureAffiliateAlignment()
   const limit = Math.max(1, Math.min(1000, toInt(limitInput, 250)))
   const installmentRows = await prisma.$queryRaw<Array<{ planUuid: string; orderUuid: string }>>`
     SELECT a.order_uuid AS planUuid, p.enrolled_order_uuid AS orderUuid

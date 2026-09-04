@@ -32,7 +32,10 @@ export async function studentLoginAction(formData: FormData) {
   redirect(nextPath)
 }
 
-export async function studentLogoutAction() {
+export async function studentLogoutAction(formData: FormData) {
+  const returnTo = formData.get("returnTo") === "/affiliate/login"
+    ? "/affiliate/login"
+    : "/dashboard/login"
   await clearStudentSession()
-  redirect("/dashboard/login")
+  redirect(returnTo)
 }

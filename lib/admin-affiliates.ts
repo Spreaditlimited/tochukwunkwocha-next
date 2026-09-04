@@ -3,11 +3,7 @@ import { randomUUID } from "crypto"
 import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/learning-course-catalog"
 import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { prisma } from "@/lib/prisma"
-import { addColumnIfMissing } from "@/lib/schema-guards"
 
-let affiliateCommissionSeatSchemaPromise: Promise<void> | null = null
-let affiliatePayoutSchemaPromise: Promise<void> | null = null
-let affiliateOnboardingSchemaPromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -151,269 +147,6 @@ async function paystackResendTransferOtp(transferCode: string) {
   return normalizePaystackTransfer(json)
 }
 
-export async function ensureAffiliateAdminTables() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_profiles (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      profile_uuid VARCHAR(64) NOT NULL,
-      account_id BIGINT NOT NULL,
-      affiliate_code VARCHAR(40) NOT NULL,
-      status VARCHAR(30) NOT NULL DEFAULT 'active',
-      eligibility_status VARCHAR(40) NOT NULL DEFAULT 'eligible',
-      eligibility_reason VARCHAR(190) NULL,
-      country_code VARCHAR(2) NOT NULL DEFAULT 'NG',
-      payout_currency VARCHAR(10) NOT NULL DEFAULT 'NGN',
-      payout_provider VARCHAR(40) NOT NULL DEFAULT 'paystack',
-      risk_level VARCHAR(20) NOT NULL DEFAULT 'normal',
-      blocked_at DATETIME NULL,
-      onboarding_source VARCHAR(40) NOT NULL DEFAULT 'student_dashboard',
-      email_verified_at DATETIME NULL,
-      terms_accepted_at DATETIME NULL,
-      terms_version VARCHAR(40) NULL,
-      activated_at DATETIME NULL,
-      verification_token_hash VARCHAR(128) NULL,
-      verification_expires_at DATETIME NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_affiliate_profile_uuid (profile_uuid),
-      UNIQUE KEY uniq_tochukwu_affiliate_profile_account (account_id),
-      UNIQUE KEY uniq_tochukwu_affiliate_code (affiliate_code),
-      UNIQUE KEY uniq_tochukwu_affiliate_verification_token (verification_token_hash),
-      KEY idx_tochukwu_affiliate_profile_status (status, eligibility_status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  if (!affiliateOnboardingSchemaPromise) {
-    affiliateOnboardingSchemaPromise = (async () => {
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "onboarding_source", "VARCHAR(40) NOT NULL DEFAULT 'student_dashboard' AFTER blocked_at")
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "email_verified_at", "DATETIME NULL AFTER onboarding_source")
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "terms_accepted_at", "DATETIME NULL AFTER email_verified_at")
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "terms_version", "VARCHAR(40) NULL AFTER terms_accepted_at")
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "activated_at", "DATETIME NULL AFTER terms_version")
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "verification_token_hash", "VARCHAR(128) NULL AFTER activated_at")
-      await addColumnIfMissing("tochukwu_affiliate_profiles", "verification_expires_at", "DATETIME NULL AFTER verification_token_hash")
-      const indexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
-        SELECT DISTINCT INDEX_NAME AS indexName
-        FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'tochukwu_affiliate_profiles'
-          AND INDEX_NAME = 'uniq_tochukwu_affiliate_verification_token'
-      `
-      if (!indexes.length) {
-        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_profiles ADD UNIQUE INDEX uniq_tochukwu_affiliate_verification_token (verification_token_hash)")
-      }
-    })().catch((error) => {
-      affiliateOnboardingSchemaPromise = null
-      throw error
-    })
-  }
-  await affiliateOnboardingSchemaPromise
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_course_rules (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      course_slug VARCHAR(120) NOT NULL,
-      is_affiliate_eligible TINYINT(1) NOT NULL DEFAULT 0,
-      commission_type VARCHAR(20) NOT NULL DEFAULT 'percentage',
-      commission_value INT NOT NULL DEFAULT 0,
-      commission_currency VARCHAR(10) NOT NULL DEFAULT 'NGN',
-      min_order_amount_minor INT NOT NULL DEFAULT 0,
-      hold_days INT NOT NULL DEFAULT 30,
-      starts_at DATETIME NULL,
-      ends_at DATETIME NULL,
-      updated_by VARCHAR(120) NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_course_rule_slug (course_slug)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_commissions (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      commission_uuid VARCHAR(64) NOT NULL,
-      attribution_id BIGINT NOT NULL,
-      order_uuid VARCHAR(64) NOT NULL,
-      seat_number INT NOT NULL DEFAULT 1,
-      seat_count INT NOT NULL DEFAULT 1,
-      course_slug VARCHAR(120) NOT NULL,
-      affiliate_profile_id BIGINT NOT NULL,
-      affiliate_code VARCHAR(40) NOT NULL,
-      buyer_email VARCHAR(220) NOT NULL,
-      currency VARCHAR(10) NOT NULL,
-      order_amount_minor INT NOT NULL DEFAULT 0,
-      commission_type VARCHAR(20) NOT NULL,
-      commission_rate_or_value INT NOT NULL DEFAULT 0,
-      commission_amount_minor INT NOT NULL DEFAULT 0,
-      status VARCHAR(30) NOT NULL DEFAULT 'pending',
-      risk_score INT NOT NULL DEFAULT 0,
-      risk_flags_json LONGTEXT NULL,
-      payable_at DATETIME NULL,
-      paid_at DATETIME NULL,
-      reversed_at DATETIME NULL,
-      reversal_reason VARCHAR(190) NULL,
-      payout_batch_id BIGINT NULL,
-      payout_item_id BIGINT NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_commission_uuid (commission_uuid),
-      UNIQUE KEY uniq_tochukwu_aff_commission_order_seat (order_uuid, seat_number),
-      KEY idx_tochukwu_aff_commission_profile (affiliate_profile_id, status, payable_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  if (!affiliateCommissionSeatSchemaPromise) {
-    affiliateCommissionSeatSchemaPromise = (async () => {
-      await addColumnIfMissing("tochukwu_affiliate_commissions", "seat_number", "INT NOT NULL DEFAULT 1 AFTER order_uuid")
-      await addColumnIfMissing("tochukwu_affiliate_commissions", "seat_count", "INT NOT NULL DEFAULT 1 AFTER seat_number")
-      const commissionIndexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
-        SELECT DISTINCT INDEX_NAME AS indexName
-        FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'tochukwu_affiliate_commissions'
-          AND INDEX_NAME IN ('uniq_tochukwu_aff_commission_order', 'uniq_tochukwu_aff_commission_order_seat')
-      `
-      const indexNames = new Set(commissionIndexes.map((row) => row.indexName))
-      if (indexNames.has("uniq_tochukwu_aff_commission_order")) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE tochukwu_affiliate_commissions DROP INDEX uniq_tochukwu_aff_commission_order"
-        )
-      }
-      if (!indexNames.has("uniq_tochukwu_aff_commission_order_seat")) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE tochukwu_affiliate_commissions ADD UNIQUE INDEX uniq_tochukwu_aff_commission_order_seat (order_uuid, seat_number)"
-        )
-      }
-    })().catch((error) => {
-      affiliateCommissionSeatSchemaPromise = null
-      throw error
-    })
-  }
-  await affiliateCommissionSeatSchemaPromise
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_payout_accounts (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      account_uuid VARCHAR(64) NOT NULL,
-      affiliate_profile_id BIGINT NOT NULL,
-      country_code VARCHAR(2) NOT NULL,
-      currency VARCHAR(10) NOT NULL,
-      payout_provider VARCHAR(40) NOT NULL,
-      account_name VARCHAR(180) NULL,
-      bank_code VARCHAR(40) NULL,
-      bank_name VARCHAR(120) NULL,
-      account_number_masked VARCHAR(40) NULL,
-      account_number_hash VARCHAR(128) NULL,
-      paystack_recipient_code VARCHAR(120) NULL,
-      payout_email VARCHAR(220) NULL,
-      status VARCHAR(30) NOT NULL DEFAULT 'active',
-      is_verified TINYINT(1) NOT NULL DEFAULT 0,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_payout_account_uuid (account_uuid),
-      KEY idx_tochukwu_aff_payout_profile (affiliate_profile_id, status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_payout_batches (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      batch_uuid VARCHAR(64) NOT NULL,
-      country_code VARCHAR(2) NOT NULL,
-      currency VARCHAR(10) NOT NULL,
-      payout_provider VARCHAR(40) NOT NULL,
-      period_start DATETIME NOT NULL,
-      period_end DATETIME NOT NULL,
-      scheduled_for DATE NULL,
-      status VARCHAR(30) NOT NULL DEFAULT 'processing',
-      total_items INT NOT NULL DEFAULT 0,
-      total_amount_minor BIGINT NOT NULL DEFAULT 0,
-      successful_items INT NOT NULL DEFAULT 0,
-      failed_items INT NOT NULL DEFAULT 0,
-      run_notes VARCHAR(255) NULL,
-      initiated_by VARCHAR(120) NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      completed_at DATETIME NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_payout_batch_uuid (batch_uuid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_payout_items (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      item_uuid VARCHAR(64) NOT NULL,
-      payout_batch_id BIGINT NOT NULL,
-      commission_id BIGINT NOT NULL,
-      affiliate_profile_id BIGINT NOT NULL,
-      payout_account_id BIGINT NULL,
-      amount_minor INT NOT NULL DEFAULT 0,
-      currency VARCHAR(10) NOT NULL,
-      status VARCHAR(30) NOT NULL DEFAULT 'processing',
-      provider_transfer_id VARCHAR(190) NULL,
-      provider_transfer_code VARCHAR(120) NULL,
-      provider_reference VARCHAR(190) NULL,
-      error_message VARCHAR(255) NULL,
-      processed_at DATETIME NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_payout_item_uuid (item_uuid),
-      UNIQUE KEY uniq_tochukwu_aff_payout_item_commission (commission_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  if (!affiliatePayoutSchemaPromise) {
-    affiliatePayoutSchemaPromise = (async () => {
-      await addColumnIfMissing("tochukwu_affiliate_payout_batches", "paid_amount_minor", "BIGINT NOT NULL DEFAULT 0 AFTER total_amount_minor")
-      await addColumnIfMissing("tochukwu_affiliate_payout_batches", "pending_items", "INT NOT NULL DEFAULT 0 AFTER successful_items")
-      await addColumnIfMissing("tochukwu_affiliate_payout_batches", "otp_items", "INT NOT NULL DEFAULT 0 AFTER pending_items")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "transfer_group_uuid", "VARCHAR(64) NULL AFTER item_uuid")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "provider_status", "VARCHAR(40) NULL AFTER provider_reference")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "provider_domain", "VARCHAR(20) NULL AFTER provider_status")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "provider_message", "VARCHAR(255) NULL AFTER provider_domain")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "initiated_at", "DATETIME NULL AFTER processed_at")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "settled_at", "DATETIME NULL AFTER initiated_at")
-      await addColumnIfMissing("tochukwu_affiliate_payout_items", "last_verified_at", "DATETIME NULL AFTER settled_at")
-      const indexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
-        SELECT DISTINCT INDEX_NAME AS indexName
-        FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'tochukwu_affiliate_payout_items'
-          AND INDEX_NAME IN ('uniq_tochukwu_aff_payout_item_commission', 'uniq_tochukwu_aff_payout_batch_commission', 'idx_tochukwu_aff_payout_reference')
-      `
-      const names = new Set(indexes.map((row) => row.indexName))
-      if (names.has("uniq_tochukwu_aff_payout_item_commission")) {
-        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_payout_items DROP INDEX uniq_tochukwu_aff_payout_item_commission")
-      }
-      if (!names.has("uniq_tochukwu_aff_payout_batch_commission")) {
-        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_payout_items ADD UNIQUE INDEX uniq_tochukwu_aff_payout_batch_commission (payout_batch_id, commission_id)")
-      }
-      if (!names.has("idx_tochukwu_aff_payout_reference")) {
-        await prisma.$executeRawUnsafe("ALTER TABLE tochukwu_affiliate_payout_items ADD INDEX idx_tochukwu_aff_payout_reference (provider_reference)")
-      }
-    })().catch((error) => {
-      affiliatePayoutSchemaPromise = null
-      throw error
-    })
-  }
-  await affiliatePayoutSchemaPromise
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_audit (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      event_uuid VARCHAR(64) NOT NULL,
-      event_type VARCHAR(80) NOT NULL,
-      actor_type VARCHAR(40) NOT NULL DEFAULT 'system',
-      actor_id VARCHAR(120) NULL,
-      target_type VARCHAR(60) NULL,
-      target_id VARCHAR(120) NULL,
-      metadata_json LONGTEXT NULL,
-      created_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_audit_uuid (event_uuid),
-      KEY idx_tochukwu_aff_audit_type_created (event_type, created_at),
-      KEY idx_tochukwu_aff_audit_target (target_type, target_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-}
-
 export type AffiliateAdminOption = {
   code: string
   fullName: string
@@ -445,7 +178,6 @@ export async function listEligibleAffiliateOptions(): Promise<AffiliateAdminOpti
 }
 
 export async function listAffiliateAdminData(sort = "latest_desc") {
-  await ensureAffiliateAdminTables()
   const [rules, courses, audit, affiliates, payoutBatches, payoutTransfers] = await Promise.all([
     prisma.$queryRaw<Array<{
       id: bigint
@@ -676,7 +408,6 @@ function parseMetadata(value: string | null) {
 }
 
 export async function saveAffiliateCourseRule(formData: FormData, updatedBy: string) {
-  await ensureAffiliateAdminTables()
   const courseSlug = clean(formData.get("courseSlug"), 120).toLowerCase()
   if (!courseSlug) throw new Error("courseSlug is required")
   const commissionType = clean(formData.get("commissionType") || "percentage", 20).toLowerCase()
@@ -774,7 +505,6 @@ async function refreshPayoutBatch(batchId: number) {
 }
 
 async function applyTransferState(reference: string, transfer: PaystackTransfer, source: string) {
-  await ensureAffiliateAdminTables()
   const rows = await prisma.$queryRaw<Array<{ batchId: bigint; amountMinor: bigint; currency: string; currentStatus: string; lastVerifiedAt: Date | null }>>`
     SELECT MIN(payout_batch_id) AS batchId, SUM(amount_minor) AS amountMinor, MAX(currency) AS currency,
       MAX(status) AS currentStatus, MAX(last_verified_at) AS lastVerifiedAt
@@ -889,7 +619,6 @@ async function executePayoutBatch(batchId: number, actor = "system") {
 }
 
 export async function runAffiliatePayoutBatch(formData: FormData, initiatedBy: string) {
-  await ensureAffiliateAdminTables()
   const now = new Date()
   await prisma.$executeRaw`UPDATE tochukwu_affiliate_commissions SET status = 'approved', updated_at = ${now} WHERE status = 'pending' AND payable_at IS NOT NULL AND payable_at <= ${now} AND risk_score < 90`
   const mode = clean(formData.get("periodMode"), 40).toLowerCase()
@@ -968,7 +697,6 @@ export async function runAffiliatePayoutBatch(formData: FormData, initiatedBy: s
 }
 
 export async function finalizeAffiliatePayoutOtp(formData: FormData, actor: string) {
-  await ensureAffiliateAdminTables()
   const reference = clean(formData.get("reference"), 190)
   const otp = clean(formData.get("otp"), 12)
   if (!reference || !/^\d{4,10}$/.test(otp)) throw new Error("Enter the valid Paystack OTP.")
@@ -982,7 +710,6 @@ export async function finalizeAffiliatePayoutOtp(formData: FormData, actor: stri
 }
 
 export async function resendAffiliatePayoutOtp(formData: FormData, actor: string) {
-  await ensureAffiliateAdminTables()
   const reference = clean(formData.get("reference"), 190)
   const rows = await prisma.$queryRaw<Array<{ transferCode: string | null }>>`SELECT provider_transfer_code AS transferCode FROM tochukwu_affiliate_payout_items WHERE provider_reference = ${reference} AND status = 'otp' LIMIT 1`
   const transferCode = clean(rows[0]?.transferCode, 120)
@@ -995,7 +722,6 @@ export async function resendAffiliatePayoutOtp(formData: FormData, actor: string
 }
 
 export async function retryAffiliatePayoutTransfer(formData: FormData, actor: string) {
-  await ensureAffiliateAdminTables()
   const previousReference = clean(formData.get("reference"), 190)
   const rows = await prisma.$queryRaw<Array<{ batchId: bigint; transferGroupUuid: string; status: string }>>`
     SELECT payout_batch_id AS batchId, transfer_group_uuid AS transferGroupUuid, status
@@ -1025,7 +751,6 @@ export async function retryAffiliatePayoutTransfer(formData: FormData, actor: st
 }
 
 export async function reconcileAffiliatePayouts(input?: { reference?: string; limit?: number; actor?: string }) {
-  await ensureAffiliateAdminTables()
   const reference = clean(input?.reference, 190)
   const limit = Math.max(1, Math.min(100, toInt(input?.limit, 50)))
   const rows = await prisma.$queryRaw<Array<{ providerReference: string; updatedAt: Date; batchId: bigint }>>`
@@ -1069,7 +794,6 @@ export async function reconcileAffiliatePayoutWebhook(input: { event: string; re
 }
 
 export async function processDueScheduledAffiliatePayoutBatches(limit = 10) {
-  await ensureAffiliateAdminTables()
   const rows = await prisma.$queryRaw<Array<{ id: bigint }>>`
     SELECT id FROM tochukwu_affiliate_payout_batches WHERE status = 'scheduled' AND scheduled_for <= UTC_DATE() ORDER BY scheduled_for ASC, id ASC LIMIT ${Math.max(1, Math.min(25, toInt(limit, 10)))}
   `

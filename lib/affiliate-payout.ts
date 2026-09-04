@@ -103,60 +103,6 @@ async function paystackPost(path: string, body: Record<string, unknown>) {
   return json
 }
 
-export async function ensureAffiliatePayoutTables() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_payout_accounts (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      account_uuid VARCHAR(64) NOT NULL,
-      affiliate_profile_id BIGINT NOT NULL,
-      country_code VARCHAR(2) NOT NULL,
-      currency VARCHAR(10) NOT NULL,
-      payout_provider VARCHAR(40) NOT NULL,
-      account_name VARCHAR(180) NULL,
-      bank_code VARCHAR(40) NULL,
-      bank_name VARCHAR(120) NULL,
-      account_number_masked VARCHAR(40) NULL,
-      account_number_hash VARCHAR(128) NULL,
-      paystack_recipient_code VARCHAR(120) NULL,
-      payout_email VARCHAR(220) NULL,
-      status VARCHAR(30) NOT NULL DEFAULT 'active',
-      is_verified TINYINT(1) NOT NULL DEFAULT 0,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_payout_account_uuid (account_uuid),
-      KEY idx_tochukwu_aff_payout_account_profile (affiliate_profile_id, status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS tochukwu_affiliate_payout_change_otps (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      otp_uuid VARCHAR(64) NOT NULL,
-      affiliate_profile_id BIGINT NOT NULL,
-      country_code VARCHAR(2) NOT NULL,
-      currency VARCHAR(10) NOT NULL,
-      payout_provider VARCHAR(40) NOT NULL,
-      target_bank_code VARCHAR(40) NOT NULL,
-      target_account_hash VARCHAR(128) NOT NULL,
-      target_account_masked VARCHAR(40) NULL,
-      sent_to_email VARCHAR(220) NOT NULL,
-      otp_hash VARCHAR(128) NOT NULL,
-      status VARCHAR(30) NOT NULL DEFAULT 'pending',
-      attempts INT NOT NULL DEFAULT 0,
-      max_attempts INT NOT NULL DEFAULT 5,
-      expires_at DATETIME NOT NULL,
-      verified_at DATETIME NULL,
-      consumed_at DATETIME NULL,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY uniq_tochukwu_aff_payout_otp_uuid (otp_uuid),
-      KEY idx_tochukwu_aff_payout_otp_profile (affiliate_profile_id, status, expires_at),
-      KEY idx_tochukwu_aff_payout_otp_target (affiliate_profile_id, target_bank_code, target_account_hash, status, expires_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `)
-}
-
 async function getAffiliateProfile(accountId: bigint) {
   const rows = await prisma.$queryRaw<Array<{ id: bigint; status: string | null; eligibilityStatus: string | null; countryCode: string | null; payoutCurrency: string | null; payoutProvider: string | null }>>(Prisma.sql`
     SELECT id, status, eligibility_status AS eligibilityStatus, country_code AS countryCode, payout_currency AS payoutCurrency, payout_provider AS payoutProvider
@@ -246,7 +192,6 @@ export async function resolvePayoutAccount(input: { bankCode: string; accountNum
 }
 
 export async function sendPayoutOtp(input: { accountId: bigint; email: string; fullName: string; bankCode: string; accountNumber: string }) {
-  await ensureAffiliatePayoutTables()
   const profile = await getAffiliateProfile(input.accountId)
   const bankCode = clean(input.bankCode, 40)
   const accountNumber = clean(input.accountNumber, 40).replace(/\D/g, "")
@@ -317,7 +262,6 @@ export async function savePayoutAccount(input: {
   otpCode: string
   payoutEmail?: string
 }) {
-  await ensureAffiliatePayoutTables()
   const profile = await getAffiliateProfile(input.accountId)
   const bankCode = clean(input.bankCode, 40)
   const accountNumber = clean(input.accountNumber, 40).replace(/\D/g, "")

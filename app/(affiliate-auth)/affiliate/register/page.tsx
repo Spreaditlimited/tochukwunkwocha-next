@@ -12,11 +12,12 @@ import { registerPublicAffiliateAction } from "../actions"
 export const dynamic = "force-dynamic"
 export const metadata: Metadata = buildMetadata({ title: "Register as an Affiliate", description: "Create your affiliate partner account.", path: "/affiliate/register", noIndex: true })
 
-export default async function AffiliateRegisterPage({ searchParams }: { searchParams?: Promise<{ error?: string; submitted?: string }> }) {
+export default async function AffiliateRegisterPage({ searchParams }: { searchParams?: Promise<{ error?: string; submitted?: string; existing_student?: string }> }) {
   const session = await getStudentSession()
   if (session) redirect("/dashboard/affiliate")
   const params = searchParams ? await searchParams : {}
   const submitted = params.submitted === "1"
+  const existingStudent = params.existing_student === "1"
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/20 p-5 sm:p-6 lg:p-8">
@@ -33,16 +34,31 @@ export default async function AffiliateRegisterPage({ searchParams }: { searchPa
             <ShieldCheck className="h-8 w-8 text-primary" />
           </div>
           <h1 className="font-heading text-3xl font-black tracking-tight sm:text-4xl">
-            {submitted ? "Check your email" : "Become an Affiliate Partner"}
+            {existingStudent ? "You already have a student account" : submitted ? "Check your email" : "Become an Affiliate Partner"}
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-muted-foreground">
-            {submitted
+            {existingStudent
+              ? "You do not need to create another account to join the Affiliate Programme."
+              : submitted
               ? "Use the secure link we sent to activate your account. It expires in 24 hours."
               : "Create a secure partner account. No course purchase or student enrolment is required."}
           </p>
         </div>
 
-        {submitted ? (
+        {existingStudent ? (
+          <section className="surface-raised bg-card p-8 text-center shadow-xl sm:p-10">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <UserRound className="h-7 w-7" />
+            </div>
+            <p className="mx-auto mt-5 max-w-lg leading-relaxed text-muted-foreground">
+              This email is already connected to a student account. Sign in with your existing student email and password, then open <strong className="text-foreground">Affiliate</strong> in your dashboard.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link href="/dashboard/login?next=%2Fdashboard%2Faffiliate" className="btn-primary">Sign in to Student Account</Link>
+              <Link href="/dashboard/reset-password" className="btn-secondary">Reset Student Password</Link>
+            </div>
+          </section>
+        ) : submitted ? (
           <section className="surface-raised bg-card p-8 text-center shadow-xl sm:p-10">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600">
               <CheckCircle2 className="h-7 w-7" />

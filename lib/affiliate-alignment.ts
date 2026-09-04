@@ -1,11 +1,7 @@
 import crypto, { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
-import { ensureAffiliateAdminTables } from "@/lib/admin-affiliates"
 import { prisma } from "@/lib/prisma"
-import { addColumnIfMissing } from "@/lib/schema-guards"
-
-let alignmentPromise: Promise<void> | null = null
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -30,85 +26,6 @@ export function maskAffiliateEmail(value: unknown) {
   if (!email) return ""
   const at = email.indexOf("@")
   return at <= 1 ? `***${email.slice(at)}` : `${email.slice(0, 2)}***${email.slice(at)}`
-}
-
-export async function ensureAffiliateAlignment() {
-  if (alignmentPromise) return alignmentPromise
-  alignmentPromise = (async () => {
-    await ensureAffiliateAdminTables()
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS tochukwu_affiliate_attributions (
-        id BIGINT NOT NULL AUTO_INCREMENT,
-        attribution_uuid VARCHAR(64) NOT NULL,
-        order_uuid VARCHAR(64) NOT NULL,
-        course_slug VARCHAR(120) NOT NULL,
-        affiliate_profile_id BIGINT NULL,
-        affiliate_code VARCHAR(40) NULL,
-        buyer_email VARCHAR(220) NOT NULL,
-        buyer_account_id BIGINT NULL,
-        buyer_country VARCHAR(120) NULL,
-        buyer_currency VARCHAR(10) NULL,
-        order_amount_minor INT NOT NULL DEFAULT 0,
-        ip_hash VARCHAR(128) NULL,
-        user_agent_hash VARCHAR(128) NULL,
-        click_referrer VARCHAR(255) NULL,
-        attribution_status VARCHAR(40) NOT NULL DEFAULT 'accepted',
-        rejection_reason VARCHAR(190) NULL,
-        risk_score INT NOT NULL DEFAULT 0,
-        risk_flags_json LONGTEXT NULL,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        PRIMARY KEY (id),
-        UNIQUE KEY uniq_tochukwu_aff_attr_uuid (attribution_uuid),
-        UNIQUE KEY uniq_tochukwu_aff_attr_order (order_uuid),
-        KEY idx_tochukwu_aff_attr_profile (affiliate_profile_id, created_at),
-        KEY idx_tochukwu_aff_attr_buyer_email (buyer_email)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `)
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS tochukwu_affiliate_school_referrals (
-        id BIGINT NOT NULL AUTO_INCREMENT,
-        referral_uuid VARCHAR(64) NOT NULL,
-        school_id BIGINT NOT NULL,
-        affiliate_profile_id BIGINT NOT NULL,
-        affiliate_code VARCHAR(40) NOT NULL,
-        first_order_uuid VARCHAR(64) NULL,
-        status VARCHAR(30) NOT NULL DEFAULT 'active',
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        PRIMARY KEY (id),
-        UNIQUE KEY uniq_tochukwu_aff_school_ref_uuid (referral_uuid),
-        UNIQUE KEY uniq_tochukwu_aff_school_ref_school (school_id),
-        KEY idx_tochukwu_aff_school_ref_affiliate (affiliate_profile_id, status)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `)
-    await Promise.all([
-      addColumnIfMissing("tochukwu_affiliate_attributions", "buyer_account_id", "BIGINT NULL"),
-      addColumnIfMissing("tochukwu_affiliate_attributions", "ip_hash", "VARCHAR(128) NULL"),
-      addColumnIfMissing("tochukwu_affiliate_attributions", "user_agent_hash", "VARCHAR(128) NULL"),
-      addColumnIfMissing("tochukwu_affiliate_attributions", "click_referrer", "VARCHAR(255) NULL"),
-      addColumnIfMissing("course_orders", "affiliate_code", "VARCHAR(40) NULL"),
-      addColumnIfMissing("course_orders", "affiliate_profile_id", "BIGINT NULL"),
-      addColumnIfMissing("course_orders", "affiliate_attribution_status", "VARCHAR(40) NULL"),
-      addColumnIfMissing("course_manual_payments", "affiliate_code", "VARCHAR(40) NULL"),
-      addColumnIfMissing("course_manual_payments", "affiliate_profile_id", "BIGINT NULL"),
-      addColumnIfMissing("course_manual_payments", "affiliate_attribution_status", "VARCHAR(40) NULL"),
-      addColumnIfMissing("school_orders", "affiliate_code", "VARCHAR(40) NULL"),
-      addColumnIfMissing("school_orders", "affiliate_profile_id", "BIGINT NULL"),
-      addColumnIfMissing("school_orders", "affiliate_attribution_status", "VARCHAR(40) NULL")
-    ])
-    const now = new Date()
-    await prisma.$executeRaw(Prisma.sql`
-      INSERT INTO tochukwu_affiliate_course_rules
-        (course_slug, is_affiliate_eligible, commission_type, commission_value, commission_currency, min_order_amount_minor, hold_days, created_at, updated_at)
-      VALUES ('prompt-to-profit-schools', 1, 'percentage', 1000, 'NGN', 0, ${defaultHoldDays()}, ${now}, ${now})
-      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
-    `).catch(() => null)
-  })().catch((error) => {
-    alignmentPromise = null
-    throw error
-  })
-  return alignmentPromise
 }
 
 export async function recordAffiliateAudit(input: {
@@ -142,7 +59,6 @@ export function affiliateRequestMetadata(headers?: Headers) {
 }
 
 export async function captureSchoolOrderReferral(input: { orderUuid: string; affiliateCode?: string }) {
-  await ensureAffiliateAlignment()
   const orderUuid = clean(input.orderUuid, 64)
   const affiliateCode = clean(input.affiliateCode, 40).toUpperCase()
   if (!orderUuid || !affiliateCode || String(process.env.AFFILIATE_ENABLED || "1").trim() === "0") {
@@ -177,7 +93,6 @@ export async function captureSchoolOrderReferral(input: { orderUuid: string; aff
 }
 
 export async function bindSchoolReferralAfterPayment(input: { schoolId: number; schoolOrderUuid: string }) {
-  await ensureAffiliateAlignment()
   const schoolId = Math.trunc(Number(input.schoolId || 0))
   const orderUuid = clean(input.schoolOrderUuid, 64)
   if (schoolId <= 0 || !orderUuid) return { ok: false, skipped: true }
@@ -214,7 +129,6 @@ export async function bindSchoolReferralAfterPayment(input: { schoolId: number; 
 }
 
 export async function matureAffiliateCommissions(now = new Date()) {
-  await ensureAffiliateAlignment()
   const matured = await prisma.$executeRaw(Prisma.sql`
     UPDATE tochukwu_affiliate_commissions
     SET status = 'approved', updated_at = ${now}
@@ -227,7 +141,6 @@ export async function matureAffiliateCommissions(now = new Date()) {
 }
 
 export async function createSchoolStudentAffiliateCommission(schoolStudentId: number) {
-  await ensureAffiliateAlignment()
   if (String(process.env.AFFILIATE_ENABLED || "1").trim() === "0" || schoolStudentId <= 0) return null
   const orderUuid = `school_student_onboard_${schoolStudentId}`
   const rows = await prisma.$queryRaw<Array<{

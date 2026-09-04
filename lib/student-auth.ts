@@ -235,10 +235,11 @@ export async function allowStudentPasswordResetRequest(emailInput: string) {
 }
 
 export async function allowPublicAffiliateRegistrationRequest(emailInput: string) {
-  await ensureStudentSecurityTables()
   const identity = await studentAuthIdentity("affiliate_registration", emailInput)
-  const attempt = await getStudentAuthAttempt(identity)
-  const recentIpAttempts = await recentStudentAuthAttemptsForIp(identity)
+  const [attempt, recentIpAttempts] = await Promise.all([
+    getStudentAuthAttempt(identity),
+    recentStudentAuthAttemptsForIp(identity)
+  ])
   if ((attempt?.lockedUntil && attempt.lockedUntil.getTime() > Date.now()) || recentIpAttempts >= MAX_AFFILIATE_REGISTRATIONS_PER_IP) return false
   await recordStudentAuthFailure(identity, attempt)
   return true
