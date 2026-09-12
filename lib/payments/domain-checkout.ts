@@ -122,10 +122,10 @@ function profitFloor(years: number, vat: number) {
   return denominator > 0 ? Math.max(0, Math.ceil(((1 + margin) * cost + fixed * (1 + feeVat)) / denominator)) : 0
 }
 
-export async function buildDomainQuote(domainNameInput: unknown, yearsInput: unknown, countryInput: unknown = "NG"): Promise<DomainQuote> {
+export async function buildDomainQuote(domainNameInput: unknown, yearsInput: unknown, countryInput: unknown = "NG", confirmedRegistrarPrice?: {amountMinor:number;currency:string}): Promise<DomainQuote> {
   const domainName = supportedCheckoutDomain(domainNameInput)
   const years = yearsInt(yearsInput)
-  const pricing = await getDomainRegistrationPrice(domainName, years)
+  const pricing = confirmedRegistrarPrice || await getDomainRegistrationPrice(domainName, years)
   const currency = clean(pricing.currency, 10).toUpperCase()
   const rawBase = Math.round(Number(pricing.amountMinor || 0))
   if (currency !== "NGN") throw new Error(`Registrar currency is ${currency || "unknown"}. Set the selling/display currency to NGN.`)

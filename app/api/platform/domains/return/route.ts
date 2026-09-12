@@ -1,0 +1,1 @@
+export function GET(){return new Response('Payment submitted. Return to your Sure Imports partner dashboard and check domain registration. Payment submission alone does not confirm registration.',{headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}});}

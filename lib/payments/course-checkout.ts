@@ -2238,6 +2238,7 @@ type PaystackVerificationResponse = {
   code?: string | null
   message?: string | null
   data?: {
+    domain?: string | null
     id?: string | number | null
     status?: string | null
     reference?: string | null
@@ -2333,7 +2334,8 @@ export async function inspectPaystackTransaction(reference: string) {
     currency: json.data.currency ? String(json.data.currency).toUpperCase() : "",
     metadata: json.data.metadata || {},
     providerStatus,
-    successful: providerStatus === "success"
+    successful: providerStatus === "success",
+    domain: String(json.data.domain || "")
   }
 }
 

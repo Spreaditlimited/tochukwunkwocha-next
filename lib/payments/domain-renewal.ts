@@ -3,23 +3,12 @@ import { Prisma } from "@prisma/client"
 
 import {
   initializePaystack,
-  siteBaseUrl,
-  verifyPaystackTransaction
+  siteBaseUrl
 } from "@/lib/payments/course-checkout"
-import { buildDomainQuote } from "@/lib/payments/domain-checkout"
 import { prisma } from "@/lib/prisma"
 import { assertStudentDomain, ensureDomainRequestTables } from "@/lib/student-domain-actions"
-
-type RenewalCheckoutRow = {
-  id: bigint | number
-  renewalUuid: string
-  accountId: bigint
-  domainName: string
-  years: number | bigint
-  status: string
-  paymentCurrency: string | null
-  paymentAmountMinor: bigint | number | null
-}
+import { completeLegacyDomainRenewal } from '@/lib/domain/legacy-renewal'
+import { confirmedRenewalQuote } from '@/lib/domain/platform-renewals'
 
 function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -70,7 +59,7 @@ export async function createPaidDomainRenewal(input: {
   if (domain.status.toLowerCase() !== "registered") throw new Error("Only registered domains can be renewed.")
 
   const years = renewalYears(input.years)
-  const quote = await buildDomainQuote(domain.domainName, years, "NG")
+  const quote = await confirmedRenewalQuote(domain.domainName, years)
   if (quote.provider !== "paystack" || quote.currency !== "NGN") {
     throw new Error("Domain renewal pricing is temporarily unavailable.")
   }
@@ -133,61 +122,5 @@ export async function createPaidDomainRenewal(input: {
 export async function completePaidDomainRenewal(referenceInput: unknown) {
   const reference = clean(referenceInput, 120)
   if (!reference) throw new Error("Payment reference is required.")
-  await ensureDomainRenewalTable()
-  const payment = await verifyPaystackTransaction(reference)
-
-  return prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<RenewalCheckoutRow[]>(Prisma.sql`
-      SELECT id, renewal_uuid AS renewalUuid, account_id AS accountId, domain_name AS domainName, years, status,
-             payment_currency AS paymentCurrency, payment_amount_minor AS paymentAmountMinor
-      FROM tochukwu_domain_renewal_checkouts
-      WHERE payment_reference = ${reference}
-      LIMIT 1
-      FOR UPDATE
-    `)
-    const checkout = rows[0]
-    if (!checkout) throw new Error("Domain renewal checkout was not found.")
-    if (checkout.status === "renewed") return { domainName: checkout.domainName, years: Number(checkout.years || 1) }
-
-    const expectedAmount = Number(checkout.paymentAmountMinor || 0)
-    const expectedCurrency = clean(checkout.paymentCurrency, 16).toUpperCase()
-    if (payment.amountMinor === null || payment.amountMinor !== expectedAmount) throw new Error("Paid amount does not match this renewal.")
-    if (!payment.currency || payment.currency !== expectedCurrency) throw new Error("Paid currency does not match this renewal.")
-    const metadataUuid = clean((payment.metadata as Record<string, unknown>)?.domain_renewal_uuid, 72)
-    if (metadataUuid && metadataUuid !== checkout.renewalUuid) throw new Error("Payment does not match this renewal.")
-
-    const domainRows = await tx.$queryRaw<Array<{ id: bigint | number; renewalDueAt: Date | null }>>(Prisma.sql`
-      SELECT id, renewal_due_at AS renewalDueAt
-      FROM user_domains
-      WHERE account_id = ${checkout.accountId}
-        AND domain_name COLLATE utf8mb4_unicode_ci = ${checkout.domainName} COLLATE utf8mb4_unicode_ci
-        AND LOWER(status) = 'registered'
-      LIMIT 1
-      FOR UPDATE
-    `)
-    const ownedDomain = domainRows[0]
-    if (!ownedDomain) throw new Error("Registered domain was not found for this account.")
-
-    const now = new Date()
-    const currentDue = ownedDomain.renewalDueAt ? new Date(ownedDomain.renewalDueAt) : null
-    const base = currentDue && Number.isFinite(currentDue.getTime()) && currentDue.getTime() > now.getTime() ? currentDue : now
-    const renewalDueAt = new Date(base)
-    const years = renewalYears(checkout.years)
-    renewalDueAt.setUTCFullYear(renewalDueAt.getUTCFullYear() + years)
-
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE user_domains
-      SET renewal_due_at = ${renewalDueAt}, last_synced_at = ${now}, updated_at = ${now}
-      WHERE id = ${Number(ownedDomain.id)}
-      LIMIT 1
-    `)
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE tochukwu_domain_renewal_checkouts
-      SET status = 'renewed', payment_paid_at = COALESCE(payment_paid_at, ${now}),
-          notes = ${`Renewed for ${years} year(s). New due date: ${renewalDueAt.toISOString()}`}, updated_at = ${now}
-      WHERE id = ${Number(checkout.id)}
-      LIMIT 1
-    `)
-    return { domainName: checkout.domainName, years, renewalDueAt }
-  })
+  return completeLegacyDomainRenewal(reference)
 }

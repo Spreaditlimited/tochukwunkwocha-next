@@ -6,7 +6,9 @@ import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { sendEmail } from "@/lib/email"
 import { issueBuildBookingAccess, issuePrivateCoachingBookingAccess, markBuildDiscoveryPaymentPaid, markPrivateCoachingPaymentPaid } from "@/lib/discovery-booking-access"
 import { completePaidDomainCheckout } from "@/lib/payments/domain-checkout"
+import { completePlatformDomainPayment } from "@/lib/domain/platform-orders"
 import { completePaidDomainRenewal } from "@/lib/payments/domain-renewal"
+import { completePlatformRenewal } from '@/lib/domain/platform-renewals'
 import { createAffiliateCommissionForOrder, markCourseOrderPaid, markInstallmentPaymentPaid, siteBaseUrl } from "@/lib/payments/course-checkout"
 import { recordPaystackAuditEvent, validateCourseOrderPaystackPayment } from "@/lib/payments/paystack-audit"
 import { provisionStudentForPaidOrder } from "@/lib/payments/post-payment-student"
@@ -108,9 +110,17 @@ export async function POST(request: Request) {
     const result = await completePaidDomainCheckout(reference)
     return NextResponse.json({ ok: true, scope: "domain_registration", orderUuid: result.orderUuid })
   }
+  if (paymentScope === 'sureimports_domain') {
+    const result = await completePlatformDomainPayment(reference)
+    return NextResponse.json({ok:true,scope:paymentScope,status:result.status})
+  }
   if (paymentScope === "domain_renewal") {
     const result = await completePaidDomainRenewal(reference)
     return NextResponse.json({ ok: true, scope: "domain_renewal", domainName: result.domainName })
+  }
+  if (paymentScope === 'sureimports_domain_renewal') {
+    const result=await completePlatformRenewal(reference)
+    return NextResponse.json({ok:true,scope:paymentScope,status:result.status})
   }
   if (paymentScope === "school_advanced") {
     await confirmPaystackSchoolAdvanced(reference)

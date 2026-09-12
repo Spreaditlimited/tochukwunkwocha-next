@@ -71,7 +71,7 @@ export function BlogContentEditor({ defaultHtml }: { defaultHtml?: string | null
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit,
+      StarterKit.configure({ link: false, underline: false }),
       Link.configure({
         openOnClick: false,
         autolink: true,
@@ -91,7 +91,7 @@ export function BlogContentEditor({ defaultHtml }: { defaultHtml?: string | null
 
   useEffect(() => {
     if (editor && editor.getHTML() !== initialHtml) {
-      editor.commands.setContent(initialHtml, false)
+      editor.commands.setContent(initialHtml, { emitUpdate: false })
       setHtml(initialHtml)
     }
   }, [editor, initialHtml])
