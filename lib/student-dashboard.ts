@@ -6,6 +6,7 @@ import { getAdminSettingValue } from "@/lib/admin-settings"
 import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
 import { listCheckoutBatches } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
+import { visibleSchoolCourseSlug } from "@/lib/school-course-access"
 
 function cleanText(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max)
@@ -381,7 +382,11 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
   const normalized = String(email || "").trim().toLowerCase()
   if (!normalized) return []
 
-  const [cardRows, manualRows, familyRows] = await Promise.all([
+  const schoolIdentity = accountId
+    ? Prisma.sql`(LOWER(ss.email) COLLATE utf8mb4_unicode_ci = ${normalized} OR ss.account_id = ${accountId})`
+    : Prisma.sql`LOWER(ss.email) COLLATE utf8mb4_unicode_ci = ${normalized}`
+
+  const [cardRows, manualRows, familyRows, schoolRows, schoolAccessRows] = await Promise.all([
     prisma.$queryRaw<StudentCourseAccessRow[]>(Prisma.sql`
       SELECT
         'card_checkout' AS source,
@@ -444,10 +449,60 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
             AND f.status = 'active'
             AND e.status = 'active'
         `).catch(() => [])
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    prisma.$queryRaw<StudentCourseAccessRow[]>(Prisma.sql`
+      SELECT
+        'school' AS source,
+        CONCAT('school_', ss.id, '_', sc.id) AS uuid,
+        sc.course_slug AS courseSlug,
+        'school' AS batchKey,
+        'School Access' AS batchLabel,
+        NULL AS batchStartAt,
+        NULL AS currency,
+        0 AS amountMinor,
+        'paid' AS status,
+        COALESCE(sc.access_starts_at, sc.paid_at, sc.created_at) AS createdAt
+      FROM school_students ss
+      JOIN school_accounts sc ON sc.id = ss.school_id
+      WHERE ${schoolIdentity}
+        AND ss.status = 'active'
+        AND sc.status = 'active'
+        AND COALESCE(sc.access_starts_at, sc.paid_at, sc.created_at) IS NOT NULL
+        AND (sc.access_starts_at IS NULL OR sc.access_starts_at <= NOW())
+        AND (sc.access_expires_at IS NULL OR sc.access_expires_at >= NOW())
+        AND DATE_ADD(COALESCE(sc.access_starts_at, sc.paid_at, sc.created_at), INTERVAL 1 YEAR) >= NOW()
+    `).catch(() => []),
+    prisma.$queryRaw<StudentCourseAccessRow[]>(Prisma.sql`
+      SELECT
+        'school_upgrade' AS source,
+        CONCAT('school_access_', access.id) AS uuid,
+        access.course_slug AS courseSlug,
+        'school' AS batchKey,
+        'School Access' AS batchLabel,
+        NULL AS batchStartAt,
+        NULL AS currency,
+        0 AS amountMinor,
+        'paid' AS status,
+        access.granted_at AS createdAt
+      FROM school_students ss
+      JOIN school_accounts sc ON sc.id = ss.school_id
+      JOIN school_student_course_access access
+        ON access.student_id = ss.id
+       AND access.status = 'active'
+      WHERE ${schoolIdentity}
+        AND ss.status = 'active'
+        AND sc.status = 'active'
+        AND (sc.access_starts_at IS NULL OR sc.access_starts_at <= NOW())
+        AND (sc.access_expires_at IS NULL OR sc.access_expires_at >= NOW())
+    `).catch(() => [])
   ])
 
-  return [...cardRows, ...manualRows, ...familyRows]
+  const normalizedSchoolRows = [...schoolRows, ...schoolAccessRows].map((row) => ({
+    ...row,
+    courseSlug: visibleSchoolCourseSlug(row.courseSlug)
+  }))
+
+  return [...cardRows, ...manualRows, ...familyRows, ...normalizedSchoolRows]
     .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())
     .slice(0, 50)
     .map((row) => ({
