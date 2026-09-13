@@ -6,6 +6,7 @@ import { configuredLearningCourseSlugSql, dayLevelCourseSlugRegex } from "@/lib/
 import { prisma } from "@/lib/prisma"
 import { publicSiteUrl } from "@/lib/public-site-url"
 import { plainTextToRichNotes } from "@/lib/rich-notes"
+import { hasActiveSchoolCourseAccess } from "@/lib/school-course-access"
 import { watWallDateTimeMs } from "@/lib/utils"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
@@ -197,38 +198,41 @@ function parseDateMs(value: unknown) {
 
 async function getLearnerBatchContext(accountId: bigint, email: string, courseSlug: string) {
   const normalizedEmail = clean(email, 190).toLowerCase()
-  const learnerRows = await prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
-    SELECT access_rows.batchKey
-    FROM (
-      SELECT o.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, o.created_at AS grantedAt
-      FROM course_orders o
-      WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-        AND o.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
-        AND COALESCE(o.buyer_type, 'student') <> 'family'
-        AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
-      UNION ALL
-      SELECT m.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, m.created_at AS grantedAt
-      FROM course_manual_payments m
-      WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-        AND m.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
-        AND COALESCE(m.buyer_type, 'student') <> 'family'
-        AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
-      UNION ALL
-      SELECT e.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(e.paid_at, e.updated_at, e.created_at) AS grantedAt
-      FROM family_children c
-      JOIN family_accounts f ON f.id = c.family_id
-      JOIN family_child_enrollments e ON e.child_id = c.id
-      WHERE c.account_id = ${accountId}
-        AND c.status = 'active'
-        AND f.status = 'active'
-        AND e.status = 'active'
-        AND e.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
-    ) access_rows
-    WHERE access_rows.batchKey IS NOT NULL
-      AND TRIM(access_rows.batchKey) <> ''
-    ORDER BY access_rows.grantedAt DESC
-    LIMIT 1
-  `).catch(() => [])
+  const [learnerRows, schoolImmediateAccess] = await Promise.all([
+    prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
+      SELECT access_rows.batchKey
+      FROM (
+        SELECT o.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, o.created_at AS grantedAt
+        FROM course_orders o
+        WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+          AND o.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
+          AND COALESCE(o.buyer_type, 'student') <> 'family'
+          AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
+        UNION ALL
+        SELECT m.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, m.created_at AS grantedAt
+        FROM course_manual_payments m
+        WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+          AND m.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
+          AND COALESCE(m.buyer_type, 'student') <> 'family'
+          AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
+        UNION ALL
+        SELECT e.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(e.paid_at, e.updated_at, e.created_at) AS grantedAt
+        FROM family_children c
+        JOIN family_accounts f ON f.id = c.family_id
+        JOIN family_child_enrollments e ON e.child_id = c.id
+        WHERE c.account_id = ${accountId}
+          AND c.status = 'active'
+          AND f.status = 'active'
+          AND e.status = 'active'
+          AND e.course_slug COLLATE utf8mb4_general_ci = ${courseSlug}
+      ) access_rows
+      WHERE access_rows.batchKey IS NOT NULL
+        AND TRIM(access_rows.batchKey) <> ''
+      ORDER BY access_rows.grantedAt DESC
+      LIMIT 1
+    `).catch(() => []),
+    hasActiveSchoolCourseAccess({ accountId, email: normalizedEmail, courseSlug }).catch(() => false)
+  ])
   const learnerBatchKey = normalizeBatchKey(learnerRows[0]?.batchKey)
   const [activeBatchRows, learnerBatchRows, anchorRows] = await Promise.all([
     prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
@@ -262,7 +266,8 @@ async function getLearnerBatchContext(accountId: bigint, email: string, courseSl
     learnerBatchKey,
     activeBatchKey: normalizeBatchKey(activeBatchRows[0]?.batchKey),
     learnerBatchStartMs: parseDateMs(learnerBatchRows[0]?.batchStartAt),
-    courseAnchorStartMs: parseDateMs(anchorRows[0]?.anchorStartAt)
+    courseAnchorStartMs: parseDateMs(anchorRows[0]?.anchorStartAt),
+    schoolImmediateAccess
   }
 }
 
@@ -295,6 +300,7 @@ function moduleIsReleasedForContext(row: {
   dripBatchKey?: string | null
   dripOffsetSeconds?: number | bigint | null
 }, context: Awaited<ReturnType<typeof getLearnerBatchContext>>, scheduleMap: Map<number, Map<string, { accessMode: "immediate" | "drip"; dripAtMs: number }>>) {
+  if (context.schoolImmediateAccess) return true
   if (Number(row.dripEnabled || 0) !== 1) return true
   const schedules = scheduleMap.get(row.moduleId)
   if (schedules && schedules.size > 0) {
@@ -373,46 +379,49 @@ export async function studentHasCourseAccess(accountId: bigint, email: string, c
   const normalizedCourseSlug = clean(courseSlug, 120).toLowerCase()
   if (!normalizedEmail || !normalizedCourseSlug) return false
 
-  const rows = await prisma.$queryRaw<{ allowed: number | bigint }[]>(Prisma.sql`
-    SELECT 1 AS allowed
-    WHERE EXISTS (
-      SELECT 1
-      FROM course_orders o
-      WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-        AND o.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-        AND COALESCE(o.buyer_type, 'student') <> 'family'
-        AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM course_manual_payments m
-      WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-        AND m.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-        AND COALESCE(m.buyer_type, 'student') <> 'family'
-        AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM tochukwu_learning_access_overrides a
-      WHERE a.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-        AND a.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-        AND a.status = 'active'
-        AND (a.expires_at IS NULL OR a.expires_at > NOW())
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM family_children c
-      JOIN family_accounts f ON f.id = c.family_id
-      JOIN family_child_enrollments e ON e.child_id = c.id
-      WHERE c.account_id = ${accountId}
-        AND c.status = 'active'
-        AND f.status = 'active'
-        AND e.status = 'active'
-        AND e.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-    )
-    LIMIT 1
-  `).catch(() => [])
-  return rows.length > 0
+  const [rows, schoolAllowed] = await Promise.all([
+    prisma.$queryRaw<{ allowed: number | bigint }[]>(Prisma.sql`
+      SELECT 1 AS allowed
+      WHERE EXISTS (
+        SELECT 1
+        FROM course_orders o
+        WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+          AND o.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+          AND COALESCE(o.buyer_type, 'student') <> 'family'
+          AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM course_manual_payments m
+        WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+          AND m.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+          AND COALESCE(m.buyer_type, 'student') <> 'family'
+          AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM tochukwu_learning_access_overrides a
+        WHERE a.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+          AND a.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+          AND a.status = 'active'
+          AND (a.expires_at IS NULL OR a.expires_at > NOW())
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM family_children c
+        JOIN family_accounts f ON f.id = c.family_id
+        JOIN family_child_enrollments e ON e.child_id = c.id
+        WHERE c.account_id = ${accountId}
+          AND c.status = 'active'
+          AND f.status = 'active'
+          AND e.status = 'active'
+          AND e.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+      )
+      LIMIT 1
+    `).catch(() => []),
+    hasActiveSchoolCourseAccess({ accountId, email: normalizedEmail, courseSlug: normalizedCourseSlug }).catch(() => false)
+  ])
+  return rows.length > 0 || schoolAllowed
 }
 
 export async function getLearningCourseForStudent(input: {
