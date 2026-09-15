@@ -11,11 +11,12 @@ globalThis.__renewDb={
 globalThis.__renewRegistrar={getRegistration:async()=>({orderId:registrarId,active:true,expiresAt:expiry}),renewRegistration:async()=>{calls++;throw new Error('Synthetic ambiguous response');}};
 globalThis.__renewPayment=()=>payment;
 const hook=registerHooks({resolve(s,c,next){const inline=code=>({url:`data:text/javascript,${encodeURIComponent(code)}`,shortCircuit:true});
+ if(s==='./platform-pricing')return inline('export async function buildPlatformDomainQuote(){}');
  if(s==='server-only')return inline('export{}');
  if(s==='@/lib/prisma')return inline('export const prisma=globalThis.__renewDb');
  if(s==='@/lib/admin-settings')return inline('export async function applyAdminSettingsToProcessEnv(){}');
  if(s==='@/lib/payments/domain-checkout')return inline('export async function buildDomainQuote(){}');
- if(s==='@/lib/payments/course-checkout')return inline('export async function initializePaystack(){};export async function verifyPaystackTransaction(){return globalThis.__renewPayment()};export const siteBaseUrl=()=>"https://service.example.com"');
+ if(s==='@/lib/payments/course-checkout')return inline('export async function initializeStripe(){};export async function retrieveStripeSession(){return globalThis.__renewPayment()};export async function initializePaystack(){};export async function verifyPaystackTransaction(){return globalThis.__renewPayment()};export const siteBaseUrl=()=>"https://service.example.com"');
  if(s==='node:module'&&c.parentURL?.endsWith('/platform-renewals.ts'))return inline('export const createRequire=()=>p=>p.includes("domain-client")?{selectedDomainProviderName:()=>"resellerclub"}:globalThis.__renewRegistrar');
  return next(s,c);
 }});

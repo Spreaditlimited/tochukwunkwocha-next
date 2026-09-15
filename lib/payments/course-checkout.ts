@@ -2135,6 +2135,7 @@ export async function initializePaystack(input: {
 }
 
 export async function initializeStripe(input: {
+  idempotencyKey?: string
   email: string
   amountMinor: number
   currency: string
@@ -2182,6 +2183,7 @@ export async function initializeStripe(input: {
       method: "POST",
       headers: {
         Authorization: `Bearer ${secret}`,
+        ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: params.toString()
@@ -2397,6 +2399,7 @@ export async function retrieveStripeSession(sessionId: string) {
   }
   return {
     id: String(json.id),
+    livemode: json.livemode === true,
     orderUuid: String(json.client_reference_id || json.metadata?.order_uuid || ""),
     courseSlug: String(json.metadata?.course_slug || ""),
     amountMinor: Number.isFinite(Number(json.amount_total)) ? Math.round(Number(json.amount_total)) : null,

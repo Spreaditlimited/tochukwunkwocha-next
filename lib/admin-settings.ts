@@ -142,6 +142,7 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
   { key: "RESCLUB_SERVICE_PRODUCT_KEYS_JSON", category: "Registrar (ResellerClub)" },
   { key: "DOMAIN_REGISTRAR_PROVIDER", category: "Domain Automation" },
   { key: "DOMAIN_WORST_FX_NGN_PER_USD", category: "Domain Automation" },
+  { key: "DOMAIN_PLATFORM_MARKUP_PERCENT", category: "Domain Automation" },
   { key: "DOMAIN_FX_NGN_PER_GBP", category: "Domain Automation" },
   { key: "DOMAIN_FX_NGN_PER_USD", category: "Domain Automation" },
   { key: "DOMAIN_FX_NGN_PER_EUR", category: "Domain Automation" },

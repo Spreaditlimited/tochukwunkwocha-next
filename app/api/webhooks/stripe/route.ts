@@ -1,3 +1,5 @@
+import { completePlatformDomainPayment } from '@/lib/domain/platform-orders';
+import { completePlatformRenewal } from '@/lib/domain/platform-renewals';
 import crypto from "crypto"
 import { NextResponse } from "next/server"
 
@@ -53,6 +55,12 @@ export async function POST(request: Request) {
 
   const metadata = session.metadata || {}
   const paymentScope = String(metadata.payment_scope || "").toLowerCase()
+  if (paymentScope === 'sureimports_domain' || paymentScope === 'sureimports_domain_renewal') {
+    if (session.livemode !== true) return NextResponse.json({ok:true,ignored:true});
+    if (paymentScope === 'sureimports_domain') await completePlatformDomainPayment(String(session.id || ''));
+    else await completePlatformRenewal(String(session.id || ''));
+    return NextResponse.json({ok:true,scope:paymentScope});
+  }
   if (paymentScope === SHOP_PAYMENT_SCOPE) {
     const orderUuid = String(session.client_reference_id || metadata.order_uuid || "").trim()
     if (!orderUuid) {

@@ -19,10 +19,10 @@ globalThis.__bridgeDb={
  $executeRaw:async(s,...v)=>{
   const q=sql(s);
   if(q.includes('INSERT INTO domain_platform_nonces')){if(nonces.has(v[0]))throw new Error('Duplicate nonce');nonces.add(v[0]);return 1;}
-  if(q.includes('INSERT INTO domain_platform_orders')){orders.push({id:v[0],partnerId:v[1],hostname:v[2],years:v[3],amountMinor:BigInt(v[4]),quoteExpiresAt:v[5],status:'QUOTED',paymentReference:null,registrantCiphertext:null,registrarOrderId:null,expiresAt:null,checkoutUrl:null});return 1;}
+  if(q.includes('INSERT INTO domain_platform_orders')){orders.push({id:v[0],partnerId:v[1],hostname:v[2],years:v[3],amountMinor:BigInt(v[4]),quoteExpiresAt:v[5],country:v[6],currency:v[7],paymentProvider:v[8],status:'QUOTED',paymentReference:null,registrantCiphertext:null,registrarOrderId:null,expiresAt:null,checkoutUrl:null});return 1;}
   const row=orders.find(o=>v.includes(o.id));if(!row)throw new Error(`Missing row: ${q}`);
   if(q.includes("SET status='CHECKOUT_PENDING'")){if(row.status!=='QUOTED')return 0;Object.assign(row,{status:'CHECKOUT_PENDING',paymentReference:v[0],registrantCiphertext:v[1]});return 1;}
-  if(q.includes('SET checkoutUrl=')){row.checkoutUrl=v[0];return 1;}
+  if(q.includes('SET paymentReference=')){row.paymentReference=v[0];row.checkoutUrl=v[1];return 1;}
   if(q.includes("SET status='REGISTERING'")){if(row.status!=='CHECKOUT_PENDING')return 0;row.status='REGISTERING';return 1;}
   if(q.includes("SET status='RECONCILIATION_REQUIRED'")){row.status='RECONCILIATION_REQUIRED';return 1;}
   if(q.includes("SET status='REGISTERED'")){if(!['REGISTERING','RECONCILIATION_REQUIRED'].includes(row.status))return 0;Object.assign(row,{status:'REGISTERED',registrarOrderId:v[0],expiresAt:v[1]});return 1;}
@@ -34,12 +34,15 @@ globalThis.__bridgeClient={selectedDomainProviderName:()=> 'resellerclub',checkA
 globalThis.__bridgeRegistrar={getRegistration:async({domainName})=>{if(registrarUnavailable)throw new Error('Still pending');return{domainName,orderId:'registrar-1',active:true,expiresAt:'2027-09-12T00:00:00.000Z',registrantEmail:'owner@example.com'};}};
 globalThis.__bridgeInitialize=async input=>{payment={domain:'live',reference:input.reference,currency:'NGN',amountMinor:input.amountMinor,metadata:input.metadata};return{checkoutUrl:'https://checkout.paystack.com/synthetic'};};
 globalThis.__bridgeVerify=async()=>payment;
+globalThis.__bridgeStripe=async input=>{payment={id:'cs_live_synthetic',livemode:true,currency:input.currency,amountMinor:input.amountMinor,metadata:input.metadata};return {checkoutUrl:'https://checkout.stripe.com/synthetic',providerReference:payment.id};};
+globalThis.__bridgeStripeVerify=async()=>payment;
 const hooks=registerHooks({resolve(s,c,next){const inline=code=>({url:`data:text/javascript,${encodeURIComponent(code)}`,shortCircuit:true});
+ if(s==='./platform-pricing')return inline('export async function buildPlatformDomainQuote(h,y,c){return {totalAmountMinor:c==="GB"?1500:500000,currency:c==="GB"?"GBP":"NGN",provider:c==="GB"?"stripe":"paystack"}}');
  if(s==='server-only')return inline('export{}');
  if(s==='@/lib/prisma')return inline('export const prisma=globalThis.__bridgeDb');
  if(s==='@/lib/admin-settings')return inline('export async function applyAdminSettingsToProcessEnv(){}');
  if(s==='@/lib/payments/domain-checkout')return inline('export const supportedCheckoutDomain=v=>v;export async function buildDomainQuote(){return {totalAmountMinor:500000}}');
- if(s==='@/lib/payments/course-checkout')return inline('export const initializePaystack=globalThis.__bridgeInitialize;export const verifyPaystackTransaction=globalThis.__bridgeVerify;export const siteBaseUrl=()=>"https://service.example.com"');
+ if(s==='@/lib/payments/course-checkout')return inline('export const initializeStripe=globalThis.__bridgeStripe;export const retrieveStripeSession=globalThis.__bridgeStripeVerify;export const initializePaystack=globalThis.__bridgeInitialize;export const verifyPaystackTransaction=globalThis.__bridgeVerify;export const siteBaseUrl=()=>"https://service.example.com"');
  if(s==='node:module'&&c.parentURL?.endsWith('/platform-orders.ts'))return inline('export const createRequire=()=>p=>p.includes("domain-client")?globalThis.__bridgeClient:globalThis.__bridgeRegistrar');
  return next(s,c);
 }});
@@ -82,4 +85,16 @@ test('forged payment evidence cannot register; an ambiguous registrar call is ne
  await completePlatformDomainPayment(row.id,'a');assert.equal(registrations,1);
  registrarUnavailable=false;const complete=await completePlatformDomainPayment(row.id,'a');assert.equal(complete.status,'REGISTERED');assert.equal(registrations,1);
  await completePlatformDomainPayment(row.id,'a');assert.equal(registrations,1);
+});
+
+test('UK quote stays GBP at checkout; altered country and sandbox payment cannot register a domain',async()=>{
+ process.env.STRIPE_SECRET_KEY='sk_live_synthetic_never_sent';
+ const quote=await platformDomainCommand({action:'quote',partnerId:'uk',hostname:'business-uk.com',years:1,country:'GB'});
+ assert.equal(quote.currency,'GBP');assert.equal(quote.amountMinor,1500);
+ const input={action:'checkout',partnerId:'uk',quoteId:quote.quoteId,acceptedTotalMinor:1500,country:'GB',confirmed:true,registrant:{company:'UK Business',fullName:'Business Owner',email:'owner@example.com',address1:'10 Business Street',city:'London',state:'London',postalCode:'SW1A 1AA',phone:'+447881194138'}};
+ await assert.rejects(platformDomainCommand({...input,country:'NG'}),/billing country/);
+ const checkout=await platformDomainCommand(input);assert.equal(checkout.currency,'GBP');assert.match(checkout.checkoutUrl,/checkout.stripe.com/);
+ const before=registrations;payment.livemode=false;await assert.rejects(completePlatformDomainPayment(quote.orderId,'uk'),/reconciliation/);
+ payment.livemode=true;payment.currency='USD';await assert.rejects(completePlatformDomainPayment(quote.orderId,'uk'),/reconciliation/);
+ payment.currency='GBP';payment.amountMinor=1;await assert.rejects(completePlatformDomainPayment(quote.orderId,'uk'),/reconciliation/);assert.equal(registrations,before);
 });
