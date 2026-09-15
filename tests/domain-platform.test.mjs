@@ -37,6 +37,7 @@ globalThis.__bridgeVerify=async()=>payment;
 globalThis.__bridgeStripe=async input=>{payment={id:'cs_live_synthetic',livemode:true,currency:input.currency,amountMinor:input.amountMinor,metadata:input.metadata};return {checkoutUrl:'https://checkout.stripe.com/synthetic',providerReference:payment.id};};
 globalThis.__bridgeStripeVerify=async()=>payment;
 const hooks=registerHooks({resolve(s,c,next){const inline=code=>({url:`data:text/javascript,${encodeURIComponent(code)}`,shortCircuit:true});
+ if(s==='./platform-funding')return inline('export async function assertPlatformDomainFunding(){if(globalThis.__fundingUnavailable)throw Error(\"Domain service temporarily unavailable\");}');
  if(s==='./platform-pricing')return inline('export async function buildPlatformDomainQuote(h,y,c){return {totalAmountMinor:c==="GB"?1500:500000,currency:c==="GB"?"GBP":"NGN",provider:c==="GB"?"stripe":"paystack"}}');
  if(s==='server-only')return inline('export{}');
  if(s==='@/lib/prisma')return inline('export const prisma=globalThis.__bridgeDb');
@@ -73,10 +74,12 @@ test('quotes and payments enforce immutable partner scope, accepted amount and r
  await assert.rejects(platformDomainCommand({action:'status',partnerId:'b',orderId:quote.orderId}),/not found/);
  const input={action:'checkout',partnerId:'a',quoteId:quote.quoteId,acceptedTotalMinor:quote.amountMinor,confirmed:true,registrant:{company:'Business A Ltd',fullName:'Business Owner',email:'owner@example.com',address1:'10 Business Street',city:'Lagos',state:'Lagos',postalCode:'100001',phone:'+2348000000000'}};
  await assert.rejects(platformDomainCommand({...input,acceptedTotalMinor:1}),/Quote/);
+ globalThis.__fundingUnavailable=true;try{await assert.rejects(platformDomainCommand(input),/temporarily unavailable/);assert.equal(orders[0].status,'QUOTED');assert.equal(payment,null);}finally{globalThis.__fundingUnavailable=false;}
  const checkout=await platformDomainCommand(input);assert.equal(checkout.status,'CHECKOUT_PENDING');
  assert.equal((await platformDomainCommand(input)).checkoutUrl,checkout.checkoutUrl);
  assert.ok(!JSON.stringify(checkout).includes('Business Owner'));assert.ok(!orders[0].registrantCiphertext.includes('Business Owner'));
 });
+test('insufficient funds prevent registration while preserving the paid order for retry',async()=>{globalThis.__fundingUnavailable=true;try{await assert.rejects(completePlatformDomainPayment(orders[0].id,'a'),/temporarily unavailable/);assert.equal(orders[0].status,'CHECKOUT_PENDING');assert.equal(registrations,0);}finally{globalThis.__fundingUnavailable=false;}});
 test('forged payment evidence cannot register; an ambiguous registrar call is never repeated',async()=>{
  const row=orders[0];payment={...payment,currency:'USD'};
  await assert.rejects(completePlatformDomainPayment(row.id,'a'),/reconciliation/);assert.equal(registrations,0);

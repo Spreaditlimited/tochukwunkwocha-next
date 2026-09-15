@@ -11,6 +11,7 @@ globalThis.__renewDb={
 globalThis.__renewRegistrar={getRegistration:async()=>({orderId:registrarId,active:true,expiresAt:expiry}),renewRegistration:async()=>{calls++;throw new Error('Synthetic ambiguous response');}};
 globalThis.__renewPayment=()=>payment;
 const hook=registerHooks({resolve(s,c,next){const inline=code=>({url:`data:text/javascript,${encodeURIComponent(code)}`,shortCircuit:true});
+ if(s==='./platform-funding')return inline('export async function assertPlatformDomainFunding(){if(globalThis.__fundingUnavailable)throw Error(\"Domain service temporarily unavailable\");}');
  if(s==='./platform-pricing')return inline('export async function buildPlatformDomainQuote(){}');
  if(s==='server-only')return inline('export{}');
  if(s==='@/lib/prisma')return inline('export const prisma=globalThis.__renewDb');

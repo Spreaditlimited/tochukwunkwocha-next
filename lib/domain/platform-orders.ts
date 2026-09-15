@@ -1,3 +1,4 @@
+import { assertPlatformDomainFunding } from './platform-funding';
 import 'server-only';
 import { createRequire } from 'node:module';
 import { randomUUID, randomBytes, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
@@ -63,6 +64,7 @@ export async function platformDomainCommand(input:z.infer<typeof platformCommand
  }
  if(input.action==='status')return completePlatformDomainPayment(row.id,input.partnerId);
  if ((row.country||'NG') !== input.country) throw new Error('This quote uses a different billing country. Request a fresh quote.');
+ await assertPlatformDomainFunding(row.hostname,row.years,'register');
  if(row.checkoutUrl)return result(row);
  if(row.status!=='QUOTED')throw new Error('This checkout is already being processed. Check its status; do not create another payment.');
  if(row.quoteExpiresAt<new Date()||Number(row.amountMinor)!==input.acceptedTotalMinor)throw new Error('Quote expired or changed. Check the price again.');
@@ -90,11 +92,12 @@ export async function completePlatformDomainPayment(id:string,partnerId?:string)
  if(!row.paymentReference)return result(row);
  const payment=row.paymentProvider==='stripe'?await retrieveStripeSession(row.paymentReference).then(p=>({...p,reference:p.id,domain:p.livemode?'live':'test'})):await verifyPaystackTransaction(row.paymentReference);
  if(payment.domain!=='live'||payment.reference!==row.paymentReference||payment.currency!==(row.currency||'NGN')||payment.amountMinor!==Number(row.amountMinor)||payment.metadata?.platformOrderId!==row.id||payment.metadata?.payment_scope!=='sureimports_domain')throw new Error('Domain payment requires reconciliation.');
+ if(row.status==='CHECKOUT_PENDING')await assertPlatformDomainFunding(row.hostname,row.years,'register');
  const registrant=unseal(row.registrantCiphertext!,row.id);
  const acquired=await prisma.$executeRaw`UPDATE domain_platform_orders SET status='REGISTERING',updatedAt=NOW(3) WHERE id=${row.id} AND status='CHECKOUT_PENDING'`;
  if(acquired){
   try{
-   const registration=await client.registerDomain({domainName:row.hostname,years:row.years,fullName:registrant.fullName,registrantCompany:registrant.company,email:registrant.email,registrantAddress1:registrant.address1,registrantCity:registrant.city,registrantState:registrant.state,registrantCountry:row.country||'NG',registrantPostalCode:registrant.postalCode,registrantPhone:registrant.phone.slice(registrant.phone.startsWith('+44')?3:4),registrantPhoneCc:registrant.phone.startsWith('+44')?'44':'234',strict:true});
+   const registration=await client.registerDomain({externallyPaid:true,domainName:row.hostname,years:row.years,fullName:registrant.fullName,registrantCompany:registrant.company,email:registrant.email,registrantAddress1:registrant.address1,registrantCity:registrant.city,registrantState:registrant.state,registrantCountry:row.country||'NG',registrantPostalCode:registrant.postalCode,registrantPhone:registrant.phone.slice(registrant.phone.startsWith('+44')?3:4),registrantPhoneCc:registrant.phone.startsWith('+44')?'44':'234',strict:true});
    if(!registration.success)throw new Error('Registrar registration needs review.');
    await prisma.$executeRaw`UPDATE domain_platform_orders SET registrarOrderId=${registration.orderId},updatedAt=NOW(3) WHERE id=${row.id}`;
   }catch{await prisma.$executeRaw`UPDATE domain_platform_orders SET status='RECONCILIATION_REQUIRED',updatedAt=NOW(3) WHERE id=${row.id} AND status='REGISTERING'`;}

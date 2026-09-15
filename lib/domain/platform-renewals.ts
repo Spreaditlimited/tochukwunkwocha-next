@@ -1,3 +1,4 @@
+import { assertPlatformDomainFunding } from './platform-funding';
 import 'server-only';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +46,7 @@ export async function platformRenewalCommand(input:z.infer<typeof renewalCommand
  const row=await owned(input.partnerId,input.renewalId);
  if(input.action==='renew-status')return completePlatformRenewal(row.id,input.partnerId);
  if ((row.country||'NG') !== input.country) throw new Error('This quote uses a different billing country. Request a fresh quote.');
+ await assertPlatformDomainFunding(row.hostname,row.years,'renew');
  if(row.checkoutUrl)return dto(row);
  if(row.status!=='QUOTED'||row.quoteExpiresAt<=new Date()||Number(row.amountMinor)!==input.acceptedTotalMinor)throw new Error('Renewal quote expired or checkout is already in progress. Check status before trying again.');
  if(row.paymentProvider!=='stripe'&&!(process.env.PAYSTACK_SECRET_KEY||'').startsWith('sk_live_'))throw new Error('Live renewal checkout is unavailable.');
@@ -67,6 +69,7 @@ export async function completePlatformRenewal(id:string,partnerId?:string,legacy
  const current=await registrar.getRegistration({domainName:row.hostname});
  if(current.orderId!==row.registrarOrderId)throw new Error('Registrar ownership changed. Manual review required.');
  if(row.status==='CHECKOUT_PENDING'){
+  await assertPlatformDomainFunding(row.hostname,row.years,'renew');
   if(current.expiresAt!==row.expectedExpiry.toISOString())throw new Error('Registrar expiry changed before this renewal. Reconcile this payment manually.');
   const claim=await prisma.$executeRaw`UPDATE domain_platform_renewals SET status='RENEWING',updatedAt=NOW(3) WHERE id=${row.id} AND status='CHECKOUT_PENDING'`;
   if(claim){try{await registrar.renewRegistration({domainName:row.hostname,years:row.years,expectedExpiry:row.expectedExpiry.toISOString()});}catch{await prisma.$executeRaw`UPDATE domain_platform_renewals SET status='RECONCILIATION_REQUIRED',updatedAt=NOW(3) WHERE id=${row.id} AND status='RENEWING'`;}}
