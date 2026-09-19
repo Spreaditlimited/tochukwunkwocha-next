@@ -98,6 +98,8 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
   { key: "BREVO_LEADPAGE_LIST_ID", category: "Email/CRM" },
   { key: "BREVO_LEADPAGE_FOLLOWUP_EMAIL_COUNT", category: "Email/CRM" },
   { key: "BREVO_FREE_TIER_DAILY_SEND_LIMIT", category: "Email/CRM" },
+  { key: "PRACTICAL_AI_NEWSLETTER_ENABLED", category: "Email/CRM" },
+  { key: "PRACTICAL_AI_NEWSLETTER_RUN_LIMIT", category: "Email/CRM" },
   { key: "BREVO_WEBHOOK_SECRET", category: "Email/CRM", secret: true },
   { key: "BREVO_LEARNING_FOLLOWUP_WEBHOOK_ID", category: "Learning Follow-ups" },
   { key: "LEARNING_FOLLOWUPS_ENABLED", category: "Learning Follow-ups" },

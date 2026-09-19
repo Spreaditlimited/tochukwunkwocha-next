@@ -51,6 +51,8 @@
     "smoke:learning-inactivity-followups-live": "node --env-file=.env.local scripts/smoke-learning-inactivity-followups-live.mjs",
     "smoke:google-analytics": "node scripts/smoke-google-analytics.mjs",
     "smoke:blog-rss": "node scripts/smoke-blog-rss.mjs",
+    "smoke:practical-ai-newsletter": "node scripts/smoke-practical-ai-newsletter.mjs",
+    "newsletter:migrate-brevo": "node --env-file=.env scripts/migrate-practical-ai-newsletter-from-brevo.mjs",
     "smoke:blog-search": "node --test tests/blog-search.test.mjs",
     "smoke:blog-automation-progress": "node --test tests/blog-automation-progress.test.mjs",
     "smoke:seo-opportunities": "node --test tests/seo-opportunities.test.mjs",

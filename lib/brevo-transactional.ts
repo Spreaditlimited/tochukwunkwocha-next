@@ -21,8 +21,9 @@ function sender() {
   return { email, name }
 }
 
-export function brandedBrevoEmail(input: { subject: string; html: string }) {
+export function brandedBrevoEmail(input: { subject: string; html: string; footerText?: string }) {
   const subject = escapeHtml(input.subject)
+  const footerText = escapeHtml(input.footerText || "You are receiving this email because you are enrolled in a Tochukwu Tech and AI Academy programme.")
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -49,7 +50,7 @@ export function brandedBrevoEmail(input: { subject: string; html: string }) {
             <tr>
               <td style="border-top:1px solid #e5edf6;padding:18px 28px;background:#f8fbff;">
                 <div style="font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#0d4f9a;">Learn. Build. Transform.</div>
-                <div style="margin-top:6px;font-size:12px;line-height:1.5;color:#64748b;">You are receiving this email because you are enrolled in a Tochukwu Tech and AI Academy programme.</div>
+                <div style="margin-top:6px;font-size:12px;line-height:1.5;color:#64748b;">${footerText}</div>
               </td>
             </tr>
           </table>
@@ -68,6 +69,7 @@ export async function sendBrevoTransactionalEmail(input: {
   text?: string
   tags?: string[]
   headers?: Record<string, string>
+  footerText?: string
 }) {
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
@@ -86,7 +88,7 @@ export async function sendBrevoTransactionalEmail(input: {
     sender: sender(),
     to: [{ email: to, name: clean(input.name, 160) || undefined }],
     subject,
-    htmlContent: brandedBrevoEmail({ subject, html: input.html }),
+    htmlContent: brandedBrevoEmail({ subject, html: input.html, footerText: input.footerText }),
     textContent: clean(input.text, 200000) || undefined,
     ...(tags.length ? { tags } : {}),
     ...(Object.keys(headers).length ? { headers } : {})
