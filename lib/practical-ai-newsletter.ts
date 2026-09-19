@@ -418,6 +418,7 @@ export async function processPracticalAiNewsletter(input?: {
   skipReconcile?: boolean
 }) {
   const now = input?.now || new Date()
+  await applyAdminSettingsToProcessEnv()
   await ensurePracticalAiNewsletterTables()
   const reconciliation = input?.skipReconcile ? null : await reconcilePracticalAiNewsletterCampaigns(now)
   const enabled = newsletterEnabled()
