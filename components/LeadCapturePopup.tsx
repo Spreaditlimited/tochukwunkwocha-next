@@ -382,19 +382,19 @@ export function LeadCapturePopup() {
   const buttonText = leadMagnet?.buttonText || (leadMagnet ? "Send me the PDF" : "Subscribe to Insights")
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-[80] pointer-events-none animate-in slide-in-from-bottom-8 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[420px]">
-      <section className="pointer-events-auto overflow-hidden rounded-2xl border border-white/10 bg-brand-ink/95 text-white shadow-2xl backdrop-blur-md">
+    <div className="fixed inset-x-4 bottom-4 z-[120] pointer-events-none animate-in slide-in-from-bottom-8 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[420px]">
+      <section className="pointer-events-auto flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-brand-ink/95 text-white shadow-2xl backdrop-blur-md sm:max-h-[calc(100dvh-3rem)]">
         
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-white/5 px-6 py-5">
+        <div className="z-10 flex shrink-0 items-start justify-between gap-3 border-b border-white/10 bg-brand-ink px-4 py-4 sm:gap-4 sm:bg-white/5 sm:px-6 sm:py-5">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-sky-400">{kicker}</p>
-            <h2 className="mt-1.5 font-heading text-lg font-black leading-snug tracking-tight text-white sm:text-xl">
+            <h2 className="mt-1.5 font-heading text-base font-black leading-snug tracking-tight text-white sm:text-xl">
               {headline}
             </h2>
           </div>
           <button 
-            className="shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white" 
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
             type="button" 
             onClick={closePopup} 
             aria-label="Close dialog"
@@ -404,7 +404,7 @@ export function LeadCapturePopup() {
         </div>
 
         {/* Content Body */}
-        <div className="p-6">
+        <div className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {success ? (
             <div className="flex flex-col gap-5 animate-in fade-in">
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">

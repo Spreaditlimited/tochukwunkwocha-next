@@ -34,6 +34,7 @@ function fail(message) {
 }
 
 const sharedModalSource = fs.readFileSync(path.join(projectRoot, sharedModalPath), "utf8")
+const leadCapturePopupSource = fs.readFileSync(path.join(projectRoot, "components", "LeadCapturePopup.tsx"), "utf8")
 const requiredBehaviors = [
   ["role=dialog", /role="dialog"/],
   ["aria-modal", /aria-modal="true"/],
@@ -46,6 +47,19 @@ const requiredBehaviors = [
 
 for (const [label, pattern] of requiredBehaviors) {
   if (!pattern.test(sharedModalSource)) fail(`DashboardModal is missing ${label}.`)
+}
+
+if (!/max-h-\[calc\(100dvh-2rem\)\]/.test(leadCapturePopupSource)) {
+  fail("LeadCapturePopup must stay within the mobile dynamic viewport.")
+}
+if (!/min-h-0 overflow-y-auto overscroll-contain/.test(leadCapturePopupSource)) {
+  fail("LeadCapturePopup must scroll its body while keeping the close control visible.")
+}
+if (!/min-h-11 min-w-11/.test(leadCapturePopupSource)) {
+  fail("LeadCapturePopup close control must keep a mobile-friendly touch target.")
+}
+if (!/z-\[120\]/.test(leadCapturePopupSource)) {
+  fail("LeadCapturePopup must render above the fixed mobile site header.")
 }
 
 for (const relativePath of legacyModalFiles) {
