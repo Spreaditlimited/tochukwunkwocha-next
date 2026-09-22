@@ -76,7 +76,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
     return (
       <>
         {pageJsonLd ? <JsonLd data={pageJsonLd} /> : null}
-        <PromptToProfitAdvancedCoursePage course={course} coursePrices={courseSettings} />
+        <PromptToProfitAdvancedCoursePage course={course} courseSettings={courseSettings} />
       </>
     )
   }

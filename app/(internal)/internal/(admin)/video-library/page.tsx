@@ -61,7 +61,7 @@ function dateInput(value: Date | null | undefined) {
 }
 
 function moduleBatchRuleProps(
-  batches: Array<{ batchKey: string; batchLabel: string | null; batchStartAt: Date | null; status: string | null }>,
+  batches: Array<{ batchKey: string; batchLabel: string | null; batchStartAt: Date | null; batchEndAt: Date | null; status: string | null }>,
   schedules: Array<{ batchKey: string; accessMode: string; dripAt: Date | null }>
 ) {
   return {
@@ -257,6 +257,7 @@ export default async function InternalVideoLibraryPage({ searchParams }: PagePro
                     <input name="batchKey" defaultValue={batch.batchKey} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <PremiumPicker name="status" defaultValue={batch.status || "closed"} options={batchStatusOptions} />
                     <input name="batchStartAt" type="datetime-local" defaultValue={dateInput(batch.batchStartAt)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <input name="batchEndAt" type="datetime-local" defaultValue={dateInput(batch.batchEndAt)} className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="paystackReferencePrefix" defaultValue={batch.paystackReferencePrefix || ""} placeholder="Paystack prefix" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <input name="brevoListId" defaultValue={batch.brevoListId || ""} placeholder="Brevo list" className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     <div className="flex items-center gap-2">

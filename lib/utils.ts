@@ -97,6 +97,44 @@ export function formatBatchPickerLabel(
   return `${label}${start ? ` · Starts ${start}` : ""}`
 }
 
+function wallDateParts(value: Date | string | null | undefined) {
+  if (!value) return null
+  const raw = value instanceof Date
+    ? [
+        value.getUTCFullYear(),
+        String(value.getUTCMonth() + 1).padStart(2, "0"),
+        String(value.getUTCDate()).padStart(2, "0")
+      ].join("-")
+    : String(value).trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (!Number.isInteger(year) || month < 1 || month > 12 || day < 1 || day > 31) return null
+  return { year, month, day }
+}
+
+export function formatCohortDateRange(
+  batchStartAt: Date | string | null | undefined,
+  batchEndAt: Date | string | null | undefined
+) {
+  const start = wallDateParts(batchStartAt)
+  if (!start) return ""
+  const end = wallDateParts(batchEndAt)
+  const month = (value: number) => new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" })
+    .format(new Date(Date.UTC(2020, value - 1, 1)))
+
+  if (!end) return `${start.day} ${month(start.month)} ${start.year}`
+  if (start.year === end.year && start.month === end.month) {
+    return `${start.day}–${end.day} ${month(start.month)} ${start.year}`
+  }
+  if (start.year === end.year) {
+    return `${start.day} ${month(start.month)}–${end.day} ${month(end.month)} ${start.year}`
+  }
+  return `${start.day} ${month(start.month)} ${start.year}–${end.day} ${month(end.month)} ${end.year}`
+}
+
 export function watWallDateTimeMs(value: Date | string | null | undefined) {
   if (!value) return NaN
   if (value instanceof Date) {
@@ -131,40 +169,6 @@ export function batchHasNotStarted(
   batchStartAt: Date | string | null | undefined,
   currentTimeMs = Date.now()
 ) {
-  if (!batchStartAt || !Number.isFinite(currentTimeMs)) return false
-
-  const batchDateKey = (() => {
-    if (batchStartAt instanceof Date) {
-      if (!Number.isFinite(batchStartAt.getTime())) return ""
-      return [
-        batchStartAt.getUTCFullYear(),
-        String(batchStartAt.getUTCMonth() + 1).padStart(2, "0"),
-        String(batchStartAt.getUTCDate()).padStart(2, "0")
-      ].join("-")
-    }
-    const raw = String(batchStartAt).trim()
-    const wallDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
-    if (wallDate) return `${wallDate[1]}-${wallDate[2]}-${wallDate[3]}`
-    const parsed = new Date(raw)
-    if (!Number.isFinite(parsed.getTime())) return ""
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Africa/Lagos",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).formatToParts(parsed)
-    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || ""
-    return `${value("year")}-${value("month")}-${value("day")}`
-  })()
-
-  const currentParts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Lagos",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(new Date(currentTimeMs))
-  const currentValue = (type: Intl.DateTimeFormatPartTypes) => currentParts.find((part) => part.type === type)?.value || ""
-  const currentDateKey = `${currentValue("year")}-${currentValue("month")}-${currentValue("day")}`
-
-  return Boolean(batchDateKey) && batchDateKey > currentDateKey
+  const startTimeMs = watWallDateTimeMs(batchStartAt)
+  return Number.isFinite(startTimeMs) && Number.isFinite(currentTimeMs) && currentTimeMs < startTimeMs
 }

@@ -231,9 +231,10 @@ export async function saveCourseBatchAction(formData: FormData) {
     brevoListId: String(formData.get("brevoListId") || ""),
     seatLimit: String(formData.get("seatLimit") || ""),
     batchStartAt: String(formData.get("batchStartAt") || ""),
+    batchEndAt: String(formData.get("batchEndAt") || ""),
     activate: formData.get("activate") === "on"
   })
-  await setInternalToast({ title: "Batch saved", message: "The batch name, start date, Brevo list, and active status are saved." })
+  await setInternalToast({ title: "Batch saved", message: "The batch name, date range, Brevo list, and active status are saved." })
   revalidatePath(PATH)
 }
 

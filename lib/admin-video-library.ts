@@ -285,6 +285,7 @@ export async function ensureVideoLibraryTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
   await addColumnIfMissing("course_batches", "batch_start_at", "DATETIME NULL")
+  await addColumnIfMissing("course_batches", "batch_end_at", "DATETIME NULL")
   await addColumnIfMissing("course_batches", "brevo_list_id", "VARCHAR(64) NULL")
   await addColumnIfMissing("course_batches", "seat_limit", "INT NULL")
   await addColumnIfMissing("course_batches", "activated_at", "DATETIME NULL")
@@ -468,11 +469,13 @@ export async function listVideoLibrary() {
       brevoListId: string | null
       seatLimit: number | bigint | null
       batchStartAt: Date | null
+      batchEndAt: Date | null
     }>>`
       SELECT course_slug AS courseSlug, batch_key AS batchKey, batch_label AS batchLabel,
         status, is_active AS isActive, paystack_reference_prefix AS paystackReferencePrefix,
         paystack_amount_minor AS paystackAmountMinor, paypal_amount_minor AS paypalAmountMinor,
-        brevo_list_id AS brevoListId, seat_limit AS seatLimit, batch_start_at AS batchStartAt
+        brevo_list_id AS brevoListId, seat_limit AS seatLimit, batch_start_at AS batchStartAt,
+        batch_end_at AS batchEndAt
       FROM course_batches
       WHERE COALESCE(TRIM(course_slug), '') <> ''
         AND COALESCE(TRIM(batch_key), '') <> ''
@@ -649,6 +652,7 @@ export async function saveCourseBatch(input: {
   brevoListId?: string
   seatLimit?: string
   batchStartAt?: string
+  batchEndAt?: string
   activate?: boolean
 }) {
   await ensureVideoLibraryTables()
@@ -664,6 +668,10 @@ export async function saveCourseBatch(input: {
   const status = clean(input.status, 32).toLowerCase() === "open" ? "open" : "closed"
   const seatLimit = toInt(input.seatLimit, 0) > 0 ? toInt(input.seatLimit, 0) : null
   const batchStartAt = toDate(input.batchStartAt)
+  const batchEndAt = toDate(input.batchEndAt)
+  if (batchStartAt && batchEndAt && batchEndAt.getTime() < batchStartAt.getTime()) {
+    throw new Error("Batch end date must be on or after the start date.")
+  }
   if (originalBatchKey) {
     await prisma.$executeRaw`
       UPDATE course_batches
@@ -676,6 +684,7 @@ export async function saveCourseBatch(input: {
           brevo_list_id = ${clean(input.brevoListId, 64) || null},
           seat_limit = ${seatLimit},
           batch_start_at = ${batchStartAt},
+          batch_end_at = ${batchEndAt},
           updated_at = ${now}
       WHERE course_slug = ${courseSlug}
         AND batch_key = ${originalBatchKey}
@@ -684,10 +693,10 @@ export async function saveCourseBatch(input: {
   } else {
     await prisma.$executeRaw`
       INSERT INTO course_batches
-        (course_slug, batch_key, batch_label, status, is_active, paystack_reference_prefix, paystack_amount_minor, paypal_amount_minor, brevo_list_id, seat_limit, batch_start_at, activated_at, created_at, updated_at)
+        (course_slug, batch_key, batch_label, status, is_active, paystack_reference_prefix, paystack_amount_minor, paypal_amount_minor, brevo_list_id, seat_limit, batch_start_at, batch_end_at, activated_at, created_at, updated_at)
       VALUES
         (${courseSlug}, ${batchKey}, ${batchLabel}, ${status}, 0, ${normalizePrefix(input.paystackReferencePrefix || prefixFromSlug(courseSlug))},
-         ${paystackAmountMinor}, ${paypalAmountMinor}, ${clean(input.brevoListId, 64) || null}, ${seatLimit}, ${batchStartAt}, NULL, ${now}, ${now})
+         ${paystackAmountMinor}, ${paypalAmountMinor}, ${clean(input.brevoListId, 64) || null}, ${seatLimit}, ${batchStartAt}, ${batchEndAt}, NULL, ${now}, ${now})
       ON DUPLICATE KEY UPDATE
         batch_label = VALUES(batch_label),
         status = VALUES(status),
@@ -697,6 +706,7 @@ export async function saveCourseBatch(input: {
         brevo_list_id = VALUES(brevo_list_id),
         seat_limit = VALUES(seat_limit),
         batch_start_at = VALUES(batch_start_at),
+        batch_end_at = VALUES(batch_end_at),
         updated_at = VALUES(updated_at)
     `
   }

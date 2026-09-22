@@ -130,6 +130,7 @@ type CheckoutBatch = {
   batchLabel: string
   remainingSeats: number | null
   batchStartAt: string | null
+  batchEndAt: string | null
 }
 
 const countryOptions = [
@@ -175,6 +176,22 @@ function formatBatchStart(value: string | null) {
     hour12: true,
     timeZone: match ? "UTC" : "Africa/Lagos"
   }).format(date) + " WAT"
+}
+
+function formatBatchRange(startValue: string | null, endValue: string | null) {
+  const parts = (value: string | null) => {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/)
+    return match ? { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) } : null
+  }
+  const start = parts(startValue)
+  if (!start) return ""
+  const end = parts(endValue)
+  const month = (value: number) => new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" })
+    .format(new Date(Date.UTC(2020, value - 1, 1)))
+  if (!end) return `${start.day} ${month(start.month)} ${start.year}`
+  if (start.year === end.year && start.month === end.month) return `${start.day}–${end.day} ${month(start.month)} ${start.year}`
+  if (start.year === end.year) return `${start.day} ${month(start.month)}–${end.day} ${month(end.month)} ${start.year}`
+  return `${start.day} ${month(start.month)} ${start.year}–${end.day} ${month(end.month)} ${end.year}`
 }
 
 function cookieValue(name: string) {
@@ -840,7 +857,7 @@ export function CourseCheckoutForm({
                         onChange={(event) => setBatchKey(event.target.value)}
                         options={batches.map((batch) => ({
                           value: batch.batchKey,
-                          label: `${formatBatchStart(batch.batchStartAt) ? `${batch.batchLabel} · Starts ${formatBatchStart(batch.batchStartAt)}` : batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
+                          label: `${formatBatchRange(batch.batchStartAt, batch.batchEndAt) ? `${batch.batchLabel} · ${formatBatchRange(batch.batchStartAt, batch.batchEndAt)}` : batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
                         }))}
                       />
                       {selectedBatchStart ? (

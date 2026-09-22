@@ -26,16 +26,22 @@ import { PromptToProfitMark, TrademarkText } from "@/components/TrademarkText"
 import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibilitySection"
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
-import type { CoursePriceValues } from "@/lib/course-price-display"
+import { cohortEnrollmentLabel } from "@/lib/course-cohort-label"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
+import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
+import { formatCohortDateRange, formatDateTimeWAT } from "@/lib/utils"
 
 type Course = NonNullable<ReturnType<typeof getCourse>>
 
 const sectionContainer = "site-container"
 
-export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }: { course: Course; coursePrices: CoursePriceValues | null }) {
+export async function PromptToProfitAdvancedCoursePage({ course, courseSettings }: { course: Course; courseSettings: PublicCourseSettings | null }) {
   const introductionVideo = await getPublicVideoSlot("prompt-to-profit-advanced-intro")
+  const nextCohort = courseSettings?.openBatches[0] || null
+  const enrollmentBadge = cohortEnrollmentLabel(courseSettings?.openBatches || [])
+  const cohortRange = formatCohortDateRange(nextCohort?.batchStartAt, nextCohort?.batchEndAt)
+  const cohortStart = formatDateTimeWAT(nextCohort?.batchStartAt)
   const tools = [
     { name: "Visual Studio Code", icon: Terminal },
     { name: "Git", icon: GitBranch },
@@ -150,7 +156,7 @@ export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }:
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
                 </span>
-                October Cohort Enrolling
+                {enrollmentBadge}
               </span>
             </div>
 
@@ -163,6 +169,29 @@ export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }:
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-400">
               <TrademarkText text="Designed for learners who are ready to move beyond simple websites. If Prompt to Profit Basic taught you how to build, Prompt to Profit Advanced teaches you how to build with structure, confidence, and a professional workflow." />
             </p>
+
+            {nextCohort ? (
+              <div className="mx-auto mt-8 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-2xl border border-sky-400/25 bg-sky-400/[0.08] px-4 py-3 text-sm shadow-[0_16px_50px_-28px_rgba(56,189,248,0.8)] backdrop-blur-sm sm:rounded-full sm:px-5">
+                <span className="inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-sky-300">
+                  <Calendar className="h-4 w-4" />
+                  Next cohort
+                </span>
+                <span className="hidden h-4 w-px bg-sky-300/30 sm:block" aria-hidden="true" />
+                <span className="font-bold text-white">{nextCohort.batchLabel}</span>
+                {cohortRange ? (
+                  <>
+                    <span className="text-sky-300/60" aria-hidden="true">•</span>
+                    <span className="text-slate-300">{cohortRange}</span>
+                  </>
+                ) : null}
+                {cohortStart ? (
+                  <>
+                    <span className="text-sky-300/60" aria-hidden="true">•</span>
+                    <span className="font-semibold text-sky-300">{cohortStart.split(", ").at(-1)}</span>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
               <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
@@ -196,7 +225,7 @@ export async function PromptToProfitAdvancedCoursePage({ course, coursePrices }:
               )
             })}
             <CourseFeeDisplay
-              prices={coursePrices}
+              prices={courseSettings}
               className="surface-raised flex flex-col items-center justify-center bg-card p-6 text-center"
               statCard
             />

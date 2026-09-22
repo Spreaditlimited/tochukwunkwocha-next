@@ -295,7 +295,7 @@ async function targetOptionsForEnrollment(item: SwitchItem) {
       AND COALESCE(TRIM(batch_key), '') <> ''
       AND batch_key COLLATE utf8mb4_unicode_ci <> ${item.batchKey} COLLATE utf8mb4_unicode_ci
       AND batch_start_at IS NOT NULL
-      AND DATE(batch_start_at) > DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))
+      AND batch_start_at > DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR)
     ORDER BY batch_start_at ASC, batch_label ASC
   `)
 

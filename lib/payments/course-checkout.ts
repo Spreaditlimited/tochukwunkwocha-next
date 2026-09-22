@@ -49,6 +49,7 @@ export type CheckoutBatch = {
   enrolledCount: number
   remainingSeats: number | null
   batchStartAt: string | null
+  batchEndAt: string | null
 }
 
 type LearningCourseRow = {
@@ -72,6 +73,7 @@ type CourseBatchRow = {
   brevo_list_id: string | null
   seat_limit: number | bigint | null
   batch_start_at: Date | string | null
+  batch_end_at: Date | string | null
   enrolled_count: number | bigint | null
 }
 
@@ -286,7 +288,7 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
   if (await courseUsesImmediateAccess(courseSlug)) return []
   const rows = await prisma.$queryRaw<CourseBatchRow[]>`
     SELECT cb.course_slug, cb.batch_key, cb.batch_label, cb.status, cb.is_active, cb.brevo_list_id,
-           cb.seat_limit, cb.batch_start_at,
+           cb.seat_limit, cb.batch_start_at, cb.batch_end_at,
            (
              COALESCE((
                SELECT COUNT(*)
@@ -323,10 +325,11 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
            ) AS enrolled_count
     FROM course_batches cb
     WHERE cb.course_slug = ${courseSlug}
-      AND (cb.is_active = 1 OR (${courseSlug} = ${HOLIDAY_COURSE_SLUG} AND cb.status = 'open'))
+      AND cb.status = 'open'
       AND cb.batch_start_at IS NOT NULL
-      AND DATE(cb.batch_start_at) > DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))
-    ORDER BY cb.is_active DESC, cb.batch_start_at IS NULL ASC, cb.batch_start_at ASC, cb.created_at DESC
+      AND cb.batch_start_at > DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR)
+    ORDER BY cb.batch_start_at ASC, cb.created_at ASC
+    LIMIT 1
   `
 
   return rows.map((row) => {
@@ -343,7 +346,8 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
       seatLimit,
       enrolledCount,
       remainingSeats: seatLimit === null ? null : Math.max(0, seatLimit - enrolledCount),
-      batchStartAt: mysqlWallDateTime(row.batch_start_at)
+      batchStartAt: mysqlWallDateTime(row.batch_start_at),
+      batchEndAt: mysqlWallDateTime(row.batch_end_at)
     }
   })
 }

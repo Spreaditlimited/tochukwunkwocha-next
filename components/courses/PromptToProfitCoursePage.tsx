@@ -33,7 +33,7 @@ import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
 import type { SiteShowcase } from "@/lib/site-showcases"
-import { formatDateTimeWAT } from "@/lib/utils"
+import { formatCohortDateRange, formatDateTimeWAT } from "@/lib/utils"
 
 type Course = NonNullable<ReturnType<typeof getCourse>>
 
@@ -468,6 +468,7 @@ export async function PromptToProfitCoursePage({
                     <ul className="mt-5 grid gap-3 sm:grid-cols-2">
                       {openBatches.map((batch) => {
                         const startLabel = formatDateTimeWAT(batch.batchStartAt)
+                        const dateRange = formatCohortDateRange(batch.batchStartAt, batch.batchEndAt)
                         return (
                           <li
                             key={batch.batchKey}
@@ -477,8 +478,11 @@ export async function PromptToProfitCoursePage({
                               <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
                               <div>
                                 <p className="font-bold text-white">{batch.batchLabel}</p>
+                                {dateRange ? (
+                                  <p className="mt-1 text-sm font-medium text-slate-300">{dateRange}</p>
+                                ) : null}
                                 {startLabel ? (
-                                  <p className="mt-1 text-sm font-medium text-slate-300">Starts {startLabel}</p>
+                                  <p className="mt-1 text-xs font-semibold text-sky-300">Starts at {startLabel.split(", ").at(-1)}</p>
                                 ) : null}
                               </div>
                             </div>
