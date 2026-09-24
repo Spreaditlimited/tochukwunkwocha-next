@@ -48,14 +48,14 @@ function service(prisma) {
   return load("lib/ask.ts", { "@/lib/prisma": { prisma }, "@/lib/ask-validation": validation })
 }
 
-test("visitor submissions save pending without identity or answer permissions", async () => {
+test("visitor submissions publish with visibility off and without identity or answer permissions", async () => {
   let saved
   const api = service({ askQuestion: { create: async ({ data }) => { saved = data } } })
   await api.submitAsk({ body: "A private visitor question?" })
-  assert.equal(saved.status, "pending")
+  assert.equal(saved.status, "unlisted")
   assert.equal(saved.kind, "visitor")
   assert.equal(saved.acceptingAnswers, false)
-  assert.deepEqual(Object.keys(saved).sort(), ["acceptingAnswers", "body", "id", "kind", "status"])
+  assert.deepEqual(Object.keys(saved).sort(), ["acceptingAnswers", "body", "id", "kind", "publishedAt", "status"])
 })
 
 test("responses require an open published prompt under a transaction lock", async () => {
@@ -189,6 +189,8 @@ test("all moderation actions authorize before touching data", async () => {
   await assert.rejects(api.moderateAnswerAction({}, form({})), /forbidden/)
   await assert.rejects(api.unpublishQuestionAction({}, form({})), /forbidden/)
   await assert.rejects(api.deleteQuestionAction({}, form({})), /forbidden/)
+  await assert.rejects(api.setQuestionVisibilityAction({}, form({})), /forbidden/)
+  await assert.rejects(api.publishQuestionAction({}, form({})), /forbidden/)
 })
 
 test("question deletion allows private statuses and atomically rejects published or stale questions", async () => {
@@ -318,7 +320,7 @@ test("questions can publish hidden without Facebook and become public only by ex
   assert.equal(saved.status, "published")
 })
 
-test("hidden publication is question-only and Facebook remains optional for visible publication", async () => {
+test("new questions always publish with visibility off even if submitted as public", async () => {
   assert.equal(validation.askQuestionStatus("unlisted"), "unlisted")
   assert.throws(() => validation.askStatus("unlisted"))
   let saved
@@ -327,6 +329,84 @@ test("hidden publication is question-only and Facebook remains optional for visi
     askQuestion: { create: async ({ data }) => { saved = data } }
   }
   assert.ok((await actions(prisma).saveQuestionAction({}, form({ body: "A public question without a link?", status: "published" }))).message)
-  assert.equal(saved.status, "published")
+  assert.equal(saved.status, "unlisted")
   assert.equal(saved.facebookUrl, null)
+})
+
+test("visibility toggle switches independently of Facebook links and rejects stale or invalid input", async () => {
+  let saved
+  let writes = 0
+  let count = 1
+  const api = actions({ askQuestion: { updateMany: async ({ where, data }) => {
+    writes++
+    assert.deepEqual(where, { id, updatedAt: version, status: { in: ["published", "unlisted"] } })
+    assert.deepEqual(Object.keys(data).sort(), ["publishedAt", "status"])
+    saved = data
+    return { count }
+  } } })
+  const fields = { id, version: version.toISOString(), visible: "true" }
+  assert.ok((await api.setQuestionVisibilityAction({}, form(fields))).message)
+  assert.equal(saved.status, "published")
+  assert.ok((await api.setQuestionVisibilityAction({}, form({ ...fields, visible: "false" }))).message)
+  assert.equal(saved.status, "unlisted")
+  count = 0
+  assert.match((await api.setQuestionVisibilityAction({}, form(fields))).error, /changed/)
+  const before = writes
+  assert.ok((await api.setQuestionVisibilityAction({}, form({ ...fields, visible: "bad" }))).error)
+  assert.ok((await api.setQuestionVisibilityAction({}, form({ ...fields, version: "bad" }))).error)
+  assert.equal(writes, before)
+})
+
+test("publish and republish activate the same answer link independently of public visibility", async () => {
+  let question = { id, kind: "prompt", body: "What do you think?", status: "draft", acceptingAnswers: false, facebookUrl: null, updatedAt: version }
+  const answers = []
+  const matches = (where) => Object.entries(where).every(([key, value]) => {
+    if (value instanceof Date) return question[key].getTime() === value.getTime()
+    return typeof value === "object" ? value.in.includes(question[key]) : question[key] === value
+  })
+  const prisma = {
+    $transaction: async (fn) => fn(prisma),
+    $queryRaw: async (sql) => sql.join("").includes("accepting_answers")
+      ? (validation.isQuestionPublished(question.status) && question.acceptingAnswers ? [{ id }] : [])
+      : [{ id }],
+    askQuestion: {
+      findUniqueOrThrow: async () => question,
+      findFirst: async ({ where }) => matches(where) ? question : null,
+      findMany: async ({ where }) => matches(where) ? [question] : [],
+      update: async ({ data }) => { question = { ...question, ...data } },
+      updateMany: async ({ where, data }) => {
+        if (!matches(where)) return { count: 0 }
+        question = { ...question, ...data }
+        return { count: 1 }
+      }
+    },
+    askAnswer: { create: async ({ data }) => answers.push(data) }
+  }
+  const admin = actions(prisma)
+  const publicApi = service(prisma)
+  const fields = { id, version: version.toISOString() }
+  assert.ok((await admin.publishQuestionAction({}, form(fields))).message)
+  assert.equal(question.status, "unlisted")
+  assert.equal(question.acceptingAnswers, true)
+  const link = validation.askAnswerPath(id)
+  for (const visible of ["false", "true", "false"]) {
+    assert.ok((await admin.setQuestionVisibilityAction({}, form({ ...fields, visible }))).message)
+    assert.equal(question.facebookUrl, null)
+    assert.equal((await publicApi.listPublicQuestions(1)).length, visible === "true" ? 1 : 0)
+    assert.equal(Boolean(await publicApi.getPublicQuestion(id, 1)), visible === "true")
+    assert.equal((await publicApi.getAnswerPrompt(id)).id, id)
+    assert.equal(validation.askAnswerPath(id), link)
+    await publicApi.submitAsk({ questionId: id, body: "My anonymous answer" })
+  }
+  assert.equal(answers.length, 3)
+  assert.ok(answers.every((answer) => answer.status === "pending"))
+  assert.ok((await admin.unpublishQuestionAction({}, form(fields))).message)
+  assert.equal(await publicApi.getAnswerPrompt(id), null)
+  assert.ok((await admin.setQuestionVisibilityAction({}, form({ ...fields, visible: "true" }))).error)
+  assert.ok((await admin.publishQuestionAction({}, form(fields))).message)
+  assert.equal(question.status, "unlisted")
+  await publicApi.submitAsk({ questionId: id, body: "An answer after republishing" })
+  assert.equal(answers.length, 4)
+  assert.ok((await admin.publishQuestionAction({}, form(fields))).error)
+  assert.ok((await admin.publishQuestionAction({}, form({ ...fields, version: "stale" }))).error)
 })

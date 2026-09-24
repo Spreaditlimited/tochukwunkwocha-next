@@ -11,7 +11,7 @@ export function AnswerShareLink({ id, status, acceptingAnswers }: { id: string; 
   const [url, setUrl] = useState("")
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState("")
-  const ready = isQuestionPublished(status) && acceptingAnswers
+  const ready = isQuestionPublished(status)
   useEffect(() => { setUrl(new URL(path, window.location.origin).href) }, [path])
   const local = url ? ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname) : false
 
@@ -29,7 +29,7 @@ export function AnswerShareLink({ id, status, acceptingAnswers }: { id: string; 
 
   return <div className="mt-5 space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
     <label htmlFor={fieldId} className="block text-sm font-bold">Anonymous answer link</label>
-    <p className="text-xs leading-5 text-muted-foreground">Paste this link in your Facebook comments. It opens just your question and an anonymous answer form.</p>
+    <p className="text-xs leading-5 text-muted-foreground">Copy and share this link whether public visibility is on or off. It opens just your question and an anonymous answer form. No Facebook post link is required.</p>
     <input ref={input} id={fieldId} type="url" readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="field text-sm" aria-describedby={`${fieldId}-status`} />
     <div className="flex flex-wrap items-center gap-4">
       <button type="button" onClick={copy} disabled={!ready || !url} className="btn-primary gap-2 disabled:opacity-50">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied ? "Link copied" : "Copy answer link"}</button>

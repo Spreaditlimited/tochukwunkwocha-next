@@ -18,15 +18,15 @@ function refresh(id: string) {
 export async function saveQuestionAction(_state: AskAdminState, form: FormData): Promise<AskAdminState> {
   await requireAdmin("/internal/questions")
   try {
-    const status = askQuestionStatus(form.get("status"))
     const facebookUrl = askFacebookUrl(form.get("facebookUrl"))
     const existingId = form.get("id")
+    const status = existingId ? askQuestionStatus(form.get("status")) : "unlisted"
     const id = existingId ? askId(existingId) : randomUUID()
     await prisma.$transaction(async (tx) => {
       if (!existingId) {
         await tx.askQuestion.create({ data: {
           id, kind: "prompt", body: askText(form.get("body")), status, facebookUrl,
-          acceptingAnswers: form.get("acceptingAnswers") === "on",
+          acceptingAnswers: true,
           publishedAt: isQuestionPublished(status) ? new Date() : null
         } })
         return
@@ -47,6 +47,47 @@ export async function saveQuestionAction(_state: AskAdminState, form: FormData):
     return { message: status === "published" ? "Published and visible on /ask." : status === "unlisted" ? "Published but hidden from public pages. Audience questions can receive answers through their shareable link." : "Saved privately. This question is not visible on /ask.", createdId: existingId ? undefined : id }
   } catch (error) {
     return { error: error instanceof AskInputError ? error.message : "Could not save this question. Please try again." }
+  }
+}
+
+export async function setQuestionVisibilityAction(_state: AskAdminState, form: FormData): Promise<AskAdminState> {
+  await requireAdmin("/internal/questions")
+  try {
+    const id = askId(form.get("id"))
+    const visible = form.get("visible")
+    if (visible !== "true" && visible !== "false") throw new AskInputError("Choose a valid visibility setting.")
+    const version = new Date(String(form.get("version") || ""))
+    if (!Number.isFinite(version.getTime())) throw new AskInputError("Refresh before changing visibility.")
+    const result = await prisma.askQuestion.updateMany({
+      where: { id, updatedAt: version, status: { in: ["published", "unlisted"] } },
+      data: { status: visible === "true" ? "published" : "unlisted", publishedAt: new Date() }
+    })
+    if (!result.count) throw new AskInputError("This question has changed or is unpublished. Publish it first or refresh before changing visibility.")
+    refresh(id)
+    return { message: visible === "true" ? "Public visibility is on." : "Public visibility is off. The answer link remains active while answers are enabled." }
+  } catch (error) {
+    return { error: error instanceof AskInputError ? error.message : "Could not change visibility. Please try again." }
+  }
+}
+
+export async function publishQuestionAction(_state: AskAdminState, form: FormData): Promise<AskAdminState> {
+  await requireAdmin("/internal/questions")
+  try {
+    const id = askId(form.get("id"))
+    await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM ask_questions WHERE id = ${id} FOR UPDATE`
+      if (!rows.length) throw new AskInputError("Question not found. Refresh this page.")
+      const existing = await tx.askQuestion.findUniqueOrThrow({ where: { id } })
+      if (form.get("version") !== existing.updatedAt.toISOString()) throw new AskInputError("This question has changed. Refresh before publishing.")
+      if (isQuestionPublished(existing.status)) throw new AskInputError("This question is already published. Refresh this page.")
+      await tx.askQuestion.update({ where: { id }, data: {
+        status: "unlisted", publishedAt: new Date(), acceptingAnswers: existing.kind === "prompt"
+      } })
+    })
+    refresh(id)
+    return { message: "Question published with public visibility off. For audience questions, the answer link is ready to copy and accepts anonymous answers." }
+  } catch (error) {
+    return { error: error instanceof AskInputError ? error.message : "Could not publish this question. Please try again." }
   }
 }
 

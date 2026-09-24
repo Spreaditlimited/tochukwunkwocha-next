@@ -2,9 +2,10 @@ import Link from "next/link"
 import { requireAdmin } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ASK_STATUSES, ASK_QUESTION_STATUSES, isQuestionPublished, questionStatusLabel, askPage, askId } from "@/lib/ask-validation"
-import { QuestionEditor, AnswerModeration, UnpublishQuestionButton, DeleteQuestionButton } from "@/components/ask/AskAdminForms"
+import { QuestionEditor, QuestionVisibilityToggle, AnswerModeration, PublishQuestionButton, UnpublishQuestionButton, DeleteQuestionButton } from "@/components/ask/AskAdminForms"
 import { FacebookLink } from "@/components/ask/FacebookLink"
 import { AnswerShareLink } from "@/components/ask/AnswerShareLink"
+import { PremiumPicker } from "@/components/PremiumPicker"
 
 export const dynamic = "force-dynamic"
 const PAGE_SIZE = 20
@@ -35,7 +36,7 @@ export default async function QuestionsAdminPage({ searchParams }: { searchParam
   }) : []
   const editing = editId ? await prisma.askQuestion.findUnique({ where: { id: editId } }) : null
   const pageLink = (next: number) => `/internal/questions?${new URLSearchParams({ tab, page: String(next), ...(status ? { status } : {}), ...(questionId ? { question: questionId } : {}) })}`
-  const pendingQuestions = counts.filter((row) => row.kind === "visitor" && row.status === "pending").reduce((sum, row) => sum + row._count, 0)
+  const pendingQuestions = counts.filter((row) => row.kind === "visitor" && (row.status === "pending" || row.status === "unlisted")).reduce((sum, row) => sum + row._count, 0)
   return (
     <div className="space-y-8 p-4 sm:p-6 lg:p-8">
       <header><p className="eyebrow">Community</p><h1 className="mt-2 font-heading text-3xl font-black">Anonymous Q&A</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">Review anonymous questions, ask your audience, and approve their responses. Add the link to your Facebook post to connect each question to its conversation.</p><Link href="/ask" target="_blank" className="mt-3 inline-block text-sm font-bold text-primary">View public page ↗</Link></header>
@@ -49,12 +50,13 @@ export default async function QuestionsAdminPage({ searchParams }: { searchParam
             <h2 className="font-heading text-xl font-black">Manage question</h2>
             <Link href={`/internal/questions?tab=${editing.kind === "prompt" ? "prompts" : "inbox"}`} className="text-sm text-primary">Close editor</Link>
           </div>
+          <div className="mb-6">{isQuestionPublished(editing.status) ? <QuestionVisibilityToggle id={editing.id} version={editing.updatedAt.toISOString()} visible={editing.status === "published"} /> : <PublishQuestionButton id={editing.id} version={editing.updatedAt.toISOString()} />}</div>
           <div className="mb-6">{isQuestionPublished(editing.status) ? <UnpublishQuestionButton id={editing.id} version={editing.updatedAt.toISOString()} /> : <DeleteQuestionButton id={editing.id} version={editing.updatedAt.toISOString()} />}</div>
           {editing.kind === "prompt" ? <div className="mb-6"><AnswerShareLink key={`share-${editing.id}`} id={editing.id} status={editing.status} acceptingAnswers={editing.acceptingAnswers} /></div> : null}
           <QuestionEditor key={editing.id} question={{ id: editing.id, kind: editing.kind, body: editing.body, status: editing.status, facebookUrl: editing.facebookUrl, acceptingAnswers: editing.acceptingAnswers, version: editing.updatedAt.toISOString() }} />
         </section>
       ) : null}
-      <form method="get" data-toast-managed="true" className="flex flex-wrap items-end gap-3"><input type="hidden" name="tab" value={tab} />{questionId ? <input type="hidden" name="question" value={questionId} /> : null}<label className="text-sm font-bold">Filter visibility<select name="status" defaultValue={status || ""} className="field mt-2"><option value="">All statuses</option>{statuses.map((value) => <option key={value} value={value}>{tab === "answers" ? value : questionStatusLabel(value)}</option>)}</select></label><button type="submit" className="btn-primary">Filter</button>{questionId ? <Link href="/internal/questions?tab=answers" className="text-sm text-primary">Show answers to all questions</Link> : null}</form>
+      <form method="get" data-toast-managed="true" className="flex flex-wrap items-end gap-3"><input type="hidden" name="tab" value={tab} />{questionId ? <input type="hidden" name="question" value={questionId} /> : null}<label className="min-w-0 max-w-full text-sm font-bold">Filter visibility<PremiumPicker key={`${tab}-${status || "all"}`} name="status" defaultValue={status || ""} className="mt-2" options={[{ value: "", label: "All statuses" }, ...statuses.map((value) => ({ value, label: tab === "answers" ? value : questionStatusLabel(value) }))]} /></label><button type="submit" className="btn-primary">Filter</button>{questionId ? <Link href="/internal/questions?tab=answers" className="text-sm text-primary">Show answers to all questions</Link> : null}</form>
       <div className="space-y-5">
         {!(tab === "answers" ? answers : questions).length ? <p className="rounded-xl border border-dashed border-border p-8 text-muted-foreground">No contributions in this view yet.</p> : null}
         {questions.slice(0, PAGE_SIZE).map((question) => (
@@ -63,6 +65,7 @@ export default async function QuestionsAdminPage({ searchParams }: { searchParam
             <p className="mt-3 whitespace-pre-wrap break-words text-lg font-semibold">{question.body}</p>
             <div className="mt-4"><FacebookLink url={question.facebookUrl} prompt={question.kind === "prompt"} /></div>
             <div className="mt-5 flex flex-wrap items-center gap-5 text-sm font-bold text-primary">
+              {isQuestionPublished(question.status) ? <QuestionVisibilityToggle id={question.id} version={question.updatedAt.toISOString()} visible={question.status === "published"} /> : <PublishQuestionButton id={question.id} version={question.updatedAt.toISOString()} />}
               <Link href={`${pageLink(page)}&edit=${question.id}`}>Manage question</Link>
               {question.kind === "prompt" ? <Link href={`/internal/questions?tab=answers&question=${question.id}`}>Review answers ({question._count.answers})</Link> : null}
               {question.status === "published" ? <Link href={`/ask/${question.id}`} target="_blank">View published question ↗</Link> : null}

@@ -2,13 +2,9 @@ const themeScript = `
 (() => {
   try {
     const stored = localStorage.getItem("tochukwu-theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const theme = stored === "dark" || stored === "light"
       ? stored
-      : (prefersDark ? "dark" : "light");
-    if (stored !== "dark" && stored !== "light") {
-      localStorage.setItem("tochukwu-theme", theme);
-    }
+      : "light";
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;

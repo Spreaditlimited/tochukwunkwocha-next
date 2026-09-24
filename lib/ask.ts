@@ -71,5 +71,5 @@ export async function submitAsk(input: { body: unknown; questionId?: unknown }) 
       await tx.askAnswer.create({ data: { id: randomUUID(), questionId, body, status: "pending" } })
     })
   }
-  await prisma.askQuestion.create({ data: { id: randomUUID(), kind: "visitor", body, status: "pending", acceptingAnswers: false } })
+  await prisma.askQuestion.create({ data: { id: randomUUID(), kind: "visitor", body, status: "unlisted", publishedAt: new Date(), acceptingAnswers: false } })
 }
