@@ -30,6 +30,7 @@ const localKeys = {
 }
 
 const excludedPrefixes = [
+  "/ask",
   "/dashboard",
   "/internal",
   "/admin",

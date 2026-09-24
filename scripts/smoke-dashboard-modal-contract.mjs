@@ -9,6 +9,7 @@ const allowedStandaloneDialogs = new Set([
   path.join("components", "LeadCapturePopup.tsx")
 ])
 const legacyModalFiles = [
+  path.join("components", "ask", "AskAdminForms.tsx"),
   path.join("components", "AccessCodeResetButton.tsx"),
   path.join("components", "BlogContentEditor.tsx"),
   path.join("components", "schools", "AdvancedSeatPurchaseForm.tsx"),
@@ -65,6 +66,14 @@ if (!/z-\[120\]/.test(leadCapturePopupSource)) {
 for (const relativePath of legacyModalFiles) {
   const source = fs.readFileSync(path.join(projectRoot, relativePath), "utf8")
   if (!source.includes("DashboardModal")) fail(`${relativePath} no longer uses DashboardModal.`)
+}
+
+const askFormsSource = fs.readFileSync(path.join(projectRoot, "components", "ask", "AskAdminForms.tsx"), "utf8")
+if (/window\.(?:confirm|alert|prompt)\s*\(/.test(askFormsSource)) {
+  fail("Q&A confirmations must use the shared dashboard modal, not browser dialogs.")
+}
+if (!askFormsSource.includes("formRef.current?.requestSubmit()")) {
+  fail("Q&A publication confirmation must preserve native form validation and submission.")
 }
 
 for (const relativePath of sourceRoots.flatMap(collectSourceFiles)) {

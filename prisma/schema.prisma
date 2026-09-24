@@ -7,6 +7,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model AskQuestion {
+  id            String        @id @db.VarChar(36)
+  kind          String        @db.VarChar(16)
+  body          String        @db.Text
+  status        String        @default("pending") @db.VarChar(16)
+  facebookUrl   String?       @map("facebook_url") @db.VarChar(1000)
+  acceptingAnswers Boolean   @default(true) @map("accepting_answers")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  publishedAt   DateTime?     @map("published_at") @db.DateTime(3)
+  answers       AskAnswer[]
+
+  @@index([status, createdAt], map: "idx_ask_question_status")
+  @@map("ask_questions")
+}
+
+model AskAnswer {
+  id          String      @id @db.VarChar(36)
+  questionId  String      @map("question_id") @db.VarChar(36)
+  body        String      @db.Text
+  status      String      @default("pending") @db.VarChar(16)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  question    AskQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, status, createdAt], map: "idx_ask_answer_question_status")
+  @@index([status, createdAt], map: "idx_ask_answer_status")
+  @@map("ask_answers")
+}
+
+// Expiring anti-abuse counters are deliberately separate from submissions.
+model AskRateLimit {
+  key       String   @id @db.VarChar(64)
+  count     Int      @default(1)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+
+  @@index([expiresAt], map: "idx_ask_rate_expiry")
+  @@map("ask_rate_limits")
+}
+
 model TochukwuBlogPost {
   id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   pidBlog       String   @unique(map: "uniq_tochukwu_blog_pid") @map("pid_blog") @db.VarChar(64)

@@ -51,6 +51,7 @@ const navSections = [
       { href: "/internal/whatsapp", label: "WhatsApp", icon: MessageCircle },
       { href: "/internal/seo", label: "SEO Queue", icon: Search },
       { href: "/internal/blog", label: "Blog CMS", icon: FileText },
+      { href: "/internal/questions", label: "Anonymous Q&A", icon: MessageCircle },
       { href: "/internal/resources", label: "Resources", icon: BookOpenCheck }
     ]
   },
