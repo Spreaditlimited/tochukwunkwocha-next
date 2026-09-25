@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { revalidatePath } from "next/cache"
 import fs from "node:fs"
 import path from "node:path"
 import { Prisma } from "@prisma/client"
@@ -824,6 +825,11 @@ export async function generateBlogImageForPost(pidBlog: string, report?: Progres
           finished_at = ${new Date()}
       WHERE job_uuid = ${jobUuid}
     `
+    revalidatePath("/internal/blog")
+    revalidatePath(`/internal/blog/${post.pidBlog}`)
+    revalidatePath("/blog")
+    if (post.blogSlug) revalidatePath(`/blog/${post.blogSlug}`)
+    revalidatePath("/")
     return { jobUuid, imagePublicId: uploaded.publicId, imageUrl: getBlogImageSrc(uploaded.publicId) || uploaded.secureUrl }
   } catch (error) {
     await prisma.$executeRaw`

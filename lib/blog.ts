@@ -269,21 +269,26 @@ export async function listCmsPosts(search?: string) {
 
 export async function listCmsPostsPage(input: {
   search?: string
+  status?: string
   page?: number
   pageSize?: number
 }) {
   const q = String(input.search || "").trim()
   const pageSize = Math.max(1, Math.min(20, Math.round(Number(input.pageSize || 20))))
   const requestedPage = Math.max(1, Math.round(Number(input.page || 1)))
-  const where = q
-    ? {
+  const now = new Date()
+  const where: Prisma.TochukwuBlogPostWhereInput = {
+    ...(input.status === "published" ? { blogPublished: true, createdAt: { lte: now } }
+      : input.status === "scheduled" ? { blogPublished: true, createdAt: { gt: now } }
+      : input.status === "draft" ? { blogPublished: false } : {}),
+    ...(q ? {
         OR: [
           { blogTitle: { contains: q } },
           { blogSlug: { contains: q } },
           { blogContent: { contains: q } }
         ]
-      }
-    : undefined
+      } : {})
+  }
   const total = await prisma.tochukwuBlogPost.count({ where })
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const page = Math.min(requestedPage, totalPages)
@@ -292,7 +297,7 @@ export async function listCmsPostsPage(input: {
     include: {
       leadMagnet: true
     },
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
   })

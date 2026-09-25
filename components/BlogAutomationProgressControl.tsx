@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CheckCircle2, Clock3, FileText, ImageIcon, Loader2, RotateCcw, XCircle } from "lucide-react"
+import { CheckCircle2, Clock3, FileText, ImageIcon, Loader2, RefreshCw, RotateCcw, XCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 type AutomationType = "image" | "leadMagnet" | "leadMagnetLayout"
@@ -20,9 +20,9 @@ function elapsed(startedAt: string | null, finishedAt: string | null, now: numbe
 }
 function elapsedLabel(seconds: number) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` }
 
-export function BlogAutomationProgressControl({ pidBlog, type }: { pidBlog: string; type: AutomationType }) {
+export function BlogAutomationProgressControl({ pidBlog, type, compact = false, hasImage = false }: { pidBlog: string; type: AutomationType; compact?: boolean; hasImage?: boolean }) {
   const router = useRouter(), Icon = type === "image" ? ImageIcon : type === "leadMagnetLayout" ? RotateCcw : FileText
-  const [job, setJob] = useState<Job | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(""), [now, setNow] = useState(Date.now())
+  const [job, setJob] = useState<Job | null>(null), [loading, setLoading] = useState(!compact), [error, setError] = useState(""), [now, setNow] = useState(Date.now())
   const running = Boolean(job && ["queued", "running"].includes(job.status))
   const endpoint = `/api/internal/blog/${encodeURIComponent(pidBlog)}/automation`
   const load = useCallback(async (jobUuid?: string) => {
@@ -32,7 +32,7 @@ export function BlogAutomationProgressControl({ pidBlog, type }: { pidBlog: stri
     setJob(data); return data as Job | null
   }, [endpoint, type])
 
-  useEffect(() => { let stopped = false; load().catch((cause) => { if (!stopped) setError(cause instanceof Error ? cause.message : "Could not load progress.") }).finally(() => { if (!stopped) setLoading(false) }); return () => { stopped = true } }, [load])
+  useEffect(() => { if (compact) return; let stopped = false; load().catch((cause) => { if (!stopped) setError(cause instanceof Error ? cause.message : "Could not load progress.") }).finally(() => { if (!stopped) setLoading(false) }); return () => { stopped = true } }, [load, compact])
   useEffect(() => { if (!running) return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer) }, [running])
   useEffect(() => {
     if (!running || !job?.jobUuid) return
@@ -56,7 +56,15 @@ export function BlogAutomationProgressControl({ pidBlog, type }: { pidBlog: stri
       ? `Retry ${type === "image" ? "image" : type === "leadMagnetLayout" ? "PDF rebuild" : "PDF"}`
       : type === "leadMagnetLayout"
         ? "Rebuild PDF design — no OpenAI"
-        : `${job?.status === "succeeded" ? "Regenerate" : "Generate"} ${type === "image" ? "image" : "lead magnet copy + PDF"}`
+        : `${job?.status === "succeeded" || hasImage ? "Regenerate" : "Generate"} ${type === "image" ? "image" : "lead magnet copy + PDF"}`
+
+  if (compact) return <div className="max-w-xs space-y-2 whitespace-normal text-right" aria-live="polite">
+    <button type="button" onClick={start} disabled={loading || running} aria-busy={loading || running} aria-label={loading ? "Starting image generation" : buttonLabel} title={loading ? "Starting image generation" : buttonLabel} className="brand-focus inline-flex items-center justify-center rounded-md p-2 text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50">
+      {loading || running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+    </button>
+    {job ? <p className={`text-xs ${job.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>{job.errorMessage || job.stage}{running ? ` · ${progress}%` : ""}</p> : null}
+    {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+  </div>
 
   return <div className="mt-4 space-y-3" aria-live="polite">
     <button type="button" onClick={start} disabled={loading || running} aria-busy={loading || running} className="btn-primary min-h-11 justify-center gap-2 disabled:pointer-events-none disabled:opacity-80">

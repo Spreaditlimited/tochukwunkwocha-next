@@ -14,6 +14,8 @@ import {
 
 import { getBlogImageSrc, listCmsPostsPage } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
+import { PremiumPicker } from "@/components/PremiumPicker"
+import { BlogAutomationProgressControl } from "@/components/BlogAutomationProgressControl"
 
 export const dynamic = "force-dynamic"
 
@@ -24,9 +26,10 @@ function normalizePage(value: string | undefined) {
   return Number.isFinite(page) && page > 0 ? page : 1
 }
 
-function pageHref(page: number, q?: string) {
+function pageHref(page: number, q?: string, status?: string) {
   const params = new URLSearchParams()
   if (q) params.set("q", q)
+  if (status) params.set("status", status)
   if (page > 1) params.set("page", String(page))
   const query = params.toString()
   return query ? `/internal/blog?${query}` : "/internal/blog"
@@ -35,11 +38,13 @@ function pageHref(page: number, q?: string) {
 export default async function BlogCmsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ q?: string; page?: string }>
+  searchParams?: Promise<{ q?: string; page?: string; status?: string }>
 }) {
   const params = searchParams ? await searchParams : {}
+  const status = ["published", "scheduled", "draft"].includes(params.status || "") ? params.status : ""
   const result = await listCmsPostsPage({
     search: params.q,
+    status,
     page: normalizePage(params.page),
     pageSize: PAGE_SIZE
   })
@@ -77,6 +82,12 @@ export default async function BlogCmsPage({
             placeholder="Search posts by title or slug..." 
           />
         </div>
+        <PremiumPicker name="status" aria-label="Filter post status" defaultValue={status} key={status} className="sm:w-52" options={[
+          { value: "", label: "All posts" },
+          { value: "published", label: "Published" },
+          { value: "scheduled", label: "Scheduled" },
+          { value: "draft", label: "Draft" }
+        ]} />
         <button className="btn-secondary px-8 shadow-sm" type="submit">
           Search
         </button>
@@ -88,7 +99,7 @@ export default async function BlogCmsPage({
           <span className="font-bold text-foreground">{total}</span> posts
         </p>
         <p className="text-xs font-semibold">
-          Page {page} of {totalPages}. Public visibility requires Published status and a created date that is not in the future.
+          Page {page} of {totalPages}. Newest publication/scheduled date first. Scheduled posts become public on their date.
         </p>
       </div>
 
@@ -190,12 +201,15 @@ export default async function BlogCmsPage({
                       </p>
                     </td>
                     <td className="px-6 py-4 text-right">
+                      <div className="flex items-start justify-end gap-1">
+                      <BlogAutomationProgressControl pidBlog={post.pidBlog} type="image" compact hasImage={Boolean(post.blogImage)} />
                       <Link 
                         href={`/internal/blog/${post.pidBlog}`} 
                         className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-xs font-bold text-muted-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
                       >
                         <Edit3 className="mr-1.5 h-3.5 w-3.5" /> Edit Post
                       </Link>
+                      </div>
                     </td>
                   </tr>
                   )
@@ -228,7 +242,7 @@ export default async function BlogCmsPage({
       {totalPages > 1 ? (
         <nav className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Blog CMS pagination">
           <Link
-            href={pageHref(Math.max(1, page - 1), params.q)}
+            href={pageHref(Math.max(1, page - 1), params.q, status)}
             aria-disabled={page <= 1}
             className={page <= 1
               ? "pointer-events-none inline-flex items-center justify-center rounded-lg border border-border bg-muted/30 px-5 py-3 text-sm font-bold text-muted-foreground/50"
@@ -248,7 +262,7 @@ export default async function BlogCmsPage({
                       <span className="px-1 text-sm font-bold text-muted-foreground">...</span>
                     ) : null}
                     <Link
-                      href={pageHref(item, params.q)}
+                      href={pageHref(item, params.q, status)}
                       aria-current={item === page ? "page" : undefined}
                       className={item === page
                         ? "inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-primary px-3 text-sm font-black text-primary-foreground"
@@ -262,7 +276,7 @@ export default async function BlogCmsPage({
               })}
           </div>
           <Link
-            href={pageHref(Math.min(totalPages, page + 1), params.q)}
+            href={pageHref(Math.min(totalPages, page + 1), params.q, status)}
             aria-disabled={page >= totalPages}
             className={page >= totalPages
               ? "pointer-events-none inline-flex items-center justify-center rounded-lg border border-border bg-muted/30 px-5 py-3 text-sm font-bold text-muted-foreground/50"
