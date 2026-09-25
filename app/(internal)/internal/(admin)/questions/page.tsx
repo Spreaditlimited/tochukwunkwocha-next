@@ -6,6 +6,7 @@ import { QuestionEditor, QuestionVisibilityToggle, AnswerModeration, PublishQues
 import { FacebookLink } from "@/components/ask/FacebookLink"
 import { AnswerShareLink } from "@/components/ask/AnswerShareLink"
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { QuestionShareLink } from "@/components/ask/QuestionShareLink"
 
 export const dynamic = "force-dynamic"
 const PAGE_SIZE = 20
@@ -43,6 +44,7 @@ export default async function QuestionsAdminPage({ searchParams }: { searchParam
       <nav aria-label="Q&A sections" className="flex flex-wrap gap-3">
         {[{ key: "inbox", label: `Visitor questions (${pendingQuestions} pending)` }, { key: "prompts", label: "Your audience questions" }, { key: "answers", label: `Anonymous answers (${pendingAnswers} pending)` }].map((item) => <Link key={item.key} href={`/internal/questions?tab=${item.key}`} aria-current={tab === item.key ? "page" : undefined} className={`rounded-xl border px-4 py-3 text-sm font-bold ${tab === item.key ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{item.label}</Link>)}
       </nav>
+      {tab === "inbox" ? <QuestionShareLink /> : null}
       {tab === "prompts" && !editing ? <details className="rounded-2xl border border-border bg-card p-6"><summary className="cursor-pointer font-bold">+ Ask your audience a question</summary><div className="mt-6"><QuestionEditor /></div></details> : null}
       {editing ? (
         <section className="rounded-2xl border border-primary/30 bg-card p-6">

@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url)
 // No database connection, environment-file loading, or live writes occur here.
 function load(file, mocks = {}) {
   const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8")
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
   const module = { exports: {} }
   new Function("require", "module", "exports", compiled)((name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name]
@@ -182,6 +182,29 @@ function actions(prisma, auth = async (path) => assert.equal(path, "/internal/qu
   })
 }
 function form(fields) { const form = new FormData(); for (const [key, value] of Object.entries(fields)) form.set(key, value); return form }
+
+test("standalone question page renders a compact anonymous form without database access", () => {
+  const { createElement } = require("react")
+  const { renderToStaticMarkup } = require("react-dom/server")
+  const { AskForm } = load("components/ask/AskForm.tsx", {
+    "lucide-react": { ArrowUpRight: () => null, Loader2: () => null, Send: () => null },
+    "@/lib/browser-recaptcha": { getRecaptchaToken: () => { throw new Error("Must not request CAPTCHA during render") } },
+    "@/components/RecaptchaDisclosure": { RecaptchaDisclosure: () => null },
+    "@/lib/ask-validation": validation,
+    "next/link": { default: ({ children, ...props }) => createElement("a", props, children) }
+  })
+  const page = load("app/(answer)/ask/question/page.tsx", {
+    "@/components/ask/AskForm": { AskForm },
+    "@/lib/site-seo": { buildMetadata: (input) => input }
+  })
+  assert.equal(page.metadata.path, "/ask/question")
+  assert.equal(page.metadata.noIndex, true)
+  const html = renderToStaticMarkup(createElement(page.default))
+  assert.match(html, /<textarea/)
+  assert.match(html, /Send anonymous question/)
+  assert.match(html, /Your question comes to Tochukwu privately/)
+  assert.doesNotMatch(html, /Send anonymous answer|<nav|<footer|type="email"/)
+})
 
 test("all moderation actions authorize before touching data", async () => {
   const api = actions({}, async () => { throw new Error("forbidden") })

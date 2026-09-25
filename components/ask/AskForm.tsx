@@ -44,7 +44,7 @@ export function AskForm({ questionId, compact = false }: { questionId?: string; 
   if (compact && message) {
     return <div role="status" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5">
       <p className="font-bold">Thank you for sharing.</p>
-      <p className="text-sm leading-6 text-muted-foreground">Your answer has been sent for review. You can return to Facebook now.</p>
+      <p className="text-sm leading-6 text-muted-foreground">{questionId ? "Your answer has been sent for review. You can return to Facebook now." : "Your question has been sent privately to Tochukwu. It will only appear publicly if he chooses to share it. You can close this page now."}</p>
     </div>
   }
 
@@ -65,7 +65,7 @@ export function AskForm({ questionId, compact = false }: { questionId?: string; 
       </button>
       {error ? <p role="alert" className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive">{error}</p> : null}
       {message ? <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">{message}</p> : null}
-      {compact ? <p id={`${id}-privacy`} className="text-xs leading-5 text-muted-foreground">No name or login needed. Avoid identifying details. Your answer may be shared anonymously here or on Facebook after review.</p> : null}
+      {compact ? <p id={`${id}-privacy`} className="text-xs leading-5 text-muted-foreground">No name or login needed. Avoid identifying details. Your {questionId ? "answer" : "question"} may be shared anonymously here or on Facebook after review.</p> : null}
       <details className="text-xs leading-5 text-muted-foreground">
         <summary className="cursor-pointer">About anonymity</summary>
         <p className="mt-2">We do not attach names, accounts, or IP addresses to submissions. Temporary security counters help prevent spam. Hosting providers and reCAPTCHA may process technical request data. Facebook uses its own accounts and privacy settings.</p>
