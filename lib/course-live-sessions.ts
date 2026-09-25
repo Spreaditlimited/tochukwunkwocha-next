@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
-import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import { normalizeDeliverableEmail } from "@/lib/email-address"
+import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
 import { publicAbsoluteUrl } from "@/lib/public-site-url"
 import { addColumnIfMissing } from "@/lib/schema-guards"
@@ -560,14 +560,11 @@ async function sendLiveSessionEmail(input: {
   if (/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\.local(?:\/|:|$))/i.test(`${html}\n${text}`)) {
     throw new Error("Live-class email contains a local URL and was blocked.")
   }
-  return sendBrevoTransactionalEmail({
+  return sendEmail({
     to: input.recipient.email,
-    name,
     subject,
     html,
-    text,
-    tags: ["live-class-reminder", input.stage],
-    headers: { "X-Tochukwu-Live-Reminder-Stage": input.stage }
+    text
   })
 }
 
