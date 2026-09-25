@@ -20,7 +20,11 @@ export function ThemeToggle({ className }: { className?: string }) {
     document.documentElement.classList.toggle("dark", nextTheme === "dark")
     document.documentElement.dataset.theme = nextTheme
     document.documentElement.style.colorScheme = nextTheme
-    localStorage.setItem("tochukwu-theme", nextTheme)
+    try {
+      localStorage.setItem("tochukwu-theme-choice", nextTheme)
+    } catch {
+      // The toggle still works when storage is blocked by the browser.
+    }
     setTheme(nextTheme)
   }
 

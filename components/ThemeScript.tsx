@@ -1,7 +1,9 @@
 const themeScript = `
 (() => {
   try {
-    const stored = localStorage.getItem("tochukwu-theme");
+    // The legacy key also stored automatic device-theme choices. Only restore
+    // preferences explicitly selected under the light-default policy.
+    const stored = localStorage.getItem("tochukwu-theme-choice");
     const theme = stored === "dark" || stored === "light"
       ? stored
       : "light";
