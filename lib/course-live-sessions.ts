@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
+import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
 import { normalizeDeliverableEmail } from "@/lib/email-address"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
@@ -63,12 +64,18 @@ function addMinutes(value: Date | null, minutes: number) {
 const LIVE_REMINDER_MAX_CHANNEL_ATTEMPTS = 5
 const LIVE_REMINDER_RETRY_DELAY_MS = 10 * 60 * 1000
 const LIVE_SESSION_ACCESS_MINUTES_BEFORE = 30
+const TEMPORARY_HOSTINGER_SMTP_SESSION_UUID = "live_ptp_batch4_day5"
 
 type LiveReminderStage = "day_before" | "access_open" | "early_access"
 type LiveReminderChannel = "email" | "whatsapp"
 
 function shouldSendWhatsAppReminder(stage: LiveReminderStage) {
   return stage === "day_before" || stage === "access_open" || stage === "early_access"
+}
+
+function shouldUseTemporaryHostingerSmtp(sessionUuid: string, stage: LiveReminderStage) {
+  return sessionUuid === TEMPORARY_HOSTINGER_SMTP_SESSION_UUID
+    && (stage === "early_access" || stage === "access_open")
 }
 
 function watCalendarDateParts(timestampMs: number) {
@@ -560,11 +567,22 @@ async function sendLiveSessionEmail(input: {
   if (/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\.local(?:\/|:|$))/i.test(`${html}\n${text}`)) {
     throw new Error("Live-class email contains a local URL and was blocked.")
   }
-  return sendEmail({
+  if (shouldUseTemporaryHostingerSmtp(input.session.sessionUuid, input.stage)) {
+    return sendEmail({
+      to: input.recipient.email,
+      subject,
+      html,
+      text
+    })
+  }
+  return sendBrevoTransactionalEmail({
     to: input.recipient.email,
+    name,
     subject,
     html,
-    text
+    text,
+    tags: ["live-class-reminder", input.stage],
+    headers: { "X-Tochukwu-Live-Reminder-Stage": input.stage }
   })
 }
 
