@@ -9,10 +9,6 @@ export function AnonymousScreen({ title, description, eyebrow, children, content
 }) {
   return <main className="min-h-dvh bg-background px-4 py-6 text-foreground sm:px-6 sm:py-12">
     <div className="mx-auto w-full max-w-xl space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <p className="font-heading text-sm font-black tracking-tight">Tochukwu Tech</p>
-        <span className="rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">Anonymous Q&A</span>
-      </div>
       <section className="admin-card min-w-0 sm:p-6" aria-labelledby="anonymous-screen-title">
         <header className="border-b border-border pb-5">
           <p className="label">{eyebrow}</p>
