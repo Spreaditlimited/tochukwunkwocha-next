@@ -87,8 +87,8 @@ export function QuestionEditor({ question }: { question?: {
     }}>
       <input type="hidden" name="status" value={question?.status || "unlisted"} />
       {question ? <><input type="hidden" name="id" value={question.id} /><input type="hidden" name="version" value={question.version} /></> : null}
-      <label className="block text-sm font-bold">{prompt ? "Your question for the audience" : "Original anonymous question"}
-        <textarea name="body" required minLength={5} maxLength={ASK_MAX_LENGTH} readOnly={!prompt} value={body} onChange={(event) => setBody(event.target.value)} className="field mt-2 min-h-32" />
+      <label className="block space-y-2 text-sm font-bold">{prompt ? "Your question for the audience" : "Original anonymous question"}
+        <textarea name="body" required minLength={5} maxLength={ASK_MAX_LENGTH} readOnly={!prompt} value={body} onChange={(event) => setBody(event.target.value)} className="field mt-2 min-h-32 font-normal leading-7" />
       </label>
       <label className="block text-sm font-bold">Facebook post link (optional)
         <input type="url" name="facebookUrl" maxLength={1000} value={facebookUrl} onChange={(event) => setFacebookUrl(event.target.value)} placeholder="https://www.facebook.com/…" className="field mt-2" />
@@ -104,7 +104,7 @@ export function QuestionEditor({ question }: { question?: {
 
 export function QuestionVisibilityToggle({ id, version, visible }: { id: string; version: string; visible: boolean }) {
   const [state, action, pending] = useActionState(setQuestionVisibilityAction, {})
-  return <PublicationForm action={action} className="space-y-2" confirmationFor={() => visible ? null : {
+  return <PublicationForm action={action} className="flex flex-col items-start gap-2" confirmationFor={() => visible ? null : {
     title: "Make question public?",
     description: "This question and its approved answers will appear on /ask. A Facebook link is optional.",
     label: "Yes, make visible"
@@ -112,7 +112,7 @@ export function QuestionVisibilityToggle({ id, version, visible }: { id: string;
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="version" value={version} />
     <input type="hidden" name="visible" value={String(!visible)} />
-    <button type="submit" role="switch" aria-checked={visible} aria-label="Public visibility" disabled={pending} className="brand-focus inline-flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-bold text-foreground disabled:opacity-50">
+    <button type="submit" role="switch" aria-checked={visible} aria-label="Public visibility" disabled={pending} className="brand-focus inline-flex min-h-11 items-center gap-3 rounded-lg px-2 py-2 text-sm font-bold text-foreground disabled:opacity-50">
       <span aria-hidden="true" className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${visible ? "bg-primary" : "bg-muted border border-border"}`}><span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${visible ? "translate-x-5" : "translate-x-0"}`} /></span>
       Public visibility: {pending ? "Saving…" : visible ? "On" : "Off"}
     </button>
@@ -123,7 +123,7 @@ export function QuestionVisibilityToggle({ id, version, visible }: { id: string;
 export function AnswerModeration({ id, status, version }: { id: string; status: string; version: string }) {
   const [state, action] = useActionState(moderateAnswerAction, {})
   const [visibility, setVisibility] = useState(status)
-  return <PublicationForm action={action} className="mt-4 space-y-3" confirmationFor={(form) => {
+  return <PublicationForm action={action} className="max-w-xl space-y-4" confirmationFor={(form) => {
     return form.get("status") === "published" && status !== "published" ? {
       title: "Publish anonymous answer?",
       description: "This answer will be visible when its question is public. If the question is published but hidden, the answer will remain hidden too.",
@@ -131,7 +131,7 @@ export function AnswerModeration({ id, status, version }: { id: string; status: 
     } : null
   }}>
     <input type="hidden" name="id" value={id} /><input type="hidden" name="version" value={version} />
-    <label className="block text-sm font-bold">Answer visibility<PremiumPicker name="status" value={visibility} onChange={(event) => setVisibility(event.target.value)} className="mt-2" options={ASK_STATUSES.map((value) => ({ value, label: value === "published" ? "Published — public" : `${value} — private` }))} /></label>
+    <label className="block text-sm font-bold">Answer visibility<PremiumPicker name="status" value={visibility} onChange={(event) => setVisibility(event.target.value)} className="mt-2" options={ASK_STATUSES.map((value) => ({ value, label: value === "published" ? "Approved — visible when question is public" : `${value[0].toUpperCase()}${value.slice(1)} — private` }))} /></label>
     <SubmitButton className="btn-primary" pendingText="Saving…">Save answer visibility</SubmitButton>
     <Feedback state={state} />
   </PublicationForm>
@@ -143,24 +143,24 @@ export function UnpublishQuestionButton({ id, version }: { id: string; version: 
     if (result.message) showInternalToast({ type: "success", title: "Question unpublished", message: result.message })
     return result
   }, {})
-  return <form action={action} data-toast-managed="true" className="space-y-2">
+  return <form action={action} data-toast-managed="true" className="flex flex-col items-start gap-2">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="version" value={version} />
-    <SubmitButton className="btn-secondary" pendingText="Unpublishing…">Unpublish question</SubmitButton>
+    <SubmitButton className="btn-secondary min-h-11" pendingText="Unpublishing…">Unpublish question</SubmitButton>
     {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
   </form>
 }
 
 export function PublishQuestionButton({ id, version }: { id: string; version: string }) {
   const [state, action] = useActionState(publishQuestionAction, {})
-  return <PublicationForm action={action} className="space-y-2" confirmationFor={() => ({
+  return <PublicationForm action={action} className="flex flex-col items-start gap-2" confirmationFor={() => ({
     title: "Publish question?",
     description: "Public visibility will stay off. For an audience question, its answer link will become active and accept anonymous answers. No Facebook link is required.",
     label: "Yes, publish question"
   })}>
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="version" value={version} />
-    <SubmitButton className="btn-primary" pendingText="Publishing…">Publish question</SubmitButton>
+    <SubmitButton className="btn-primary min-h-11" pendingText="Publishing…">Publish question</SubmitButton>
     <Feedback state={state} />
   </PublicationForm>
 }
@@ -184,7 +184,7 @@ export function DeleteQuestionButton({ id, version }: { id: string; version: str
     return result
   }, {})
   return <>
-    <button type="button" className="btn-secondary text-destructive" onClick={() => setModalOpen(true)} disabled={pending}>Delete question</button>
+    <button type="button" className="btn-secondary min-h-11 text-destructive" onClick={() => setModalOpen(true)} disabled={pending}>Delete question</button>
     {modalOpen ? <DashboardModal
       title="Delete question?"
       eyebrow="Permanent action"

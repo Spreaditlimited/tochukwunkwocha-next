@@ -27,11 +27,11 @@ export function AnswerShareLink({ id, status, acceptingAnswers }: { id: string; 
     }
   }
 
-  return <div className="mt-5 space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-    <label htmlFor={fieldId} className="block text-sm font-bold">Anonymous answer link</label>
+  return <div className="mt-5 min-w-0 space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+    <label htmlFor={fieldId} className="label block">Anonymous answer link</label>
     <p className="text-xs leading-5 text-muted-foreground">Copy and share this link whether public visibility is on or off. It opens just your question and an anonymous answer form. No Facebook post link is required.</p>
-    <input ref={input} id={fieldId} type="url" readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="field text-sm" aria-describedby={`${fieldId}-status`} />
-    <div className="flex flex-wrap items-center gap-4">
+    <input ref={input} id={fieldId} type="url" readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="field min-w-0 font-mono text-xs" aria-describedby={`${fieldId}-status`} />
+    <div className="flex flex-wrap items-start gap-3 [&>button]:min-h-11 [&>a]:min-h-11">
       <button type="button" onClick={copy} disabled={!ready || !url} className="btn-primary gap-2 disabled:opacity-50">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied ? "Link copied" : "Copy answer link"}</button>
       {ready ? <a href={path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold text-primary">Open answer form <ArrowUpRight className="h-4 w-4" /><span className="sr-only"> (opens in a new tab)</span></a> : null}
     </div>

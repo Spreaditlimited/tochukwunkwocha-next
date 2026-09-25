@@ -195,12 +195,15 @@ test("standalone question page renders a compact anonymous form without database
   })
   const page = load("app/(answer)/ask/question/page.tsx", {
     "@/components/ask/AskForm": { AskForm },
+    "@/components/ask/AnonymousScreen": load("components/ask/AnonymousScreen.tsx"),
     "@/lib/site-seo": { buildMetadata: (input) => input }
   })
   assert.equal(page.metadata.path, "/ask/question")
   assert.equal(page.metadata.noIndex, true)
   const html = renderToStaticMarkup(createElement(page.default))
   assert.match(html, /<textarea/)
+  assert.match(html, /admin-card/)
+  assert.match(html, /anonymous-screen-title/)
   assert.match(html, /Send anonymous question/)
   assert.match(html, /Your question comes to Tochukwu privately/)
   assert.doesNotMatch(html, /Send anonymous answer|<nav|<footer|type="email"/)

@@ -37,7 +37,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
           {rows.slice(0, ASK_PAGE_SIZE).map((question) => (
             <article key={question.id} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-wider text-primary">{question.kind === "prompt" ? "Tochukwu asks you" : "Someone asked anonymously"}</p>
-              <h3 className="mt-3 whitespace-pre-wrap break-words font-heading text-xl font-bold leading-8"><Link href={`/ask/${question.id}`} className="hover:text-primary">{question.body}</Link></h3>
+              <h3 className="mt-3 whitespace-pre-wrap break-words font-sans text-xl font-normal leading-8"><Link href={`/ask/${question.id}`} className="hover:text-primary">{question.body}</Link></h3>
               <div className="mt-5"><FacebookLink url={question.facebookUrl} prompt={question.kind === "prompt"} /></div>
               {question.kind === "prompt" ? <Link href={`/ask/${question.id}`} className="mt-5 inline-flex items-center gap-2 text-sm font-semibold">{question._count.answers} approved {question._count.answers === 1 ? "answer" : "answers"} · {question.acceptingAnswers ? "Add yours anonymously" : "Read responses"}<ArrowRight className="h-4 w-4" /></Link> : null}
             </article>

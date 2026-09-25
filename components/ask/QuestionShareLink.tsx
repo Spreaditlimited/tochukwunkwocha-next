@@ -27,11 +27,11 @@ export function QuestionShareLink() {
     }
   }
 
-  return <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-    <label htmlFor={fieldId} className="block text-sm font-bold">Invite anonymous questions</label>
+  return <section className="admin-card min-w-0 space-y-3">
+    <label htmlFor={fieldId} className="label block">Invite anonymous questions</label>
     <p id={`${fieldId}-help`} className="text-xs leading-5 text-muted-foreground">Share this link in Facebook comments or anywhere else. Visitors see a simple question form. Questions arrive under Visitor questions with public visibility off.</p>
-    <input ref={input} id={fieldId} type="url" readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="field text-sm" aria-describedby={`${fieldId}-help`} />
-    <div className="flex flex-wrap items-center gap-4">
+    <input ref={input} id={fieldId} type="url" readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="field min-w-0 font-mono text-xs" aria-describedby={`${fieldId}-help`} />
+    <div className="flex flex-wrap items-start gap-3 [&>button]:min-h-11 [&>a]:min-h-11">
       <button type="button" onClick={copy} disabled={!url} className="btn-primary gap-2 disabled:opacity-50">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied ? "Link copied" : "Copy question link"}</button>
       <a href={path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold text-primary">Open question form <ArrowUpRight className="h-4 w-4" /><span className="sr-only"> (opens in a new tab)</span></a>
     </div>

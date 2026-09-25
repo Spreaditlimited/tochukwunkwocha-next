@@ -26,7 +26,7 @@ export default async function QuestionPage({ params, searchParams }: Props) {
       <Link href="/ask" className="text-sm font-semibold text-primary">← All questions</Link>
       <article className="mt-8 rounded-2xl border border-border bg-card p-6 sm:p-8">
         <p className="eyebrow">{prompt ? "Tochukwu asks you" : "Asked anonymously"}</p>
-        <h1 className="mt-4 whitespace-pre-wrap break-words font-heading text-2xl font-black leading-snug sm:text-3xl">{question.body}</h1>
+        <h1 className="mt-4 whitespace-pre-wrap break-words font-sans text-xl font-normal leading-8 sm:text-2xl">{question.body}</h1>
         <div className="mt-6"><FacebookLink url={question.facebookUrl} prompt={prompt} /></div>
         <p className="mt-3 text-xs text-muted-foreground">Answers from Tochukwu and further conversation are on Facebook. You may need to sign in there.</p>
       </article>
@@ -40,7 +40,7 @@ export default async function QuestionPage({ params, searchParams }: Props) {
           <p className="mt-2 text-sm text-muted-foreground">Responses appear after review. Continue the conversation on Facebook.</p>
           <div className="mt-6 space-y-4">
             {!question.answers.length ? <p className="rounded-xl border border-dashed border-border p-6 text-muted-foreground">{page > 1 ? "No more answers on this page." : "No approved answers yet."}</p> : null}
-            {question.answers.slice(0, ASK_PAGE_SIZE).map((answer) => <article key={answer.id} className="rounded-xl border border-border bg-card p-6"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Anonymous perspective</p><p className="mt-3 whitespace-pre-wrap break-words leading-7">{answer.body}</p></article>)}
+            {question.answers.slice(0, ASK_PAGE_SIZE).map((answer) => <article key={answer.id} className="rounded-xl border border-border bg-card p-6"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Anonymous perspective</p><p className="mt-3 whitespace-pre-wrap break-words font-sans font-normal leading-7">{answer.body}</p></article>)}
           </div>
           <nav aria-label="Answer pages" className="mt-6 flex justify-between gap-4 text-sm font-bold">
             {page > 1 ? <Link href={`/ask/${id}?page=${page - 1}`}>← Newer answers</Link> : <span />}
