@@ -185,7 +185,18 @@ async function listRelevantBatches(now: Date) {
     LEFT JOIN tochukwu_learning_courses c
       ON c.course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
     WHERE b.batch_start_at IS NOT NULL
-      AND b.batch_start_at BETWEEN ${from} AND ${to}
+      AND (
+        b.batch_start_at BETWEEN ${from} AND ${to}
+        OR EXISTS (
+          SELECT 1
+          FROM tochukwu_learning_module_batch_drips d
+          JOIN tochukwu_learning_course_modules cm ON cm.module_id = d.module_id AND cm.is_active = 1
+          WHERE d.batch_key COLLATE utf8mb4_unicode_ci = b.batch_key COLLATE utf8mb4_unicode_ci
+            AND cm.course_slug COLLATE utf8mb4_unicode_ci = b.course_slug COLLATE utf8mb4_unicode_ci
+            AND d.access_mode = 'drip'
+            AND d.drip_at BETWEEN ${from} AND ${to}
+        )
+      )
       AND b.status IN ('open', 'active', 'started')
     ORDER BY b.batch_start_at, b.id
   `)
@@ -393,7 +404,10 @@ export function renderCourseLifecycleEmail(input: {
     ]
     buttonLabel = owner ? "Review Learner Batches" : "Review Your Batch"
   } else {
-    subject = `Day ${event.dayNumber || "today"} lessons for ${batch.courseName} are ready`
+    const lessonPeriod = batch.courseSlug === "prompt-to-production"
+      ? `Week ${Math.floor(((event.dayNumber || 1) - 1) / 7) + 1}`
+      : `Day ${event.dayNumber || "today"}`
+    subject = `${lessonPeriod} lessons for ${batch.courseName} are ready`
     buttonLabel = owner ? "Open Group Enrollment" : "Start Today’s Lessons"
     buttonUrl = owner ? dashboard : coursePlayerUrl(batch.courseSlug)
     paragraphs = owner ? [
@@ -401,7 +415,7 @@ export function renderCourseLifecycleEmail(input: {
       "Each learner should sign in with their individual access code, open Courses and select Open Course Player.",
       event.moduleTitles?.length ? `<strong>Available now:</strong> ${escapeHtml(event.moduleTitles.join(", "))}.` : ""
     ] : [
-      `Your Day ${event.dayNumber || ""} lessons for ${escapeHtml(batch.courseName)} are now available.`,
+      `Your ${lessonPeriod} lessons for ${escapeHtml(batch.courseName)} are now available.`,
       "Sign in, open Courses and select Open Course Player to continue learning.",
       event.moduleTitles?.length ? `<strong>Available now:</strong> ${escapeHtml(event.moduleTitles.join(", "))}.` : ""
     ]
