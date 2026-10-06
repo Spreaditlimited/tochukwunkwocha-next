@@ -141,38 +141,19 @@ function request(body, headers = {}) {
   return new Request("https://example.test/api/ask", { method: "POST", headers: { "content-type": "application/json", origin: "https://example.test", ...headers }, body: JSON.stringify(body) })
 }
 
-test("API rejects cross-origin, invalid, oversized, CAPTCHA-failed and rate-limited submissions", async () => {
-  const fail = async () => assert.fail("Rejected input reached storage")
-  assert.equal((await route({ save: fail }).POST(request({ body: "Question?" }, { origin: "https://other.test" }))).status, 403)
-  for (const body of [null, [], { body: "hi" }, { body: "Question?", questionId: "invalid" }, { body: "a".repeat(17000) }]) assert.equal((await route({ save: fail }).POST(request(body))).status, 400)
-  assert.equal((await route({ save: fail, captcha: false }).POST(request({ body: "Question?" }))).status, 400)
-  const limited = await route({ save: fail, limited: true }).POST(request({ body: "Question?" }))
-  assert.equal(limited.status, 429)
-  assert.equal(limited.headers.get("retry-after"), "30")
-})
-
-test("API ignores bot submissions, conceals storage errors, and returns no private IDs", async () => {
-  const bot = await route({ save: async () => assert.fail("Honeypot saved") }).POST(request({ website: "spam" }))
-  assert.equal(bot.status, 200)
-  const failed = await route({ save: async () => { throw new Error("secret db details") } }).POST(request({ body: "Question?" }))
-  assert.equal(failed.status, 503)
-  assert.doesNotMatch(await failed.text(), /secret db details/)
-  let saved
-  const response = await route({ save: async (value) => { saved = value } }).POST(request({ body: "Question?", email: "ignore@example.test", status: "published" }))
-  assert.equal(response.status, 201)
-  assert.deepEqual(saved, { body: "Question?", questionId: undefined })
-  assert.deepEqual(Object.keys(await response.json()).sort(), ["message", "ok"])
-  const proxied = new Request("http://localhost:3107/api/ask", { method: "POST", headers: { "content-type": "application/json", origin: "http://127.0.0.1:3107", host: "127.0.0.1:3107" }, body: JSON.stringify({ body: "A question through the local proxy?" }) })
-  assert.equal((await route().POST(proxied)).status, 201)
-})
-
-test("production submissions fail closed when CAPTCHA is unavailable", async () => {
-  const previous = process.env.NODE_ENV
-  process.env.NODE_ENV = "production"
-  try {
-    const response = await route({ enabled: false, save: async () => assert.fail("Saved without production CAPTCHA") }).POST(request({ body: "A valid question?" }))
-    assert.equal(response.status, 503)
-  } finally { if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous }
+test("retired API rejects every submission without reading or forwarding its content", async () => {
+  const api = route({ save: async () => assert.fail("Retired endpoint reached storage") })
+  for (const body of [null, {}, { body: "Question?" }, { questionId: id, body: "My answer" }, { website: "spam" }, { body: "a".repeat(17000) }]) {
+    const response = await api.POST(request(body))
+    assert.equal(response.status, 410)
+    assert.equal(response.headers.get("cache-control"), "no-store")
+    assert.equal(response.headers.get("location"), null)
+    const data = await response.json()
+    assert.equal(data.ok, false)
+    assert.match(data.error, /not sent/)
+    assert.equal(data.destination, "https://unsaidbox.com/u/tochukwu/ask")
+    assert.doesNotMatch(JSON.stringify(data), /My answer|secret db/)
+  }
 })
 
 function actions(prisma, auth = async (path) => assert.equal(path, "/internal/questions")) {
