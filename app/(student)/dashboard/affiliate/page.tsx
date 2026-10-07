@@ -2,7 +2,9 @@ import {
   Banknote, 
   CheckCircle2, 
   Clock, 
+  ExternalLink,
   Link2,
+  PlayCircle,
   ShieldAlert, 
   Wallet,
   XCircle
@@ -28,6 +30,9 @@ import { formatDate } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
+const courseVideoId = "z0fRZtW7Q3s"
+const courseVideoUrl = `https://youtu.be/${courseVideoId}`
+
 function commissionLabel(input: {
   commissionType: string
   commissionValue: number
@@ -52,6 +57,12 @@ export default async function StudentAffiliatePage() {
   const affiliate = await getStudentAffiliateSummary(session.account.id)
   const profile = affiliate.profile
   const canUseAffiliate = profile?.status === "active" && profile.eligibilityStatus === "eligible"
+  const courseReferralLink = canUseAffiliate
+    ? affiliate.directCourseLinks.find((item) => item.courseSlug === "prompt-to-profit")?.link || profile?.affiliateLink
+    : undefined
+  const videoSharingMessage = courseReferralLink
+    ? `See what Prompt to Profit Basic students have built, including young learners. Watch this short video to explore the course and what you could learn to create.\n\nWatch: ${courseVideoUrl}\n\nView the course and enroll through my link: ${courseReferralLink}`
+    : null
 
   return (
     <StudentDashboardShell 
@@ -203,6 +214,57 @@ export default async function StudentAffiliatePage() {
             </StudentDashboardCard>
 
           </div>
+
+          <StudentDashboardCard className="overflow-hidden p-0 sm:p-0">
+            <div className="border-b border-border bg-muted/20 p-6 sm:p-8">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <PlayCircle className="h-6 w-6" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="eyebrow text-primary">Promotion Tools</p>
+                  <h2 className="mt-1 font-heading text-xl font-bold text-foreground">
+                    <TrademarkText text="Prompt to Profit Basic" /> course video
+                  </h2>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[1.4fr_1fr] lg:items-center">
+              <div className="aspect-video min-w-0 overflow-hidden rounded-lg border border-border bg-muted">
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${courseVideoId}`}
+                  title="Prompt to Profit Basic: student projects, course benefits and how to enroll"
+                  className="h-full w-full border-0"
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-heading text-lg font-bold text-foreground">Watch it, then share with prospects</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Introduce the course with real student projects, testimonials, and practical outcomes. Watch the video here, then send it to people considering enrollment.
+                </p>
+                <a href={courseVideoUrl} target="_blank" rel="noopener noreferrer" className="brand-focus mt-4 inline-flex max-w-full items-center gap-2 rounded-md text-sm font-semibold text-primary underline underline-offset-4">
+                  <span className="break-all">{courseVideoUrl}</span>
+                  <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="sr-only"> (opens YouTube in a new tab)</span>
+                </a>
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  <CopyButton value={courseVideoUrl} label="Copy video link" copiedLabel="Video link copied" className="btn-primary gap-2" />
+                  {videoSharingMessage ? (
+                    <CopyButton value={videoSharingMessage} label="Copy sharing message" copiedLabel="Sharing message copied" className="btn-secondary gap-2" />
+                  ) : null}
+                </div>
+                <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+                  {videoSharingMessage
+                    ? "The sharing message includes the video and your referral link. Send both so prospects can enroll through your link."
+                    : "The video link does not track referrals. Your enrollment link becomes available when your affiliate account is active and eligible."}
+                </p>
+              </div>
+            </div>
+          </StudentDashboardCard>
 
           {/* 3. Program Rules & Payout Account */}
           <StudentDashboardCard className="p-0 overflow-hidden">
