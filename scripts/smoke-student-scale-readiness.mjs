@@ -13,7 +13,7 @@ const checks = [
   },
   {
     file: "lib/learning-player.ts",
-    includes: ["export async function studentHasCourseAccess", "WHERE EXISTS (", "learningSupportTablesPromise"]
+    includes: ["export async function studentHasCourseAccess", "async function studentCourseAccess", "UNION ALL", "learningSupportTablesPromise"]
   },
   {
     file: "app/api/student/learning/progress/route.ts",

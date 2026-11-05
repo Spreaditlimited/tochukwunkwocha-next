@@ -10,6 +10,8 @@ import { reconcileFamilyOwnerBrevoLists, sendBatchSwitchConfirmationEmail } from
 import { prisma } from "@/lib/prisma"
 import { courseUsesImmediateAccess, findOrCreateStudentAccount, normalizeEmail } from "@/lib/payments/course-checkout"
 import { batchHasNotStarted } from "@/lib/utils"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
+import { listAvailableSelfPacedBatches } from "@/lib/self-paced-availability"
 
 const FAMILY_CODE_LENGTH = 10
 const FAMILY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -227,7 +229,10 @@ async function validatedFamilyLearnerBatches(
     if (!batch) throw new Error("The selected batch does not belong to this course.")
     const open = Boolean(Number(batch.isActive || 0)) || clean(batch.status, 40).toLowerCase() === "open"
     if (!open) throw new Error(`${batch.batchLabel || batchKey} is not open for learner assignment.`)
-    if (!batchHasNotStarted(batch.batchStartAt)) {
+    if (isSelfPacedCohort(courseSlug, batchKey)) {
+      const available = await listAvailableSelfPacedBatches(courseSlug, client)
+      if (!available.some((offer) => offer.batchKey === batchKey)) throw new Error("Instant access is currently unavailable for this course.")
+    } else if (!batchHasNotStarted(batch.batchStartAt)) {
       throw new Error(`${batch.batchLabel || batchKey} has already started and is no longer available for enrollment.`)
     }
     requestedByBatch.set(batchKey, (requestedByBatch.get(batchKey) || 0) + 1)

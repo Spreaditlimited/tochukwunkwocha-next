@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const source = await getLessonPlaybackSource(session.account.id, session.account.email, Math.trunc(lessonId))
     if (!source.ok) return NextResponse.json({ ok: false, error: source.error }, { status: 403 })
 
-    const playback = await buildSignedLessonEmbedUrlFromRuntimeSettings({ videoUid: source.videoUid, hlsUrl: source.hlsUrl })
+    const playback = await buildSignedLessonEmbedUrlFromRuntimeSettings({ videoUid: source.videoUid, hlsUrl: source.hlsUrl, accessExpiresAt: source.accessExpiresAt })
     return NextResponse.json({ ok: true, playback })
   } catch (error) {
     return studentApiErrorResponse(error, "Could not load this lesson video. Please try again.", {

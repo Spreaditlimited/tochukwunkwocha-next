@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
-import { watWallDateTimeMs } from "@/lib/utils"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
+import { addOneYear, watWallDateTimeMs } from "@/lib/utils"
 
 export const PROMPT_TO_PROFIT_WORKBOOK_COURSE_SLUGS = [
   "prompt-to-profit",
@@ -64,13 +65,14 @@ export async function hasIncludedPromptToProfitWorkbooks(input: CourseWorkbookAc
 export async function getPromptToProfitWorkbookAccess(input: CourseWorkbookAccount) {
   const normalizedEmail = String(input.email || "").trim().toLowerCase().slice(0, 190)
   if (!normalizedEmail) {
-    return { enrolled: false, batchStarted: false, batchStartAt: null as Date | null }
+    return { enrolled: false, batchStarted: false, batchStartAt: null as Date | null, accessExpiresAt: null as Date | null }
   }
 
-  const rows = await prisma.$queryRaw<Array<{ batchStartAt: Date | null }>>(Prisma.sql`
-    SELECT access_rows.batchStartAt
+  const rows = await prisma.$queryRaw<Array<{ batchStartAt: Date | null; courseSlug: string; batchKey: string; grantedAt: Date | null }>>(Prisma.sql`
+    SELECT access_rows.batchStartAt, access_rows.courseSlug, access_rows.batchKey, access_rows.grantedAt
     FROM (
-      SELECT b.batch_start_at AS batchStartAt, o.created_at AS grantedAt
+      SELECT b.batch_start_at AS batchStartAt, o.course_slug COLLATE utf8mb4_unicode_ci AS courseSlug,
+        o.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(o.paid_at, o.created_at) AS grantedAt
       FROM course_orders o
       JOIN course_batches b
         ON b.course_slug COLLATE utf8mb4_general_ci = o.course_slug COLLATE utf8mb4_general_ci
@@ -82,7 +84,8 @@ export async function getPromptToProfitWorkbookAccess(input: CourseWorkbookAccou
 
       UNION ALL
 
-      SELECT b.batch_start_at AS batchStartAt, m.created_at AS grantedAt
+      SELECT b.batch_start_at AS batchStartAt, m.course_slug COLLATE utf8mb4_unicode_ci AS courseSlug,
+        m.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(m.reviewed_at, m.created_at) AS grantedAt
       FROM course_manual_payments m
       JOIN course_batches b
         ON b.course_slug COLLATE utf8mb4_general_ci = m.course_slug COLLATE utf8mb4_general_ci
@@ -94,7 +97,8 @@ export async function getPromptToProfitWorkbookAccess(input: CourseWorkbookAccou
 
       UNION ALL
 
-      SELECT b.batch_start_at AS batchStartAt, COALESCE(e.paid_at, e.updated_at, e.created_at) AS grantedAt
+      SELECT b.batch_start_at AS batchStartAt, e.course_slug COLLATE utf8mb4_unicode_ci AS courseSlug,
+        e.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(e.paid_at, e.updated_at, e.created_at) AS grantedAt
       FROM family_children c
       JOIN family_accounts f ON f.id = c.family_id
       JOIN family_child_enrollments e ON e.child_id = c.id
@@ -111,7 +115,11 @@ export async function getPromptToProfitWorkbookAccess(input: CourseWorkbookAccou
   `).catch(() => [])
 
   const nowMs = Date.now()
-  const validStarts = rows
+  const currentRows = rows.filter((row) => !isSelfPacedCohort(row.courseSlug, row.batchKey) || (addOneYear(row.grantedAt)?.getTime() || 0) > nowMs)
+  const expiries = currentRows.map((row) => addOneYear(row.grantedAt)?.getTime() || 0)
+  const accessExpiresAt = currentRows.length && currentRows.every((row) => isSelfPacedCohort(row.courseSlug, row.batchKey))
+    ? new Date(Math.max(...expiries)) : null
+  const validStarts = currentRows
     .map((row) => ({ value: row.batchStartAt, ms: watWallDateTimeMs(row.batchStartAt) }))
     .filter((row) => Number.isFinite(row.ms))
   const started = validStarts.some((row) => row.ms <= nowMs)
@@ -120,9 +128,10 @@ export async function getPromptToProfitWorkbookAccess(input: CourseWorkbookAccou
     .sort((left, right) => left.ms - right.ms)[0]?.value || null
 
   return {
-    enrolled: rows.length > 0,
+    enrolled: currentRows.length > 0,
     batchStarted: started,
-    batchStartAt: nextStart
+    batchStartAt: nextStart,
+    accessExpiresAt
   }
 }
 

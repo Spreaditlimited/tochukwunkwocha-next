@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { Prisma } from "@prisma/client"
 
 import { applyAdminSettingsToProcessEnv, getAdminSettingValues, upsertAdminSettings } from "@/lib/admin-settings"
@@ -275,7 +276,7 @@ export async function reconcileLearningFollowupCampaigns(now = new Date()) {
     const current = existingByKey.get(key)
     const preference = recipientPreferences.get(`${snapshot.recipientEmail}::${snapshot.courseSlug}`)
     const isPaused = preference === "paused"
-    const isSuppressed = preference === "suppressed"
+    const isSuppressed = preference === "suppressed" || isSelfPacedCohort(snapshot.courseSlug, snapshot.batchKey)
     const adminPaused = current?.status === "paused" && current.stoppedReason === "admin_paused"
     const processing = current?.status === "processing" && Boolean(current.lockedAt && now.getTime() - current.lockedAt.getTime() < 15 * 60_000)
     const decision = learningFollowupDecision({
@@ -811,7 +812,8 @@ export async function processLearningInactivityFollowups(input?: {
   const now = input?.now || new Date()
   await ensureLearningFollowupTables()
   const config = await learningFollowupConfig()
-  const due = await listDueLearningFollowupCampaigns(now, config.maxReminders)
+  const due = (await listDueLearningFollowupCampaigns(now, config.maxReminders))
+    .filter((campaign) => !isSelfPacedCohort(campaign.courseSlug, campaign.batchKey))
   const snapshots = await buildDueCampaignSnapshots(due, now)
   const snapshotByKey = new Map(snapshots.map((snapshot) => [
     `${snapshot.accountId.toString()}::${snapshot.courseSlug}::${snapshot.batchKey}`,

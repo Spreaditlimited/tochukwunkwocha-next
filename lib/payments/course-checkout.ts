@@ -18,6 +18,8 @@ import { reportPaymentProviderIssue } from "@/lib/payment-provider-alerts"
 import { normalizePaymentEmail, normalizeStudentAccountEmail, validatePaymentEmail } from "@/lib/payment-email"
 import { recordPaystackAuditEvent } from "@/lib/payments/paystack-audit"
 import { batchHasNotStarted } from "@/lib/utils"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
+import { listAvailableSelfPacedBatches } from "@/lib/self-paced-availability"
 
 export type CheckoutProvider = "paystack" | "stripe"
 
@@ -50,6 +52,8 @@ export type CheckoutBatch = {
   remainingSeats: number | null
   batchStartAt: string | null
   batchEndAt: string | null
+  deliveryMode?: "live" | "self_paced"
+  sourceBatchKey?: string
 }
 
 type LearningCourseRow = {
@@ -332,7 +336,8 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
     LIMIT 1
   `
 
-  return rows.map((row) => {
+  const selfPaced = await listAvailableSelfPacedBatches(courseSlug)
+  const liveBatches = rows.map((row) => {
     const key = normalizeBatchKey(row.batch_key)
     const enrolledCount = toInt(row.enrolled_count)
     const seatLimit = row.seat_limit === null || row.seat_limit === undefined ? null : Math.max(0, toInt(row.seat_limit))
@@ -350,6 +355,16 @@ export async function listCheckoutBatches(courseSlugInput: string): Promise<Chec
       batchEndAt: mysqlWallDateTime(row.batch_end_at)
     }
   })
+  return [
+    ...selfPaced.map((batch): CheckoutBatch => ({
+      courseSlug, batchKey: batch.batchKey, batchLabel: batch.batchLabel,
+      status: "open", isActive: false, brevoListId: null,
+      seatLimit: null, enrolledCount: 0, remainingSeats: null,
+      batchStartAt: mysqlWallDateTime(batch.batchStartAt), batchEndAt: mysqlWallDateTime(batch.batchEndAt),
+      deliveryMode: "self_paced", sourceBatchKey: batch.sourceBatchKey
+    })),
+    ...liveBatches
+  ]
 }
 
 export async function resolveCheckoutBatch(courseSlugInput: string, batchKeyInput?: unknown) {
@@ -372,8 +387,13 @@ export async function assertBatchCapacity(batch: CheckoutBatch | null, seatCount
   }
 }
 
-function assertBatchHasNotStarted(batch: CheckoutBatch | null | undefined) {
+async function assertBatchHasNotStarted(batch: CheckoutBatch | null | undefined) {
   if (!batch) return
+  if (isSelfPacedCohort(batch.courseSlug, batch.batchKey)) {
+    const available = await listAvailableSelfPacedBatches(batch.courseSlug)
+    if (!available.some((offer) => offer.batchKey === batch.batchKey)) throw new Error("Instant access is currently unavailable for this course.")
+    return
+  }
   if (!batchHasNotStarted(batch.batchStartAt)) {
     throw new Error("Selected batch has already started. Please choose another batch.")
   }
@@ -757,7 +777,7 @@ export async function createCourseOrder(input: {
   userAgent?: string
   affiliateCode?: string
 }) {
-  assertBatchHasNotStarted(input.batch)
+  await assertBatchHasNotStarted(input.batch)
   const orderUuid = randomUUID()
   const now = new Date()
 
@@ -946,7 +966,7 @@ export async function createManualPayment(input: {
   userAgent?: string
   affiliateCode?: string
 }) {
-  assertBatchHasNotStarted(input.batch)
+  await assertBatchHasNotStarted(input.batch)
   const paymentUuid = `mp_${randomUUID().replace(/-/g, "")}`
   const now = new Date()
 

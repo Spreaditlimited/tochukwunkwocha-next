@@ -6,6 +6,8 @@ import { getAdminSettingValue } from "@/lib/admin-settings"
 import { listStudentLiveSessionsForPairs, type StudentLiveSession } from "@/lib/course-live-sessions"
 import { listCheckoutBatches } from "@/lib/payments/course-checkout"
 import { prisma } from "@/lib/prisma"
+import { addOneYear } from "@/lib/utils"
+import { curriculumBatchKey, isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { visibleSchoolCourseSlug } from "@/lib/school-course-access"
 
 function cleanText(value: unknown, max = 500) {
@@ -82,6 +84,7 @@ export interface StudentCourseAccessRow {
   amountMinor: number
   status: string
   createdAt: Date | null
+  accessStartsAt?: Date | null
 }
 
 export interface StudentCourseItem extends StudentCourseAccessRow {
@@ -148,12 +151,12 @@ async function courseItemsFromAccessRows<T extends StudentCourseAccessRow>(rows:
     if (!isPaidStatus(row.status) && !isPendingStatus(row.status)) continue
 
     const key = `${row.courseSlug}::${row.batchKey || ""}::${row.source}::${row.uuid}`
-    const paidAt = isPaidStatus(row.status) ? row.createdAt : null
+    const paidAt = isPaidStatus(row.status) ? (isSelfPacedCohort(row.courseSlug, row.batchKey) ? row.accessStartsAt || row.createdAt : row.createdAt) : null
     const submittedAt = isPendingStatus(row.status) ? row.createdAt : null
     const item: T & StudentCourseItem = {
       ...row,
       courseName: courseName(row.courseSlug),
-      isActive: isPaidStatus(row.status),
+      isActive: isPaidStatus(row.status) && (!isSelfPacedCohort(row.courseSlug, row.batchKey) || (addOneYear(paidAt)?.getTime() || 0) > Date.now()),
       paidAt,
       submittedAt,
       accessExpiresAt: addOneYear(paidAt),
@@ -398,6 +401,7 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
         o.currency,
         COALESCE(o.amount_minor, o.final_amount_minor, 0) AS amountMinor,
         COALESCE(o.status, '') AS status,
+        COALESCE(o.paid_at, o.created_at) AS accessStartsAt,
         o.created_at AS createdAt
       FROM course_orders o
       LEFT JOIN course_batches b
@@ -417,6 +421,7 @@ export async function listStudentCourseAccess(email: string, accountId?: bigint 
         m.currency,
         m.amount_minor AS amountMinor,
         m.status,
+        COALESCE(m.reviewed_at, m.created_at) AS accessStartsAt,
         m.created_at AS createdAt
       FROM course_manual_payments m
       LEFT JOIN course_batches b
@@ -527,6 +532,7 @@ export async function listStudentPaymentRecords(email: string): Promise<StudentO
         o.currency,
         COALESCE(o.amount_minor, o.final_amount_minor, 0) AS amountMinor,
         COALESCE(o.status, '') AS status,
+        COALESCE(o.paid_at, o.created_at) AS accessStartsAt,
         o.created_at AS createdAt,
         CASE WHEN COALESCE(o.buyer_type, 'student') = 'family' THEN 1 ELSE 0 END AS isGroupPurchase
       FROM course_orders o
@@ -548,6 +554,7 @@ export async function listStudentPaymentRecords(email: string): Promise<StudentO
         m.currency,
         m.amount_minor AS amountMinor,
         m.status,
+        COALESCE(m.reviewed_at, m.created_at) AS accessStartsAt,
         m.created_at AS createdAt,
         CASE WHEN COALESCE(m.buyer_type, 'student') = 'family' THEN 1 ELSE 0 END AS isGroupPurchase
       FROM course_manual_payments m
@@ -600,14 +607,6 @@ function isPendingStatus(status: string) {
   return ["pending", "pending_verification", "processing", "scheduled", "otp_required"].includes(String(status || "").toLowerCase())
 }
 
-function addOneYear(value: Date | null) {
-  if (!value) return null
-  const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return null
-  date.setFullYear(date.getFullYear() + 1)
-  return date
-}
-
 function validDate(value: unknown): Date | null {
   if (!value) return null
   const date = value instanceof Date ? value : new Date(String(value))
@@ -625,7 +624,7 @@ async function queryFirstRecordedLessonAvailableAt(input: {
   batchStartAt?: Date | null
 }) {
   const courseSlug = cleanText(input.courseSlug, 120).toLowerCase()
-  const batchKey = cleanText(input.batchKey, 64).toLowerCase()
+  const batchKey = curriculumBatchKey(courseSlug, cleanText(input.batchKey, 64).toLowerCase())
   if (!courseSlug) return null
 
   const rows = await prisma.$queryRaw<Array<{
@@ -729,12 +728,12 @@ export async function listStudentCourses(email: string, accountId?: bigint | num
     if (!isPaidStatus(row.status) && !isPendingStatus(row.status)) continue
 
     const key = `${row.courseSlug}::${row.batchKey || ""}`
-    const paidAt = isPaidStatus(row.status) ? row.createdAt : null
+    const paidAt = isPaidStatus(row.status) ? (isSelfPacedCohort(row.courseSlug, row.batchKey) ? row.accessStartsAt || row.createdAt : row.createdAt) : null
     const submittedAt = isPendingStatus(row.status) ? row.createdAt : null
     const item: StudentCourseItem = {
       ...row,
       courseName: courseName(row.courseSlug),
-      isActive: isPaidStatus(row.status),
+      isActive: isPaidStatus(row.status) && (!isSelfPacedCohort(row.courseSlug, row.batchKey) || (addOneYear(paidAt)?.getTime() || 0) > Date.now()),
       paidAt,
       submittedAt,
       accessExpiresAt: addOneYear(paidAt),

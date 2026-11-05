@@ -50,6 +50,10 @@ export async function GET(
   const workbook = result.workbook
   if (!workbook) return workbookError(request, "The selected workbook is not available.")
 
+  if (result.access.accessExpiresAt && result.access.accessExpiresAt.getTime() - Date.now() < 30_000) {
+    return workbookError(request, "Your course access has expired or is ending. Contact support if you need help.")
+  }
+
   if (workbook.cloudinaryPublicId) {
     try {
       const downloadUrl = createPrivateCloudinaryDownloadUrl({
@@ -57,7 +61,9 @@ export async function GET(
         resourceType: workbook.cloudinaryResourceType,
         deliveryType: workbook.cloudinaryDeliveryType,
         format: workbook.cloudinaryFormat,
-        expiresInSeconds: 120
+        expiresInSeconds: result.access.accessExpiresAt
+          ? Math.min(120, Math.floor((result.access.accessExpiresAt.getTime() - Date.now()) / 1000))
+          : 120
       })
       return NextResponse.redirect(downloadUrl, {
         headers: {

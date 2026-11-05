@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Plus, Trash2, UsersRound } from "lucide-re
 import Link from "next/link"
 
 import { PremiumPicker } from "@/components/PremiumPicker"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { showStudentToast } from "@/components/student-dashboard/StudentActionToaster"
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import type { FamilySeatRow, LearningCourseOption } from "@/lib/student-dashboard"
@@ -92,7 +93,7 @@ export function GroupEnrollmentPanel({ seats, courses }: { seats: FamilySeatRow[
     selectedCourse?.batches.filter((batch) => (
       batch.remainingSeats === null || batch.remainingSeats > 0
     )).forEach((batch) => {
-      const startLabel = formatDateTimeWAT(batch.batchStartAt)
+      const startLabel = isSelfPacedCohort(selectedCourse.courseSlug, batch.batchKey) ? "" : formatDateTimeWAT(batch.batchStartAt)
       map.set(batch.batchKey, {
         value: batch.batchKey,
         label: `${batch.batchLabel}${startLabel ? ` · Starts ${startLabel}` : ""}`,

@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email"
 import { normalizeDeliverableEmail } from "@/lib/email-address"
 import { prisma } from "@/lib/prisma"
 import { publicActionLinkVariants, publicSiteUrl } from "@/lib/public-site-url"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 
 function clean(value: unknown, max = 1000) {
   return String(value || "").trim().slice(0, max)
@@ -37,6 +38,7 @@ export async function resolveEnrollmentBrevoListId(input: {
   batchKey?: string | null
   fallbackListId?: number | string | null
 }) {
+  if (isSelfPacedCohort(input.courseSlug, input.batchKey)) return 0
   const fallback = Number(input.fallbackListId || 0) || 0
   const courseSlug = clean(input.courseSlug, 120)
   const batchKey = clean(input.batchKey, 64)
@@ -61,6 +63,7 @@ export async function syncEnrollmentToBrevo(input: {
   source: string
   listId?: number | string | null
 }) {
+  if (isSelfPacedCohort(input.courseSlug, input.batchKey)) return { ok: true, skipped: true, reason: "self_paced_enrollment" }
   await applyAdminSettingsToProcessEnv().catch(() => null)
   const apiKey = clean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY, 1000)
   const email = normalizeDeliverableEmail(input.email, 190)
@@ -216,6 +219,7 @@ export async function reconcileFamilyOwnerBrevoLists(input: {
 
   const desiredLists = new Map<number, { batchKeys: string[]; batchLabels: string[] }>()
   for (const row of rows) {
+    if (isSelfPacedCohort(courseSlug, row.batchKey)) continue
     const listId = Number(row.brevoListId || 0) || 0
     if (!listId) continue
     const existing = desiredLists.get(listId) || { batchKeys: [], batchLabels: [] }
@@ -323,10 +327,12 @@ export async function sendStudentAccountReadyEmail(input: {
   resetToken?: string | null
   dashboardPath?: string | null
   batchLabel?: string | null
+  batchKey?: string | null
 }) {
   const email = normalizeDeliverableEmail(input.email, 190)
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
+  const selfPaced = isSelfPacedCohort(input.courseSlug, input.batchKey)
   const isGroup = clean(input.dashboardPath, 180).startsWith("/dashboard/family")
   const dashboardPath = isGroup ? "/dashboard/family" : "/dashboard/courses"
   const dashboardLinks = publicActionLinkVariants(dashboardPath)
@@ -336,10 +342,16 @@ export async function sendStudentAccountReadyEmail(input: {
     : dashboardLinks
   const name = clean(input.fullName, 120) || "there"
   const batch = clean(input.batchLabel, 120)
-  const subject = isGroup
+  const subject = selfPaced
+    ? `Welcome — your ${course || "course"} lessons are ready`
+    : isGroup
     ? "IMPORTANT: Your group enrollment is ready — assign your learners now"
     : "IMPORTANT: Your course access is ready — keep this email"
   const contextText = [course, batch].filter(Boolean).join(" — ")
+  const playerLinks = publicActionLinkVariants(`/dashboard/courses/player?course=${encodeURIComponent(input.courseSlug || "")}`)
+  const instantAccessText = selfPaced
+    ? "All your lessons and available class recordings are unlocked now, with one full year of access. This is self-paced access to a completed cohort. You can begin today, with no daily lesson emails or automated learning reminders."
+    : ""
   const accountStepText = input.temporaryPassword
     ? "Sign in with the email and temporary password below. After the first successful sign-in, you will be asked to create your own private password."
     : input.resetToken
@@ -354,7 +366,7 @@ export async function sendStudentAccountReadyEmail(input: {
       ]
     : [
         "Open My Courses in your dashboard and select your enrolled course.",
-        "Check the course and batch details, then use Open Course Player when lessons are available.",
+        selfPaced ? "Select Start learning to open all your lessons immediately. Work through the lessons in order at your own pace." : "Check the course and batch details, then use Open Course Player when lessons are available.",
         "Keep your sign-in details private and use Learning Support inside the dashboard if you need help."
       ]
   return sendEmail({
@@ -365,6 +377,7 @@ export async function sendStudentAccountReadyEmail(input: {
       "",
       `Your enrollment${course ? ` for ${course}` : ""} is confirmed and your learning account is ready.`,
       contextText ? `Enrollment: ${contextText}` : "",
+      instantAccessText,
       "",
       accountStepText,
       input.temporaryPassword ? `Sign-in email: ${email}` : "",
@@ -376,6 +389,7 @@ export async function sendStudentAccountReadyEmail(input: {
       "",
       isGroup ? "How to give your learners access:" : "What to do next:",
       ...nextStepsText.map((step, index) => `${index + 1}. ${step}`),
+      selfPaced && !isGroup ? `Open your lessons after signing in: ${playerLinks.primary}` : "",
       "",
       isGroup ? "Your email and password are for the parent or group owner. Learners should use only their individual access codes." : "Save this email until you have signed in successfully and secured your account.",
       "",
@@ -385,6 +399,7 @@ export async function sendStudentAccountReadyEmail(input: {
       <p>Hello ${escapeHtml(name)},</p>
       <p>Your enrollment${course ? ` for <strong>${course}</strong>` : ""} is confirmed and your learning account is ready.</p>
       ${contextText ? `<p><strong>Enrollment:</strong> ${escapeHtml(contextText)}</p>` : ""}
+      ${instantAccessText ? `<p><strong>Start learning today.</strong> ${escapeHtml(instantAccessText)}</p>` : ""}
       <p>${escapeHtml(accountStepText)}</p>
       ${input.temporaryPassword ? `
         <div style="margin:20px 0;padding:16px;border:1px solid #dbe7f3;border-radius:10px;background:#f8fbff;">
@@ -403,6 +418,7 @@ export async function sendStudentAccountReadyEmail(input: {
         </ol>
       </div>
       <p><strong>${escapeHtml(isGroup ? "Your email and password are for the parent or group owner. Learners should use only their individual access codes." : "Save this email until you have signed in successfully and secured your account.")}</strong></p>
+      ${selfPaced && !isGroup ? `<p><a href="${playerLinks.primary}">Start learning — open your lessons</a></p>` : ""}
       <p>Tochukwu Tech and AI Academy</p>
     `
   })

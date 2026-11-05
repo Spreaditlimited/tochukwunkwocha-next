@@ -29,6 +29,8 @@ import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibi
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
 import { cohortEnrollmentLabel } from "@/lib/course-cohort-label"
+import { InstantAccessDetails, InstantAccessOffer } from "@/components/courses/InstantAccessOffer"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
@@ -54,7 +56,10 @@ export async function PromptToProfitCoursePage({
   studentWebsites: SiteShowcase[]
 }) {
   const introductionVideo = await getPublicVideoSlot("prompt-to-profit-basic-intro")
-  const openBatches = [...(courseSettings?.openBatches || [])].sort((left, right) => {
+  const instantBatch = !courseSettings?.isEnrollmentLocked
+    ? courseSettings?.openBatches.find((batch) => isSelfPacedCohort(batch.courseSlug, batch.batchKey))
+    : null
+  const openBatches = [...(courseSettings?.openBatches || [])].filter((batch) => !isSelfPacedCohort(batch.courseSlug, batch.batchKey)).sort((left, right) => {
     const sequenceDifference = batchSequence(left.batchLabel || left.batchKey) - batchSequence(right.batchLabel || right.batchKey)
     if (sequenceDifference) return sequenceDifference
     return (left.batchStartAt || "").localeCompare(right.batchStartAt || "")
@@ -62,7 +67,7 @@ export async function PromptToProfitCoursePage({
   const enrollmentStatus = courseSettings
     ? courseSettings.isEnrollmentLocked
       ? "Enrollment locked"
-      : openBatches.length
+      : instantBatch || openBatches.length
         ? "Enrollment open"
         : "No open batches"
     : "Course settings not found"
@@ -401,13 +406,13 @@ export async function PromptToProfitCoursePage({
             <div className="text-center lg:text-left">
               <div className="mb-6 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
                 <p className="font-mono text-xs font-bold uppercase tracking-widest text-sky-400"><PromptToProfitMark suffix=" Basic" /></p>
-                <span className="flex max-w-full items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase leading-5 tracking-wide text-emerald-400 sm:tracking-widest">
+                {!instantBatch ? <span className="flex max-w-full items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase leading-5 tracking-wide text-emerald-400 sm:tracking-widest">
                   <span className="relative flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                   </span>
                   {enrollmentBadge}
-                </span>
+                </span> : null}
               </div>
 
               <h1 className="font-heading text-5xl font-black tracking-tight sm:text-6xl lg:text-[4rem] lg:leading-[1.1]">
@@ -420,14 +425,18 @@ export async function PromptToProfitCoursePage({
                 </p>
               </div>
 
-              <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row lg:mx-0 lg:justify-start">
-                <Link className="btn-primary w-full px-8 py-4 text-center text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
-                  Enroll Now
-                </Link>
-                <Link className="btn-secondary w-full px-8 py-4 text-center text-base sm:w-auto" href="#learner-projects">
-                  Learn More
-                </Link>
-              </div>
+              {instantBatch ? <InstantAccessOffer batch={instantBatch} liveBatch={openBatches[0]} checkoutHref={course.checkoutHref} /> : null}
+
+              {!instantBatch ? (
+                <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row lg:mx-0 lg:justify-start">
+                  <Link className="btn-primary w-full px-8 py-4 text-center text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
+                    Enroll Now
+                  </Link>
+                  <Link className="btn-secondary w-full px-8 py-4 text-center text-base sm:w-auto" href="#learner-projects">
+                    Learn More
+                  </Link>
+                </div>
+              ) : null}
 
               <div className="mt-7 flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className="flex -space-x-3">
@@ -458,14 +467,28 @@ export async function PromptToProfitCoursePage({
                 </h3>
 
                 <div className="mt-8 border-t border-white/10 pt-6">
-                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Open batches</p>
-                  <p className="mt-2 font-heading text-xl font-bold text-white">
-                    {openBatches.length} {openBatches.length === 1 ? "batch" : "batches"} open
-                  </p>
+                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">{instantBatch ? "Enrollment options" : "Open batches"}</p>
+                  {!instantBatch ? (
+                    <p className="mt-2 font-heading text-xl font-bold text-white">
+                      {openBatches.length} {openBatches.length === 1 ? "batch" : "batches"} open
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-sm font-semibold text-sky-400">{enrollmentStatus}</p>
 
-                  {openBatches.length ? (
+                  {instantBatch || openBatches.length ? (
                     <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+                      {instantBatch ? (
+                        <li className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-4 py-3">
+                          <div className="flex items-start gap-3">
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" aria-hidden="true" />
+                            <div>
+                              <p className="font-bold text-white">Instant access</p>
+                              <p className="mt-1 text-sm font-medium text-slate-300">All recorded lessons · One-year access</p>
+                              <p className="mt-1 text-xs font-semibold text-emerald-300">Start after payment confirmation</p>
+                            </div>
+                          </div>
+                        </li>
+                      ) : null}
                       {openBatches.map((batch) => {
                         const startLabel = formatDateTimeWAT(batch.batchStartAt)
                         const dateRange = formatCohortDateRange(batch.batchStartAt, batch.batchEndAt)
@@ -538,6 +561,8 @@ export async function PromptToProfitCoursePage({
           </div>
         </div>
       </section>
+
+      {instantBatch ? <InstantAccessDetails batch={instantBatch} /> : null}
 
       <section id="learner-projects" className="relative scroll-mt-20 overflow-hidden border-b border-border/60 bg-muted/20 py-16 sm:py-20 lg:py-24">
         <div className="pointer-events-none absolute -left-28 top-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />

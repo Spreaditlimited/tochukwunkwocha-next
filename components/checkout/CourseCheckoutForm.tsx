@@ -28,6 +28,7 @@ import { TrademarkText } from "@/components/TrademarkText"
 import { studentSafeErrorMessage } from "@/lib/student-error-feedback"
 import { getRecaptchaToken, preloadRecaptcha } from "@/lib/browser-recaptcha"
 import { validatePaymentEmail } from "@/lib/payment-email"
+import { isSelfPacedCohort, SELF_PACED_ACCESS_MESSAGE, selfPacedPaymentMessage } from "@/lib/self-paced-cohorts"
 import { resolveCheckoutCourseSlug, type Course } from "@/lib/public-offers"
 import type { CoursePriceValues } from "@/lib/course-price-display"
 
@@ -345,11 +346,13 @@ function uploadDirectToCloudinary(
 export function CourseCheckoutForm({
   course,
   coursePrices,
-  checkoutCourseSlugOverride
+  checkoutCourseSlugOverride,
+  initialBatchKey
 }: {
   course: Course
   coursePrices: CoursePriceValues | null
   checkoutCourseSlugOverride?: string
+  initialBatchKey?: string
 }) {
   const checkoutCourseSlug = checkoutCourseSlugOverride || resolveCheckoutCourseSlug(course)
   const publicCourseSlug = course.slug
@@ -359,7 +362,7 @@ export function CourseCheckoutForm({
   const [country, setCountry] = useState("NG")
   const [provider, setProvider] = useState<Provider>("paystack")
   const [batches, setBatches] = useState<CheckoutBatch[]>([])
-  const [batchKey, setBatchKey] = useState("")
+  const [batchKey, setBatchKey] = useState(initialBatchKey || "")
   const [buyerType, setBuyerType] = useState<"student" | "family">("student")
   const [seatCount, setSeatCount] = useState(2)
   const [whatsappOptIn, setWhatsappOptIn] = useState(true)
@@ -697,7 +700,7 @@ export function CourseCheckoutForm({
               buyerType,
               seatCount: buyerType === "family" ? seatCount : 1,
               affiliateCode,
-              whatsappOptIn,
+              whatsappOptIn: !isSelfPacedCohort(checkoutCourseSlug, batchKey) && whatsappOptIn,
               ...metaAttribution(),
               recaptchaToken,
               allowProofFallback: attempt === 2
@@ -730,7 +733,7 @@ export function CourseCheckoutForm({
           buyerType,
           seatCount: buyerType === "family" ? seatCount : 1,
           affiliateCode,
-          whatsappOptIn
+          whatsappOptIn: !isSelfPacedCohort(checkoutCourseSlug, batchKey) && whatsappOptIn
         })
         const targetAmount = Number(plan.pricing.finalAmountMinor || pricing?.finalAmountMinor || 0)
         const requestedAmount = Math.round(Number(installmentAmount || 0) * 100)
@@ -760,7 +763,7 @@ export function CourseCheckoutForm({
         buyerType,
         seatCount: buyerType === "family" ? seatCount : 1,
         affiliateCode,
-        whatsappOptIn,
+        whatsappOptIn: !isSelfPacedCohort(checkoutCourseSlug, batchKey) && whatsappOptIn,
         ...metaAttribution(),
         recaptchaToken
       })
@@ -780,7 +783,12 @@ export function CourseCheckoutForm({
   const selectedSeatCount = buyerType === "family" ? Math.max(2, Math.min(500, seatCount)) : 1
   const hideBatchSeatBalance = checkoutCourseSlug === "prompt-to-profit-holiday"
   const selectedBatch = useMemo(() => batches.find((batch) => batch.batchKey === batchKey) || null, [batchKey, batches])
-  const selectedBatchStart = selectedBatch ? formatBatchStart(selectedBatch.batchStartAt) : ""
+  const selfPaced = Boolean(selectedBatch && isSelfPacedCohort(checkoutCourseSlug, selectedBatch.batchKey))
+  const selectedBatchStart = selectedBatch && !selfPaced ? formatBatchStart(selectedBatch.batchStartAt) : ""
+  const accessMessage = selfPaced ? selfPacedPaymentMessage(provider) : "Your payment is processed securely. Once confirmed, your learning account access is prepared immediately."
+  const includedItems = selfPaced
+    ? ["All lessons and available class recordings from the completed cohort", "Learn at your own pace with no scheduled live classes", "One full year of course access", "No daily lesson emails or automated learning reminders"]
+    : course.includes
 
   return (
     <main className="min-h-screen bg-muted/20 pb-24 pt-10 lg:pt-14">
@@ -849,7 +857,7 @@ export function CourseCheckoutForm({
                 <div className="mt-6 grid gap-5 sm:grid-cols-2">
                   {batches.length ? (
                     <label className="block">
-                      <span className="label flex min-h-5 items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Batch</span>
+                      <span className="label flex min-h-5 items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Learning option</span>
                       <PremiumPicker
                         className="mt-2"
                         name="batchKey"
@@ -857,10 +865,17 @@ export function CourseCheckoutForm({
                         onChange={(event) => setBatchKey(event.target.value)}
                         options={batches.map((batch) => ({
                           value: batch.batchKey,
-                          label: `${formatBatchRange(batch.batchStartAt, batch.batchEndAt) ? `${batch.batchLabel} · ${formatBatchRange(batch.batchStartAt, batch.batchEndAt)}` : batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
+                          label: isSelfPacedCohort(checkoutCourseSlug, batch.batchKey)
+                            ? batch.batchLabel
+                            : `Scheduled cohort · ${formatBatchRange(batch.batchStartAt, batch.batchEndAt) ? `${batch.batchLabel} · ${formatBatchRange(batch.batchStartAt, batch.batchEndAt)}` : batch.batchLabel}${hideBatchSeatBalance || batch.remainingSeats === null ? "" : ` · ${batch.remainingSeats} seats left`}`
                         }))}
                       />
-                      {selectedBatchStart ? (
+                      {selfPaced ? (
+                        <span className="mt-3 block rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm leading-relaxed text-foreground" role="status">
+                          <strong className="block">Instant access · One full year</strong>
+                          {SELF_PACED_ACCESS_MESSAGE} {selfPacedPaymentMessage(provider)}
+                        </span>
+                      ) : selectedBatchStart ? (
                         <span className="mt-3 flex items-center gap-2 rounded-lg border border-primary/15 bg-primary/5 px-4 py-3 text-sm font-semibold text-foreground">
                           <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
                           <span>
@@ -902,7 +917,7 @@ export function CourseCheckoutForm({
                           {selectedSeatCount} seats selected • Total: {displayPrice || <PriceSpinner />}
                         </p>
                         <p className="mt-2">
-                          All seats and learners begin in the selected batch. After enrollment, you can move individual learners to another eligible batch from your group dashboard.
+                          {selfPaced ? "After payment confirmation, assign your learners from the group dashboard. Each learner can then start immediately using their individual access code." : "All seats and learners begin in the selected batch. After enrollment, you can move individual learners to another eligible batch from your group dashboard."}
                         </p>
                         {pricing?.groupDiscountMinor ? (
                           <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-semibold leading-snug text-primary">
@@ -914,10 +929,10 @@ export function CourseCheckoutForm({
                       </div>
                     </>
                   ) : null}
-                  <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-4 text-sm font-medium leading-relaxed text-muted-foreground">
+                  {!selfPaced ? <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-4 text-sm font-medium leading-relaxed text-muted-foreground">
                     <input className="mt-1 h-4 w-4 accent-primary" type="checkbox" checked={whatsappOptIn} onChange={(event) => setWhatsappOptIn(event.target.checked)} />
                     <span>Send enrollment updates and class reminders to my WhatsApp number.</span>
-                  </label>
+                  </label> : null}
                   {affiliateCode ? (
                     <input type="hidden" name="affiliateCode" value={affiliateCode} />
                   ) : null}
@@ -1038,6 +1053,7 @@ export function CourseCheckoutForm({
                   <p className="eyebrow text-sky-400">Order Summary</p>
                   <h2 className="mt-2 font-heading text-2xl font-black tracking-tight"><TrademarkText text={course.title} /></h2>
                   <p className="mt-4 text-sm leading-relaxed text-slate-300">{course.description}</p>
+              {selectedBatch ? <p className="mt-3 text-sm font-bold text-emerald-300">{selfPaced ? "Instant access · One full year" : `Scheduled cohort · ${selectedBatch.batchLabel}`}</p> : null}
                   <CourseFeeDisplay prices={coursePrices} tone="dark" compact className="mt-6" showCheckoutNote />
 
                   <div className="mt-8 border-t border-dashed border-white/20 pt-8">
@@ -1051,7 +1067,7 @@ export function CourseCheckoutForm({
                   <div className="mt-8 border-t border-white/10 pt-8">
                     <p className="mb-6 text-xs font-bold uppercase tracking-widest text-slate-400">What is included</p>
                     <div className="grid gap-4 sm:grid-cols-2">
-                      {course.includes.map((item) => (
+                      {includedItems.map((item) => (
                         <div key={item} className="flex gap-3 text-sm font-medium text-slate-200">
                           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
                           <span className="leading-relaxed">{item}</span>
@@ -1064,7 +1080,7 @@ export function CourseCheckoutForm({
                 <div className="bg-white/5 p-6 sm:px-8">
                   <div className="flex items-center gap-3 text-xs font-medium text-slate-400">
                     <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
-                    <p>Your payment is processed securely. Once confirmed, your learning account access is prepared immediately.</p>
+                    <p>{accessMessage}</p>
                   </div>
                 </div>
               </section>
@@ -1100,6 +1116,7 @@ export function CourseCheckoutForm({
               <p className="eyebrow text-sky-400">Order Summary</p>
               <h2 className="mt-2 font-heading text-2xl font-black tracking-tight"><TrademarkText text={course.title} /></h2>
               <p className="mt-4 text-sm leading-relaxed text-slate-300">{course.description}</p>
+              {selectedBatch ? <p className="mt-3 text-sm font-bold text-emerald-300">{selfPaced ? "Instant access · One full year" : `Scheduled cohort · ${selectedBatch.batchLabel}`}</p> : null}
               <CourseFeeDisplay prices={coursePrices} tone="dark" compact className="mt-6" showCheckoutNote />
 
               <div className="mt-8 border-t border-dashed border-white/20 pt-8">
@@ -1113,7 +1130,7 @@ export function CourseCheckoutForm({
               <div className="mt-8 border-t border-white/10 pt-8">
                 <p className="mb-6 text-xs font-bold uppercase tracking-widest text-slate-400">What is included</p>
                 <div className="grid gap-4">
-                  {course.includes.map((item) => (
+                  {includedItems.map((item) => (
                     <div key={item} className="flex gap-3 text-sm font-medium text-slate-200">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
                       <span className="leading-relaxed">{item}</span>
@@ -1126,7 +1143,7 @@ export function CourseCheckoutForm({
             <div className="bg-white/5 p-6 sm:px-10">
               <div className="flex items-center gap-3 text-xs font-medium text-slate-400">
                 <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
-                <p>Your payment is processed securely. Once confirmed, your learning account access is prepared immediately.</p>
+                <p>{accessMessage}</p>
               </div>
             </div>
           </aside>

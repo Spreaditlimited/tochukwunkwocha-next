@@ -27,6 +27,8 @@ import { CourseAccessibilitySection } from "@/components/courses/CourseAccessibi
 import { CourseFeeDisplay } from "@/components/courses/CourseFeeDisplay"
 import { TestimonialQuote } from "@/components/courses/TestimonialQuote"
 import { cohortEnrollmentLabel } from "@/lib/course-cohort-label"
+import { InstantAccessDetails, InstantAccessOffer } from "@/components/courses/InstantAccessOffer"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { getPublicVideoSlot } from "@/lib/public-video-slots"
 import type { PublicCourseSettings } from "@/lib/public-course-settings"
 import type { getCourse } from "@/lib/public-offers"
@@ -38,8 +40,12 @@ const sectionContainer = "site-container"
 
 export async function PromptToProfitAdvancedCoursePage({ course, courseSettings }: { course: Course; courseSettings: PublicCourseSettings | null }) {
   const introductionVideo = await getPublicVideoSlot("prompt-to-profit-advanced-intro")
-  const nextCohort = courseSettings?.openBatches[0] || null
-  const enrollmentBadge = cohortEnrollmentLabel(courseSettings?.openBatches || [])
+  const instantBatch = !courseSettings?.isEnrollmentLocked
+    ? courseSettings?.openBatches.find((batch) => isSelfPacedCohort(batch.courseSlug, batch.batchKey))
+    : null
+  const liveBatches = (courseSettings?.openBatches || []).filter((batch) => !isSelfPacedCohort(batch.courseSlug, batch.batchKey))
+  const nextCohort = liveBatches[0] || null
+  const enrollmentBadge = cohortEnrollmentLabel(liveBatches)
   const cohortRange = formatCohortDateRange(nextCohort?.batchStartAt, nextCohort?.batchEndAt)
   const cohortStart = formatDateTimeWAT(nextCohort?.batchStartAt)
   const tools = [
@@ -151,13 +157,13 @@ export async function PromptToProfitAdvancedCoursePage({ course, courseSettings 
               <p className="font-mono text-xs font-bold uppercase tracking-widest text-sky-400">
                 <PromptToProfitMark suffix=" Advanced" />
               </p>
-              <span className="flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-sky-400">
+              {!instantBatch ? <span className="flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-sky-400">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
                 </span>
                 {enrollmentBadge}
-              </span>
+              </span> : null}
             </div>
 
             <h1 className="font-heading text-5xl font-black tracking-tighter sm:text-6xl lg:text-7xl lg:leading-[1.1]">
@@ -170,7 +176,9 @@ export async function PromptToProfitAdvancedCoursePage({ course, courseSettings 
               <TrademarkText text="Designed for learners who are ready to move beyond simple websites. If Prompt to Profit Basic taught you how to build, Prompt to Profit Advanced teaches you how to build with structure, confidence, and a professional workflow." />
             </p>
 
-            {nextCohort ? (
+            {instantBatch ? <InstantAccessOffer batch={instantBatch} liveBatch={nextCohort} checkoutHref={course.checkoutHref} centered /> : null}
+
+            {nextCohort && !instantBatch ? (
               <div className="mx-auto mt-8 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-2xl border border-sky-400/25 bg-sky-400/[0.08] px-4 py-3 text-sm shadow-[0_16px_50px_-28px_rgba(56,189,248,0.8)] backdrop-blur-sm sm:rounded-full sm:px-5">
                 <span className="inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-sky-300">
                   <Calendar className="h-4 w-4" />
@@ -193,24 +201,28 @@ export async function PromptToProfitAdvancedCoursePage({ course, courseSettings 
               </div>
             ) : null}
 
-            <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
-              <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
-                Enroll Now
-              </Link>
-              <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#course-overview">
-                Learn More
-              </Link>
-            </div>
+            {!instantBatch ? (
+              <div className="mx-auto mt-10 flex max-w-xl flex-col items-center justify-center gap-4 sm:flex-row">
+                <Link className="btn-primary w-full px-8 py-4 text-base shadow-lg shadow-primary/20 sm:w-auto" href={course.checkoutHref}>
+                  Enroll Now
+                </Link>
+                <Link className="btn-secondary w-full px-8 py-4 text-base sm:w-auto" href="#course-overview">
+                  Learn More
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
+
+      {instantBatch ? <InstantAccessDetails batch={instantBatch} liveBatch={nextCohort} /> : null}
 
       <section id="course-overview" className="scroll-mt-20 bg-background py-10">
         <div className={sectionContainer}>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
             {[
-              { label: "Duration", value: "4 Weeks", icon: Calendar },
-              { label: "Delivery", value: "46 Recorded + 4 Live Classes", icon: Video },
+              { label: "Duration", value: instantBatch ? "Self-paced or 4 weeks" : "4 Weeks", icon: Calendar },
+              { label: "Delivery", value: instantBatch ? "Recordings now or a live cohort" : "46 Recorded + 4 Live Classes", icon: Video },
               { label: "Skill Level", value: "Intermediate", icon: ShieldCheck },
               { label: "Access", value: "One Full Year", icon: MonitorPlay },
               { label: "Prerequisite", value: "Basic or equivalent", icon: CheckCircle2 }

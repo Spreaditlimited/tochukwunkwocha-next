@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { Prisma } from "@prisma/client"
 
 import { sendBrevoTransactionalEmail } from "@/lib/brevo-transactional"
@@ -390,7 +391,7 @@ export async function deleteCourseLiveSession(sessionUuid: string) {
 export async function listStudentLiveSessionsForPairs(pairs: Array<{ courseSlug: string; batchKey: string | null }>) {
   const cleanPairs = pairs
     .map((pair) => ({ courseSlug: normalizeSlug(pair.courseSlug), batchKey: normalizeBatchKey(pair.batchKey) }))
-    .filter((pair) => pair.courseSlug && pair.batchKey)
+    .filter((pair) => pair.courseSlug && pair.batchKey && !isSelfPacedCohort(pair.courseSlug, pair.batchKey))
   if (!cleanPairs.length) return new Map<string, StudentLiveSession[]>()
   const clauses = cleanPairs.map((pair) => Prisma.sql`(course_slug COLLATE utf8mb4_unicode_ci = ${pair.courseSlug} COLLATE utf8mb4_unicode_ci AND batch_key COLLATE utf8mb4_unicode_ci = ${pair.batchKey} COLLATE utf8mb4_unicode_ci)`)
   const rows = await prisma.$queryRaw<CourseLiveSessionRow[]>(Prisma.sql`
@@ -423,6 +424,7 @@ export async function listStudentLiveSessionsForPairs(pairs: Array<{ courseSlug:
 }
 
 async function listSessionRecipients(courseSlug: string, batchKey: string) {
+  if (isSelfPacedCohort(courseSlug, batchKey)) return []
   const rows = await prisma.$queryRaw<Array<{
     recipientKey: string
     role: "learner" | "group_owner"

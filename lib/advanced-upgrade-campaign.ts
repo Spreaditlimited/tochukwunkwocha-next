@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { SELF_PACED_COHORTS } from "@/lib/self-paced-cohorts"
 import { Prisma } from "@prisma/client"
 
 import { advancedUpgradeCampaignContent, type AdvancedUpgradeEmailContent } from "@/lib/advanced-upgrade-campaign-content"
@@ -218,6 +219,7 @@ async function listCampaignRecipients(now: Date) {
       JOIN course_batches b ON b.course_slug COLLATE utf8mb4_unicode_ci = o.course_slug COLLATE utf8mb4_unicode_ci
         AND b.batch_key COLLATE utf8mb4_unicode_ci = o.batch_key COLLATE utf8mb4_unicode_ci
       WHERE o.course_slug IN (${Prisma.join(BASIC_COURSE_SLUGS)})
+        AND o.batch_key NOT IN (${Prisma.join(SELF_PACED_COHORTS.map((cohort) => cohort.batchKey))})
         AND o.status = 'paid'
         AND DATE_ADD(b.batch_start_at, INTERVAL 5 DAY) <= ${nowWatSql}
 
@@ -233,6 +235,7 @@ async function listCampaignRecipients(now: Date) {
       JOIN course_batches b ON b.course_slug COLLATE utf8mb4_unicode_ci = m.course_slug COLLATE utf8mb4_unicode_ci
         AND b.batch_key COLLATE utf8mb4_unicode_ci = m.batch_key COLLATE utf8mb4_unicode_ci
       WHERE m.course_slug IN (${Prisma.join(BASIC_COURSE_SLUGS)})
+        AND m.batch_key NOT IN (${Prisma.join(SELF_PACED_COHORTS.map((cohort) => cohort.batchKey))})
         AND m.status = 'approved'
         AND DATE_ADD(b.batch_start_at, INTERVAL 5 DAY) <= ${nowWatSql}
 
@@ -249,6 +252,7 @@ async function listCampaignRecipients(now: Date) {
       JOIN course_batches b ON b.course_slug COLLATE utf8mb4_unicode_ci = e.course_slug COLLATE utf8mb4_unicode_ci
         AND b.batch_key COLLATE utf8mb4_unicode_ci = e.batch_key COLLATE utf8mb4_unicode_ci
       WHERE e.course_slug IN (${Prisma.join(BASIC_COURSE_SLUGS)})
+        AND e.batch_key NOT IN (${Prisma.join(SELF_PACED_COHORTS.map((cohort) => cohort.batchKey))})
         AND e.status = 'active'
         AND DATE_ADD(b.batch_start_at, INTERVAL 5 DAY) <= ${nowWatSql}
       GROUP BY f.id, f.parent_name, f.parent_email

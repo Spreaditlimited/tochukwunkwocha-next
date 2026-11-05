@@ -29,6 +29,7 @@ import {
 } from "@/lib/student-dashboard"
 import { requireStudent } from "@/lib/student-auth"
 import { formatDate, formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 
 export const dynamic = "force-dynamic"
 
@@ -136,6 +137,8 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
           <div className="grid gap-6 xl:grid-cols-2">
             {courses.map((course) => {
               const isActive = course.isActive
+              const selfPaced = isSelfPacedCohort(course.courseSlug, course.batchKey)
+              const accessExpired = selfPaced && Boolean(course.accessExpiresAt && course.accessExpiresAt.getTime() <= Date.now())
               const isGroupSeat = course.source === "family_child"
               const courseStartMs = watWallDateTimeMs(course.courseStartAt)
               const courseStartsInFuture = Boolean(
@@ -177,7 +180,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                           sourceType={course.source}
                           courseSlug={course.courseSlug}
                           batchKey={course.batchKey}
-                          showUnavailable
+                          showUnavailable={!selfPaced}
                         />
                       </div>
                       
@@ -202,7 +205,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                       <div>
                         <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Status</p>
                         <span className={`mt-2 inline-flex rounded-md border px-2.5 py-1 text-xs font-bold uppercase tracking-wider ${statusTone(course.status)}`}>
-                          {statusLabel(course.status)}
+                          {accessExpired ? "Access expired" : statusLabel(course.status)}
                         </span>
                       </div>
                       <div>
@@ -234,6 +237,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                     </div>
 
                     <div className="mt-4 rounded-xl border border-border bg-background/50 p-5">
+                      {selfPaced ? <p className="mb-3 text-sm font-semibold text-primary">{isActive ? "Instant access: all lessons are ready. Learn at your own pace." : accessExpired ? "Your one-year course access has expired. Contact support if you need help." : "Instant access opens after payment confirmation and is valid for one year."}</p> : null}
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Course Progress</p>
                       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                         {progress.completedLessons}/{progress.totalLessons} lessons completed ({progress.completionPercent}%).
@@ -313,7 +317,7 @@ export default async function StudentCoursesPage({ searchParams }: StudentCourse
                             className="btn-primary w-full shadow-sm"
                           >
                             <PlayCircle className="mr-2 h-4 w-4" />
-                            Open Course Player
+                            {selfPaced ? "Start learning" : "Open Course Player"}
                           </Link>
                         ) : null}
                       </div>

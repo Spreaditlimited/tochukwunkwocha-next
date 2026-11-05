@@ -7,7 +7,8 @@ import { prisma } from "@/lib/prisma"
 import { publicSiteUrl } from "@/lib/public-site-url"
 import { plainTextToRichNotes } from "@/lib/rich-notes"
 import { hasActiveSchoolCourseAccess } from "@/lib/school-course-access"
-import { watWallDateTimeMs } from "@/lib/utils"
+import { addOneYear, watWallDateTimeMs } from "@/lib/utils"
+import { curriculumBatchKey, isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 
 const CERTIFICATE_PROOF_MARKER = "[CERTIFICATE_PROOF_WEBSITE]"
 
@@ -233,7 +234,7 @@ async function getLearnerBatchContext(accountId: bigint, email: string, courseSl
     `).catch(() => []),
     hasActiveSchoolCourseAccess({ accountId, email: normalizedEmail, courseSlug }).catch(() => false)
   ])
-  const learnerBatchKey = normalizeBatchKey(learnerRows[0]?.batchKey)
+  const learnerBatchKey = curriculumBatchKey(courseSlug, normalizeBatchKey(learnerRows[0]?.batchKey))
   const [activeBatchRows, learnerBatchRows, anchorRows] = await Promise.all([
     prisma.$queryRaw<{ batchKey: string | null }[]>(Prisma.sql`
       SELECT batch_key AS batchKey
@@ -374,54 +375,59 @@ export async function ensureLearningProgressTable() {
   return learningProgressTablePromise
 }
 
-export async function studentHasCourseAccess(accountId: bigint, email: string, courseSlug: string) {
+// Use the standard paid enrollment dates and the same one-year calculation as the dashboard.
+// Existing live, school and explicit override policies remain unchanged.
+async function studentCourseAccess(accountId: bigint, email: string, courseSlug: string) {
   const normalizedEmail = clean(email, 190).toLowerCase()
   const normalizedCourseSlug = clean(courseSlug, 120).toLowerCase()
-  if (!normalizedEmail || !normalizedCourseSlug) return false
-
+  const denied = { allowed: false, expiresAt: null as Date | null }
+  if (!normalizedEmail || !normalizedCourseSlug) return denied
   const [rows, schoolAllowed] = await Promise.all([
-    prisma.$queryRaw<{ allowed: number | bigint }[]>(Prisma.sql`
-      SELECT 1 AS allowed
-      WHERE EXISTS (
-        SELECT 1
-        FROM course_orders o
-        WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-          AND o.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-          AND COALESCE(o.buyer_type, 'student') <> 'family'
-          AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM course_manual_payments m
-        WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-          AND m.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-          AND COALESCE(m.buyer_type, 'student') <> 'family'
-          AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM tochukwu_learning_access_overrides a
-        WHERE a.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
-          AND a.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-          AND a.status = 'active'
-          AND (a.expires_at IS NULL OR a.expires_at > NOW())
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM family_children c
-        JOIN family_accounts f ON f.id = c.family_id
-        JOIN family_child_enrollments e ON e.child_id = c.id
-        WHERE c.account_id = ${accountId}
-          AND c.status = 'active'
-          AND f.status = 'active'
-          AND e.status = 'active'
-          AND e.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
-      )
-      LIMIT 1
+    prisma.$queryRaw<Array<{ batchKey: string | null; grantedAt: Date | null; explicitExpiry: Date | null; isOverride: number | bigint }>>(Prisma.sql`
+      SELECT o.batch_key COLLATE utf8mb4_unicode_ci AS batchKey, COALESCE(o.paid_at, o.created_at) AS grantedAt,
+        NULL AS explicitExpiry, 0 AS isOverride
+      FROM course_orders o
+      WHERE o.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND o.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+        AND COALESCE(o.buyer_type, 'student') <> 'family'
+        AND LOWER(COALESCE(o.status, '')) IN ('paid', 'approved', 'success', 'completed')
+      UNION ALL
+      SELECT m.batch_key COLLATE utf8mb4_unicode_ci, COALESCE(m.reviewed_at, m.created_at), NULL, 0
+      FROM course_manual_payments m
+      WHERE m.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND m.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+        AND COALESCE(m.buyer_type, 'student') <> 'family'
+        AND LOWER(COALESCE(m.status, '')) IN ('paid', 'approved', 'success', 'completed')
+      UNION ALL
+      SELECT NULL, NULL, a.expires_at, 1
+      FROM tochukwu_learning_access_overrides a
+      WHERE a.email COLLATE utf8mb4_general_ci = ${normalizedEmail}
+        AND a.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
+        AND a.status = 'active' AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP())
+      UNION ALL
+      SELECT e.batch_key COLLATE utf8mb4_unicode_ci, COALESCE(e.paid_at, e.updated_at, e.created_at), NULL, 0
+      FROM family_children c
+      JOIN family_accounts f ON f.id = c.family_id
+      JOIN family_child_enrollments e ON e.child_id = c.id
+      WHERE c.account_id = ${accountId} AND c.status = 'active' AND f.status = 'active'
+        AND e.status = 'active' AND e.course_slug COLLATE utf8mb4_general_ci = ${normalizedCourseSlug}
     `).catch(() => []),
     hasActiveSchoolCourseAccess({ accountId, email: normalizedEmail, courseSlug: normalizedCourseSlug }).catch(() => false)
   ])
-  return rows.length > 0 || schoolAllowed
+  if (schoolAllowed) return { allowed: true, expiresAt: null }
+  let expiresAt: Date | null = null
+  for (const row of rows) {
+    const timed = Number(row.isOverride) === 1 || isSelfPacedCohort(normalizedCourseSlug, row.batchKey)
+    if (!timed) return { allowed: true, expiresAt: null }
+    const expiry = Number(row.isOverride) === 1 ? row.explicitExpiry : addOneYear(row.grantedAt)
+    if (Number(row.isOverride) === 1 && !expiry) return { allowed: true, expiresAt: null }
+    if (expiry && expiry.getTime() > Date.now() && (!expiresAt || expiry > expiresAt)) expiresAt = expiry
+  }
+  return expiresAt ? { allowed: true, expiresAt } : denied
+}
+
+export async function studentHasCourseAccess(accountId: bigint, email: string, courseSlug: string) {
+  return (await studentCourseAccess(accountId, email, courseSlug)).allowed
 }
 
 export async function getLearningCourseForStudent(input: {
@@ -629,7 +635,9 @@ export async function getLessonPlaybackSource(accountId: bigint, email: string, 
   }
   if (!row) return { ok: false as const, error: "Lesson not found" }
   if (!row.videoUid) return { ok: false as const, error: "This lesson has no playable video yet." }
-  return { ok: true as const, videoUid: row.videoUid, hlsUrl: row.hlsUrl }
+  const access = await studentCourseAccess(accountId, email, row.courseSlug)
+  if (!access.allowed) return { ok: false as const, error: "Your course access has expired." }
+  return { ok: true as const, videoUid: row.videoUid, hlsUrl: row.hlsUrl, accessExpiresAt: access.expiresAt }
 }
 
 export async function saveStudentLessonProgress(input: {

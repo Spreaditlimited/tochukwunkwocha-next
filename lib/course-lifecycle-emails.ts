@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 import { Prisma } from "@prisma/client"
 
 import { getAdminSettingValues } from "@/lib/admin-settings"
@@ -510,7 +511,7 @@ export async function processCourseLifecycleEmails(input?: CourseLifecycleProces
   const now = input?.now || new Date()
   await ensureCourseLifecycleTables()
   const config = await courseLifecycleConfig()
-  const batches = await listRelevantBatches(now)
+  const batches = (await listRelevantBatches(now)).filter((batch) => !isSelfPacedCohort(batch.courseSlug, batch.batchKey))
   const due: Array<{ batch: BatchRow; recipient: RecipientRow; event: LifecycleEvent }> = []
   for (const batch of batches) {
     const [recipients, events] = await Promise.all([listBatchRecipients(batch), lifecycleEvents(batch)])

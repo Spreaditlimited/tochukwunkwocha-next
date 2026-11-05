@@ -64,5 +64,8 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   }
   const coursePrices = await getPublicCourseSettings(checkoutCourseSlug)
 
-  return <CourseCheckoutForm course={course} coursePrices={coursePrices} checkoutCourseSlugOverride={checkoutCourseSlug} />
+  const requestedBatch = Array.isArray(query.batch) ? query.batch[0] : query.batch
+  const initialBatchKey = coursePrices?.openBatches.some((batch) => batch.batchKey === requestedBatch)
+    ? requestedBatch : undefined
+  return <CourseCheckoutForm course={course} coursePrices={coursePrices} checkoutCourseSlugOverride={checkoutCourseSlug} initialBatchKey={initialBatchKey} />
 }

@@ -92,7 +92,7 @@ function resolveTtlSeconds(value: unknown) {
   )
 }
 
-function buildSignedLessonEmbedUrlWithConfig(input: { videoUid: string; hlsUrl?: string | null }, config: SigningConfig) {
+function buildSignedLessonEmbedUrlWithConfig(input: { videoUid: string; hlsUrl?: string | null; accessExpiresAt?: Date | null }, config: SigningConfig) {
   const keyId = clean(config.keyId, 120)
   const privateKey = normalizePrivateKeyPem(config.privateKey)
   const uid = clean(input.videoUid, 140)
@@ -100,9 +100,13 @@ function buildSignedLessonEmbedUrlWithConfig(input: { videoUid: string; hlsUrl?:
   if (!privateKey) throw new Error("Missing CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY")
   if (!uid) throw new Error("video_uid is required")
 
-  const ttlSeconds = resolveTtlSeconds(config.ttlSeconds)
+  const configuredTtl = resolveTtlSeconds(config.ttlSeconds)
   const nowSec = Math.floor(Date.now() / 1000)
-  const exp = nowSec + ttlSeconds
+  const exp = input.accessExpiresAt
+    ? Math.min(nowSec + configuredTtl, Math.floor(input.accessExpiresAt.getTime() / 1000))
+    : nowSec + configuredTtl
+  if (!Number.isFinite(exp) || exp <= nowSec) throw new Error("Your course access has expired.")
+  const ttlSeconds = exp - nowSec
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: keyId }))
   const payload = b64url(JSON.stringify({ sub: uid, kid: keyId, iat: nowSec, nbf: nowSec - 10, exp }))
   const signingInput = `${header}.${payload}`
@@ -114,11 +118,11 @@ function buildSignedLessonEmbedUrlWithConfig(input: { videoUid: string; hlsUrl?:
     embedUrl: replaceVideoUidWithToken(base, uid, token),
     expiresAt: new Date(exp * 1000).toISOString(),
     ttlSeconds,
-    refreshAfterSeconds: Math.max(90, ttlSeconds - 300)
+    refreshAfterSeconds: Math.max(1, Math.min(ttlSeconds - 1, Math.max(90, ttlSeconds - 300)))
   }
 }
 
-export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: string | null }) {
+export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: string | null; accessExpiresAt?: Date | null }) {
   return buildSignedLessonEmbedUrlWithConfig(input, {
     keyId: process.env.CLOUDFLARE_STREAM_SIGNING_KEY_ID || "",
     privateKey: process.env.CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY || "",
@@ -126,7 +130,7 @@ export function buildSignedLessonEmbedUrl(input: { videoUid: string; hlsUrl?: st
   })
 }
 
-export async function buildSignedLessonEmbedUrlFromRuntimeSettings(input: { videoUid: string; hlsUrl?: string | null }) {
+export async function buildSignedLessonEmbedUrlFromRuntimeSettings(input: { videoUid: string; hlsUrl?: string | null; accessExpiresAt?: Date | null }) {
   const [keyId, privateKey, ttlSeconds] = await Promise.all([
     getAdminSettingValue("CLOUDFLARE_STREAM_SIGNING_KEY_ID"),
     getAdminSettingValue("CLOUDFLARE_STREAM_SIGNING_PRIVATE_KEY"),

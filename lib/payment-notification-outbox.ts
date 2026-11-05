@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { isSelfPacedCohort } from "@/lib/self-paced-cohorts"
 
 import { sendStudentAccountReadyEmail, sendStudentPendingManualPaymentEmail, syncEnrollmentToBrevo } from "@/lib/enrollment-notifications"
 import { prisma } from "@/lib/prisma"
@@ -130,7 +131,9 @@ export async function enqueueEnrollmentConfirmationNotification(input: Enrollmen
   const sourceUuid = String(input.sourceUuid || "").trim().slice(0, 100)
   if (!sourceUuid) throw new Error("Enrollment notification source UUID is required.")
   const eventUuid = `ecn_${crypto.createHash("sha256").update(`${input.sourceType}:${sourceUuid}`).digest("hex").slice(0, 40)}`
-  const payload = encryptPayload(input)
+  const payload = encryptPayload(isSelfPacedCohort(input.courseSlug, input.batchKey)
+    ? { ...input, syncBrevo: false, sendWhatsApp: false }
+    : input)
   await prisma.$executeRaw`
     INSERT INTO tochukwu_notification_outbox
       (event_uuid, event_type, source_uuid, payload_encrypted, status, attempts, next_attempt_at,
@@ -191,6 +194,10 @@ export async function processPaymentNotificationOutbox(input?: { limit?: number;
       const deliveryErrors: string[] = []
       if (row.eventType === "enrollment_confirmed") {
         const payload = decryptPayload(row.payloadEncrypted) as unknown as EnrollmentConfirmationNotification
+        if (isSelfPacedCohort(payload.courseSlug, payload.batchKey)) {
+          payload.syncBrevo = false
+          payload.sendWhatsApp = false
+        }
         if (payload.syncBrevo === false && !row.brevoSyncedAt) {
           await prisma.$executeRaw`UPDATE tochukwu_notification_outbox SET brevo_synced_at=NOW(), brevo_status='skipped', updated_at=NOW() WHERE id=${row.id}`
         } else if (!row.brevoSyncedAt) {
@@ -221,7 +228,8 @@ export async function processPaymentNotificationOutbox(input?: { limit?: number;
               courseSlug: payload.courseSlug,
               temporaryPassword: payload.temporaryPassword,
               dashboardPath: payload.dashboardPath,
-              batchLabel: payload.batchLabel
+              batchLabel: payload.batchLabel,
+              batchKey: payload.batchKey
             })
             if (!result.ok) throw new Error(("error" in result && result.error) || "Enrollment confirmation email was skipped.")
             const messageId = "messageId" in result ? result.messageId : null

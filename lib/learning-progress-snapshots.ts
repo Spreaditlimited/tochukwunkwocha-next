@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { watWallDateTimeMs } from "@/lib/utils"
+import { curriculumBatchKey } from "@/lib/self-paced-cohorts"
 
 export type BatchLearnerEnrollment = {
   accountId: bigint
@@ -344,7 +345,7 @@ export async function buildLearnerProgressSnapshots(
     const courseRows = curriculumByCourse.get(enrollment.courseSlug) || []
     const releasedRows = courseRows.filter((row) => moduleReleased({
       row,
-      batchKey: enrollment.batchKey,
+      batchKey: curriculumBatchKey(enrollment.courseSlug, enrollment.batchKey),
       batchStartAt: enrollment.batchStartAt,
       schedules: schedulesByModule.get(row.moduleId.toString()) || new Map(),
       nowMs

@@ -172,3 +172,11 @@ export function batchHasNotStarted(
   const startTimeMs = watWallDateTimeMs(batchStartAt)
   return Number.isFinite(startTimeMs) && Number.isFinite(currentTimeMs) && currentTimeMs < startTimeMs
 }
+
+export function addOneYear(value: Date | null) {
+  if (!value) return null
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  date.setFullYear(date.getFullYear() + 1)
+  return date
+}
