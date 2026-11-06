@@ -49,10 +49,14 @@ test("checkout describes confirmation, manual approval and installment completio
   assert.match(policy.selfPacedPaymentMessage("installment"), /fully paid/)
 })
 
-test("welcome email contains immediate access and public links; scheduled welcome stays unchanged", async () => {
+test("self-paced welcome invites both courses to WhatsApp with immediate access and public links; scheduled welcome stays unchanged", async () => {
   const sent = []
+  let communityUrls = ""
   const notifications = load("lib/enrollment-notifications", {
-    "lib/prisma": {prisma: {}}, "lib/admin-settings": {applyAdminSettingsToProcessEnv: async () => {}},
+    "lib/prisma": {prisma: {}}, "lib/admin-settings": {
+      applyAdminSettingsToProcessEnv: async () => {},
+      getAdminSettingValues: async () => ({COURSE_COMMUNITY_WHATSAPP_URLS_JSON: communityUrls})
+    },
     "lib/email": {sendEmail: async message => {sent.push(message); return {ok: true}}}
   })
   await notifications.sendStudentAccountReadyEmail({email: "test@example.com", fullName: "Test Learner", courseSlug: "prompt-to-profit", batchKey: "ptp-batch-4-self-paced", batchLabel: "September recordings", temporaryPassword: "test-only-password"})
@@ -61,11 +65,27 @@ test("welcome email contains immediate access and public links; scheduled welcom
   assert.match(sent[0].text, /one full year/)
   assert.match(sent[0].text, /no daily lesson emails or automated learning reminders/)
   assert.match(sent[0].text, /dashboard\/courses\/player\?course=prompt-to-profit/)
+  const groupUrl = "https://chat.whatsapp.com/LIBIFLIrs2d91Jzl5K3X4U?s=cl&p=i&ilr=0"
+  assert.ok(sent[0].text.includes(`Join our WhatsApp group to connect with fellow learners: ${groupUrl}`))
+  assert.ok(sent[0].html.includes(`href="${groupUrl.replaceAll("&", "&amp;")}"`))
+  assert.match(sent[0].html, /Join the WhatsApp group/)
   assert.doesNotMatch(sent[0].text + sent[0].html, /localhost|127\.0\.0\.1|\.local\//)
   assert.equal((await notifications.syncEnrollmentToBrevo({email: "test@example.com", courseSlug: "prompt-to-profit", batchKey: "ptp-batch-4-self-paced", source: "test"})).reason, "self_paced_enrollment")
   await notifications.sendStudentAccountReadyEmail({email: "test@example.com", courseSlug: "prompt-to-profit", batchKey: "future-live"})
   assert.equal(sent[1].subject, "IMPORTANT: Your course access is ready — keep this email")
   assert.match(sent[1].text, /when lessons are available/)
+  assert.doesNotMatch(sent[1].text + sent[1].html, /Join.*WhatsApp|chat\.whatsapp\.com/)
+  await notifications.sendStudentAccountReadyEmail({email: "test@example.com", courseSlug: "prompt-to-production", batchKey: "ptpprod-batch-2-self-paced", resetToken: "test-only-token"})
+  assert.match(sent[2].subject, /Advanced lessons are ready/)
+  assert.ok(sent[2].text.includes(groupUrl))
+  assert.ok(sent[2].html.includes(`href="${groupUrl.replaceAll("&", "&amp;")}"`))
+  assert.doesNotMatch(sent[2].text + sent[2].html, /localhost|127\.0\.0\.1|\.local\//)
+  communityUrls = JSON.stringify({"prompt-to-production": "https://chat.whatsapp.com/testCourseOverride?s=cl&p=i"})
+  await notifications.sendStudentAccountReadyEmail({email: "test@example.com", courseSlug: "prompt-to-production", batchKey: "ptpprod-batch-2-self-paced", dashboardPath: "/dashboard/family"})
+  assert.ok(sent[3].text.includes("https://chat.whatsapp.com/testCourseOverride?s=cl&p=i"))
+  assert.ok(sent[3].html.includes('href="https://chat.whatsapp.com/testCourseOverride?s=cl&amp;p=i"'))
+  assert.ok(!sent[3].text.includes(groupUrl), "The existing per-course admin configuration takes precedence")
+  assert.match(sent[3].text, /Assign Learners/)
 })
 
 test("the existing access gate applies the standard one-year calculation only to instant-access enrollments", async () => {

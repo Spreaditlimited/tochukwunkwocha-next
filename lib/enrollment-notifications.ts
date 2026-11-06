@@ -1,4 +1,5 @@
 import { applyAdminSettingsToProcessEnv } from "@/lib/admin-settings"
+import { courseLifecycleConfig, DEFAULT_COURSE_WHATSAPP_GROUP_URL } from "@/lib/course-lifecycle-emails"
 import { sendEmail } from "@/lib/email"
 import { normalizeDeliverableEmail } from "@/lib/email-address"
 import { prisma } from "@/lib/prisma"
@@ -333,6 +334,9 @@ export async function sendStudentAccountReadyEmail(input: {
   if (!email) return { ok: false, skipped: true }
   const course = learningCourseName(input.courseSlug)
   const selfPaced = isSelfPacedCohort(input.courseSlug, input.batchKey)
+  const communityUrl = selfPaced
+    ? (await courseLifecycleConfig()).communityUrls.get(clean(input.courseSlug, 120).toLowerCase()) || DEFAULT_COURSE_WHATSAPP_GROUP_URL
+    : ""
   const isGroup = clean(input.dashboardPath, 180).startsWith("/dashboard/family")
   const dashboardPath = isGroup ? "/dashboard/family" : "/dashboard/courses"
   const dashboardLinks = publicActionLinkVariants(dashboardPath)
@@ -390,6 +394,7 @@ export async function sendStudentAccountReadyEmail(input: {
       isGroup ? "How to give your learners access:" : "What to do next:",
       ...nextStepsText.map((step, index) => `${index + 1}. ${step}`),
       selfPaced && !isGroup ? `Open your lessons after signing in: ${playerLinks.primary}` : "",
+      communityUrl ? `Join our WhatsApp group to connect with fellow learners: ${communityUrl}` : "",
       "",
       isGroup ? "Your email and password are for the parent or group owner. Learners should use only their individual access codes." : "Save this email until you have signed in successfully and secured your account.",
       "",
@@ -419,6 +424,7 @@ export async function sendStudentAccountReadyEmail(input: {
       </div>
       <p><strong>${escapeHtml(isGroup ? "Your email and password are for the parent or group owner. Learners should use only their individual access codes." : "Save this email until you have signed in successfully and secured your account.")}</strong></p>
       ${selfPaced && !isGroup ? `<p><a href="${playerLinks.primary}">Start learning — open your lessons</a></p>` : ""}
+      ${communityUrl ? `<p>You're also invited to join our WhatsApp group to connect with fellow learners.<br/><a href="${escapeHtml(communityUrl)}">Join the WhatsApp group</a></p>` : ""}
       <p>Tochukwu Tech and AI Academy</p>
     `
   })

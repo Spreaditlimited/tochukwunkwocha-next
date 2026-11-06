@@ -10,6 +10,7 @@ import { formatDateTimeWAT, watWallDateTimeMs } from "@/lib/utils"
 
 const HOUR_MS = 60 * 60 * 1000
 const MAX_ATTEMPTS = 5
+export const DEFAULT_COURSE_WHATSAPP_GROUP_URL = "https://chat.whatsapp.com/LIBIFLIrs2d91Jzl5K3X4U?s=cl&p=i&ilr=0"
 
 export type LifecycleStage = "welcome_48h" | "batch_switch_24h" | "lesson_release"
 type RecipientRole = "learner" | "group_owner"
@@ -131,7 +132,7 @@ export async function courseLifecycleConfig() {
   ])
   const communityUrls = parseCommunityUrls(values.COURSE_COMMUNITY_WHATSAPP_URLS_JSON)
   if (!communityUrls.has("prompt-to-profit-holiday")) {
-    communityUrls.set("prompt-to-profit-holiday", "https://chat.whatsapp.com/LIBIFLIrs2d91Jzl5K3X4U?s=cl&p=i&ilr=0")
+    communityUrls.set("prompt-to-profit-holiday", DEFAULT_COURSE_WHATSAPP_GROUP_URL)
   }
   return {
     enabled: booleanSetting(values.COURSE_LIFECYCLE_EMAILS_ENABLED, true),
