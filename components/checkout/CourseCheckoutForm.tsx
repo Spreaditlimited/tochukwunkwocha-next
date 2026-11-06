@@ -347,12 +347,14 @@ export function CourseCheckoutForm({
   course,
   coursePrices,
   checkoutCourseSlugOverride,
-  initialBatchKey
+  initialBatchKey,
+  initialInstallment = false
 }: {
   course: Course
   coursePrices: CoursePriceValues | null
   checkoutCourseSlugOverride?: string
   initialBatchKey?: string
+  initialInstallment?: boolean
 }) {
   const checkoutCourseSlug = checkoutCourseSlugOverride || resolveCheckoutCourseSlug(course)
   const publicCourseSlug = course.slug
@@ -360,7 +362,7 @@ export function CourseCheckoutForm({
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [country, setCountry] = useState("NG")
-  const [provider, setProvider] = useState<Provider>("paystack")
+  const [provider, setProvider] = useState<Provider>(initialInstallment ? "installment" : "paystack")
   const [batches, setBatches] = useState<CheckoutBatch[]>([])
   const [batchKey, setBatchKey] = useState(initialBatchKey || "")
   const [buyerType, setBuyerType] = useState<"student" | "family">("student")

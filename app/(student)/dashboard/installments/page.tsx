@@ -1,8 +1,11 @@
+import { redirect } from "next/navigation"
+
 import { InstallmentsPanel } from "@/components/student-dashboard/InstallmentsPanel"
 import { StudentDashboardShell } from "@/components/student-dashboard/StudentDashboardShell"
 import { listActiveLearningCourseOptions } from "@/lib/student-dashboard"
 import { listStudentInstallmentPlans } from "@/lib/student-installments"
-import { getStudentProfile, requireStudent } from "@/lib/student-auth"
+import { getStudentProfile, getStudentSession, requireStudent } from "@/lib/student-auth"
+import { getCourse } from "@/lib/public-offers"
 
 export const dynamic = "force-dynamic"
 
@@ -20,7 +23,14 @@ export default async function StudentInstallmentsPage({
   if (initialCourseSlug) query.set("course", initialCourseSlug)
   if (initialCouponCode) query.set("coupon", initialCouponCode)
   const returnTo = `/dashboard/installments${query.size ? `?${query.toString()}` : ""}#start-installment-plan`
-  const session = await requireStudent(returnTo)
+  const existingSession = await getStudentSession()
+  const requestedPublicCourse = getCourse(initialCourseSlug)
+  if (!existingSession && requestedPublicCourse) {
+    const checkoutQuery = new URLSearchParams({ paymentMethod: "installment" })
+    if (initialCouponCode) checkoutQuery.set("coupon", initialCouponCode)
+    redirect(`${requestedPublicCourse.checkoutHref}?${checkoutQuery.toString()}`)
+  }
+  const session = existingSession || await requireStudent(returnTo)
   const profile = await getStudentProfile(session.account.id)
   const courses = await listActiveLearningCourseOptions()
   const plans = await listStudentInstallmentPlans(session.account.id)

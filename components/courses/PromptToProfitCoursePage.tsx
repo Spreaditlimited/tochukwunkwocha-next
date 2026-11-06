@@ -279,15 +279,31 @@ export async function PromptToProfitCoursePage({
     },
     {
       q: "How are the classes delivered?",
-      a: "You will receive access to professionally recorded lessons through your learning dashboard, together with live Zoom sessions for demonstrations, project reviews, questions, and support."
+      a: "Lessons are available through your learning dashboard. Choose instant access to learn from a completed cohort at your own pace, or join a scheduled cohort for recorded lessons and live Zoom sessions for demonstrations, project reviews, questions, and support."
+    },
+    {
+      q: "Can I start learning immediately instead of waiting for the next cohort?",
+      a: "Yes. Choose the Instant access option at checkout for Prompt to Profit Basic. Once your payment is confirmed, all lessons and available class recordings from the completed cohort unlock together, so you can start immediately and learn at your own pace."
+    },
+    {
+      q: "Does instant access include upcoming live classes?",
+      a: "Instant access gives you the recorded lessons and available class recordings from a completed cohort. It does not include upcoming live sessions. If you want to attend live classes, choose a scheduled live cohort at checkout instead."
+    },
+    {
+      q: "When do lessons unlock if I pay in installments or by bank transfer?",
+      a: "For instant access, an installment plan must be fully paid before lessons unlock; the first installment does not open the course. Bank transfers must be approved before access begins. Once payment is confirmed in full, all lessons become available together."
+    },
+    {
+      q: "How do I access my lessons, and will I receive daily emails?",
+      a: "After your instant-access enrollment is activated, you will receive a welcome email explaining how to sign in and open your lessons. In your dashboard, open My Courses, select your course, and choose Start learning. You will not receive daily lesson emails or automated learning reminders for this option."
     },
     {
       q: "What happens if I miss a live session?",
-      a: "Every live session is recorded and added to your learning dashboard, allowing you to watch it later."
+      a: "If you join a scheduled cohort, every live session is recorded and added to your learning dashboard, allowing you to watch it later. Instant-access learners can watch the available recordings from their completed cohort."
     },
     {
       q: "How long do I have access?",
-      a: "You will receive one full year of access to the lessons, recordings, and course materials."
+      a: "You will receive one full year of access to the lessons, recordings, and course materials. For instant access, that year begins when your fully paid enrollment is activated, not on the original cohort's start date. Access expires after one year, so plan to complete your learning within that period."
     },
     {
       q: "What kind of computer do I need?",
@@ -303,7 +319,7 @@ export async function PromptToProfitCoursePage({
     },
     {
       q: "What if I get stuck?",
-      a: "Support is available through the live sessions, the student discussion area, and the recorded lessons, which you can revisit whenever you need them."
+      a: "Use Learning Support in your dashboard if you need help. Instant-access learners also receive a WhatsApp group invitation in the welcome email to connect with fellow learners, and can revisit the recordings throughout their access period. Scheduled cohorts also include support during live sessions."
     }
   ]
 
@@ -1076,7 +1092,7 @@ export async function PromptToProfitCoursePage({
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Once your payment has been completed, your enrolment is automatically activated and you will receive full access.</p>
                 <p>Begin planning your learning journey immediately while paying at a pace that works for you.</p>
               </div>
-              <Link href={`/dashboard/installments?course=${courseSettings?.courseSlug || "prompt-to-profit"}#start-installment-plan`} className="btn-primary mt-7 px-6 py-3">
+              <Link href={`${course.checkoutHref}?paymentMethod=installment`} className="btn-primary mt-7 px-6 py-3">
                 Start an Installment Plan
               </Link>
             </div>

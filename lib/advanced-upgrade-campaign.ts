@@ -108,10 +108,9 @@ function trackedUrl(path: string, emailKey: string, contentKey: string) {
 }
 
 function installmentUrl() {
-  const url = new URL("/dashboard/installments", publicAbsoluteUrl("/"))
-  url.searchParams.set("course", BASIC_ADVANCED_TARGET_COURSE)
+  const url = new URL(`/checkout/${BASIC_ADVANCED_TARGET_COURSE}`, publicAbsoluteUrl("/"))
+  url.searchParams.set("paymentMethod", "installment")
   url.searchParams.set("coupon", BASIC_ADVANCED_COUPON_CODE)
-  url.hash = "start-installment-plan"
   return url.toString()
 }
 

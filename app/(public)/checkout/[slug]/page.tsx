@@ -52,7 +52,13 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const canonicalSlug = resolveCourseSlug(slug)
 
   if (canonicalSlug !== slug) {
-    redirect(`/checkout/${canonicalSlug}`)
+    const preservedQuery = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      for (const entry of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+        preservedQuery.append(key, entry)
+      }
+    }
+    redirect(`/checkout/${canonicalSlug}${preservedQuery.size ? `?${preservedQuery.toString()}` : ""}`)
   }
 
   const course = getCourse(canonicalSlug)
@@ -67,5 +73,6 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const requestedBatch = Array.isArray(query.batch) ? query.batch[0] : query.batch
   const initialBatchKey = coursePrices?.openBatches.some((batch) => batch.batchKey === requestedBatch)
     ? requestedBatch : undefined
-  return <CourseCheckoutForm course={course} coursePrices={coursePrices} checkoutCourseSlugOverride={checkoutCourseSlug} initialBatchKey={initialBatchKey} />
+  const requestedPaymentMethod = Array.isArray(query.paymentMethod) ? query.paymentMethod[0] : query.paymentMethod
+  return <CourseCheckoutForm course={course} coursePrices={coursePrices} checkoutCourseSlugOverride={checkoutCourseSlug} initialBatchKey={initialBatchKey} initialInstallment={requestedPaymentMethod === "installment"} />
 }

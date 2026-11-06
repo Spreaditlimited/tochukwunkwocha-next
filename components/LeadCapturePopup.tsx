@@ -384,18 +384,18 @@ export function LeadCapturePopup() {
 
   return (
     <div className="fixed inset-x-4 bottom-4 z-[120] pointer-events-none animate-in slide-in-from-bottom-8 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[420px]">
-      <section className="pointer-events-auto flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-brand-ink/95 text-white shadow-2xl backdrop-blur-md sm:max-h-[calc(100dvh-3rem)]">
+      <section className="pointer-events-auto flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md sm:max-h-[calc(100dvh-3rem)]">
         
         {/* Header */}
-        <div className="z-10 flex shrink-0 items-start justify-between gap-3 border-b border-white/10 bg-brand-ink px-4 py-4 sm:gap-4 sm:bg-white/5 sm:px-6 sm:py-5">
+        <div className="z-10 flex shrink-0 items-start justify-between gap-3 border-b border-border bg-muted/50 px-4 py-4 sm:gap-4 sm:px-6 sm:py-5">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-sky-400">{kicker}</p>
-            <h2 className="mt-1.5 font-heading text-base font-black leading-snug tracking-tight text-white sm:text-xl">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">{kicker}</p>
+            <h2 className="mt-1.5 font-heading text-base font-black leading-snug tracking-tight text-foreground sm:text-xl">
               {headline}
             </h2>
           </div>
           <button 
-            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            className="brand-focus flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             type="button" 
             onClick={closePopup} 
             aria-label="Close dialog"
@@ -409,24 +409,24 @@ export function LeadCapturePopup() {
           {success ? (
             <div className="flex flex-col gap-5 animate-in fade-in">
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                <p className="text-sm font-medium leading-relaxed text-emerald-100">{successText}</p>
+                <p className="text-sm font-medium leading-relaxed text-emerald-700 dark:text-emerald-200">{successText}</p>
               </div>
               {downloadUrl && (
-                <a href={downloadUrl} target="_blank" rel="noreferrer" className="btn-inverse w-full justify-center shadow-lg shadow-white/10">
+                <a href={downloadUrl} target="_blank" rel="noreferrer" className="btn-primary w-full justify-center shadow-lg shadow-primary/10">
                   <Download className="mr-2 h-4 w-4" /> Download PDF Now
                 </a>
               )}
             </div>
           ) : (
             <form className="flex flex-col gap-4 animate-in fade-in" onSubmit={submit}>
-              <p className="text-sm font-medium leading-relaxed text-slate-300">
+              <p className="text-sm font-medium leading-relaxed text-muted-foreground">
                 {description}
               </p>
               {bullets.length > 0 && (
                 <ul className="grid gap-2">
                   {bullets.map((item, index) => (
-                    <li key={`${index}-${item}`} className="flex gap-2 text-xs font-medium leading-relaxed text-slate-300">
-                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-300" />
+                    <li key={`${index}-${item}`} className="flex gap-2 text-xs font-medium leading-relaxed text-muted-foreground">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                       <span>{item}</span>
                     </li>
                   ))}
@@ -440,7 +440,7 @@ export function LeadCapturePopup() {
                   name="firstName" 
                   required 
                   placeholder="First name" 
-                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm font-medium text-white outline-none transition-colors placeholder:text-slate-500 focus:border-sky-500/50 focus:bg-black/60 focus:ring-1 focus:ring-sky-500/50" 
+                  className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
                 />
                 
                 <label className="sr-only" htmlFor="email">Email address</label>
@@ -450,24 +450,24 @@ export function LeadCapturePopup() {
                   required 
                   type="email" 
                   placeholder="Email address" 
-                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm font-medium text-white outline-none transition-colors placeholder:text-slate-500 focus:border-sky-500/50 focus:bg-black/60 focus:ring-1 focus:ring-sky-500/50" 
+                  className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
                 />
               </div>
               
               {error && (
                 <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3">
-                  <p className="text-xs font-bold text-rose-400">{error}</p>
+                  <p className="text-xs font-bold text-rose-700 dark:text-rose-400">{error}</p>
                 </div>
               )}
               
               <button 
                 disabled={loading} 
-                className="btn-inverse mt-2 w-full justify-center shadow-lg shadow-white/5 transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50" 
+                className="btn-primary mt-2 w-full justify-center shadow-lg shadow-primary/10 transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
                 type="submit"
               >
                 <Mail className="mr-2 h-4 w-4" /> {loading ? "Processing..." : buttonText}
               </button>
-              <RecaptchaDisclosure className="text-slate-400 [&_a]:hover:text-white" />
+              <RecaptchaDisclosure />
             </form>
           )}
         </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ChevronDown, X } from "lucide-react"
+import { X } from "lucide-react"
 
 import type { PublicWhatsAppContact } from "@/lib/public-whatsapp"
 
@@ -30,7 +30,7 @@ function positionClass(position: NonNullable<WhatsAppButtonProps["position"]>) {
       return "bottom-4 left-4"
     case "bottom-right":
     default:
-      return "bottom-4 right-4"
+      return "bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))]"
   }
 }
 
@@ -39,7 +39,7 @@ function panelPositionClass(position: NonNullable<WhatsAppButtonProps["position"
 }
 
 function panelVerticalClass(position: NonNullable<WhatsAppButtonProps["position"]>) {
-  return position.startsWith("top") ? "top-20" : "bottom-20"
+  return position.startsWith("top") ? "top-full mt-3" : "bottom-full mb-3"
 }
 
 function buildWhatsAppUrl(contact: PublicWhatsAppContact, message: string) {
@@ -58,7 +58,7 @@ export function WhatsAppButton({
   waID = "",
   contacts,
   message = "Hello! I have a question from the Tochukwu Tech website.",
-  position = "bottom-left"
+  position = "bottom-right"
 }: WhatsAppButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [managedContacts, setManagedContacts] = useState<PublicWhatsAppContact[] | null>(null)
@@ -116,28 +116,28 @@ export function WhatsAppButton({
 
   return (
     <div
-      className={`fixed ${positionClass(position)} z-20`}
+      className={`fixed ${positionClass(position)} z-[45]`}
       onMouseEnter={cancelClose}
       onMouseLeave={closeWithDelay}
     >
       {isOpen ? (
-        <div className={`absolute ${panelVerticalClass(position)} ${panelPositionClass(position)} w-[min(calc(100vw-2rem),22rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15 dark:border-slate-800 dark:bg-slate-950`}>
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        <div className={`absolute ${panelVerticalClass(position)} ${panelPositionClass(position)} w-[min(calc(100vw-2.5rem),22rem)] overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl shadow-black/15`}>
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
-              <p className="text-sm font-bold text-slate-900 dark:text-white">Chat on WhatsApp</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Choose the right team</p>
+              <p className="text-sm font-bold text-foreground">Chat on WhatsApp</p>
+              <p className="text-xs text-muted-foreground">Choose the right team</p>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+              className="brand-focus flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Close WhatsApp contacts"
             >
               <X size={16} />
             </button>
           </div>
 
-          <div className="max-h-[22rem] overflow-y-auto p-2">
+          <div className="max-h-[min(22rem,calc(100dvh-10rem))] overflow-y-auto p-2">
             {configuredContacts.map((contact) => (
               <a
                 key={contact.id}
@@ -145,15 +145,15 @@ export function WhatsAppButton({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 rounded-xl px-3 py-3 text-left no-underline transition hover:bg-green-50 dark:hover:bg-green-950/30"
+                className="brand-focus flex items-center gap-3 rounded-xl px-3 py-3 text-left no-underline transition hover:bg-muted"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-500 text-white">
                   <WhatsAppIcon className="h-6 w-6" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 dark:text-white">{contact.label}</span>
+                  <span className="block text-sm font-bold text-foreground">{contact.label}</span>
                   {contact.description ? (
-                    <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">{contact.description}</span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{contact.description}</span>
                   ) : null}
                 </span>
               </a>
@@ -165,18 +165,13 @@ export function WhatsAppButton({
       <button
         type="button"
         onClick={() => setIsOpen((value) => !value)}
-        className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500 text-white shadow-lg shadow-green-900/20 transition hover:bg-green-600"
+        className="brand-focus flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-[18px] py-3 text-[15px] font-semibold leading-6 text-primary-foreground shadow-[0_6px_24px_#0003] transition hover:bg-primary/90"
         aria-expanded={isOpen}
         aria-label="Contact us on WhatsApp"
         title="Contact us on WhatsApp"
       >
-        <span className="relative flex items-center">
-          <WhatsAppIcon className="h-8 w-8" />
-          <ChevronDown
-            size={14}
-            className={`absolute -bottom-2 -right-3 transition-transform ${isOpen ? "rotate-180" : ""}`}
-          />
-        </span>
+        <WhatsAppIcon className="h-[22px] w-[22px] shrink-0" />
+        <span>Support</span>
       </button>
     </div>
   )

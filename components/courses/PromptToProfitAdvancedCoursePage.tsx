@@ -102,12 +102,32 @@ export async function PromptToProfitAdvancedCoursePage({ course, courseSettings 
       a: "Yes. As part of the learning experience, you will integrate a payment gateway into your application to understand how online payments work in modern software."
     },
     {
+      q: "Can I start learning immediately instead of waiting for the next cohort?",
+      a: "Yes. Choose the Instant access option at checkout for Prompt to Production (Advanced). Once your payment is confirmed, all lessons and available class recordings from the completed cohort unlock together, so you can start immediately and learn at your own pace."
+    },
+    {
+      q: "Does instant access include upcoming live classes?",
+      a: "Instant access gives you the recorded lessons and available class recordings from a completed cohort. It does not include upcoming live sessions. If you want to attend live classes, choose a scheduled live cohort at checkout instead."
+    },
+    {
+      q: "When do lessons unlock if I pay in installments or by bank transfer?",
+      a: "For instant access, an installment plan must be fully paid before lessons unlock; the first installment does not open the course. Bank transfers must be approved before access begins. Once payment is confirmed in full, all lessons become available together."
+    },
+    {
+      q: "How do I access my lessons, and will I receive daily emails?",
+      a: "After your instant-access enrollment is activated, you will receive a welcome email explaining how to sign in and open your lessons. In your dashboard, open My Courses, select your course, and choose Start learning. You will not receive daily lesson emails or automated learning reminders for this option."
+    },
+    {
+      q: "What if I get stuck?",
+      a: "Use Learning Support in your dashboard if you need help. Instant-access learners also receive a WhatsApp group invitation in the welcome email to connect with fellow learners, and can revisit the recordings throughout their access period. Scheduled cohorts also include support during live sessions."
+    },
+    {
       q: "Will I receive a certificate?",
       a: "Yes. Your certificate is awarded after successfully completing and submitting your project."
     },
     {
       q: "How long do I have access?",
-      a: "You will receive one full year of access to the lessons, recordings, and course materials."
+      a: "You will receive one full year of access to the lessons, recordings, and course materials. For instant access, that year begins when your fully paid enrollment is activated, not on the original cohort's start date. Access expires after one year, so plan to complete your learning within that period."
     }
   ]
 
@@ -607,7 +627,7 @@ export async function PromptToProfitAdvancedCoursePage({ course, courseSettings 
                 <p>Our flexible instalment payment system allows you to spread your payments over time. Your place is reserved while you complete your payments.</p>
                 <p>This gives you the flexibility to plan your learning around your finances without missing the opportunity to join.</p>
               </div>
-              <Link href={course.checkoutHref} className="btn-primary mt-7 px-6 py-3">
+              <Link href={`${course.checkoutHref}?paymentMethod=installment`} className="btn-primary mt-7 px-6 py-3">
                 Start an Installment Plan
               </Link>
             </div>
@@ -684,7 +704,7 @@ export async function PromptToProfitAdvancedCoursePage({ course, courseSettings 
             </Link>
             <Link
               className="btn-inverse-secondary px-8 py-4 text-base"
-              href={course.checkoutHref}
+              href={`${course.checkoutHref}?paymentMethod=installment`}
             >
               <CreditCard className="mr-2 h-4 w-4" /> Pay In Installments
             </Link>
