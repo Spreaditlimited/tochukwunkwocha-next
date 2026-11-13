@@ -1,0 +1,15 @@
+{
+  "name": "inner-circle-vault",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.local.toml --local --ip localhost --port 8788 --local-protocol http",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run --outdir dist",
+    "test": "node --test"
+  },
+  "dependencies": { "aws4fetch": "^1.0.20" },
+  "devDependencies": { "wrangler": "^4.0.0" }
+}

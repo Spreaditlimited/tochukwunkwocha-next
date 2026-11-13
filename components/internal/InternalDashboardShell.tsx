@@ -4,6 +4,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
 import {
+  Archive,
   BookOpenCheck,
   CalendarClock,
   ChevronLeft,
@@ -52,7 +53,8 @@ const navSections = [
       { href: "/internal/seo", label: "SEO Queue", icon: Search },
       { href: "/internal/blog", label: "Blog CMS", icon: FileText },
       { href: "/internal/questions", label: "Anonymous Q&A", icon: MessageCircle },
-      { href: "/internal/resources", label: "Resources", icon: BookOpenCheck }
+      { href: "/internal/resources", label: "Resources", icon: BookOpenCheck },
+      { href: "/internal/vault", label: "Inner Circle Vault", icon: Archive }
     ]
   },
   {

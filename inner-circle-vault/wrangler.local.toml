@@ -1,0 +1,16 @@
+# Development only: no custom domain, remote deployment, or public bucket.
+name = "inner-circle-vault"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "./public"
+
+[vars]
+VAULT_LOCAL_PREVIEW = "true"
+VAULT_MANAGED_ACCESS = "true"
+
+# R2 read-only credentials and the demo passcode come from ignored .dev.vars.
+# The loopback-only preview reads the real private catalog through signed S3 GETs.

@@ -7,6 +7,7 @@ export const INTERNAL_PAGE_OPTIONS = [
   { path: "/internal/blog", label: "Blog CMS" },
   { path: "/internal/questions", label: "Anonymous Q&A" },
   { path: "/internal/resources", label: "Resources" },
+  { path: "/internal/vault", label: "Inner Circle Vault" },
   { path: "/internal/financials", label: "Business Financials" },
   { path: "/internal/manual-payments", label: "Manual Payments" },
   { path: "/internal/installments", label: "Installments" },

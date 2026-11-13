@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://www.tochukwunkwocha.com", "https://tochukwunkwocha.com", "http://localhost:3000"],
+        "methods": ["PUT"],
+        "headers": ["content-type", "if-none-match"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

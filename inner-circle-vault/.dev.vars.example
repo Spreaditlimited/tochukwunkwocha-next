@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development. Do not commit real credentials.
+VAULT_PASSCODE="replace-with-a-long-random-monthly-passcode"
+R2_ACCOUNT_ID="your-32-character-cloudflare-account-id"
+R2_ACCESS_KEY_ID="your-bucket-scoped-r2-access-key-id"
+R2_SECRET_ACCESS_KEY="your-bucket-scoped-r2-secret-access-key"
